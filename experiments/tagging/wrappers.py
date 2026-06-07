@@ -860,7 +860,7 @@ class LGATrSlimWrapper(nn.Module):
         return logits, {}, None
 
 
-class HybridCGENNLGATrWrapper(nn.Module):
+class CGENNLGATrGraphTransWrapper(nn.Module):
     def __init__(self, net, framesnet, out_channels):
         super().__init__()
         self.net = net(num_classes=out_channels)
