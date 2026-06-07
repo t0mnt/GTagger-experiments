@@ -1076,12 +1076,6 @@ class CGENNLGATrGraphTrans(nn.Module):
 
     def forward(self, x, v, mask, points):
    
-  
-
-        x = x.transpose(1, 2)          # (B, P, C)
-        v = v.transpose(1, 2)          # (B, P, 4)  
-        mask = mask.transpose(1, 2)[:, :, 0]   # (B, P)
-        points = points.transpose(1, 2)        # (B, P, 2)
 
         # Stage 1: Multivector embedding
         fourmomenta_ga = v[:, :, None, :]        # Stage 1; was v[:, :, None, [3, 0, 1, 2]]
