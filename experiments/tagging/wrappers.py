@@ -883,10 +883,10 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         scalars, _ = to_dense_batch(scalars, batch)
         points, _ = to_dense_batch(points, batch)
         output = self.net(
-            scalars.transpose(1, 2),       # features        (B, C, P)
-            fourmomenta.transpose(1, 2),   # lorentz_vectors (B, 4, P)  (E, px, py, pz)
-            mask.unsqueeze(1),             # mask            (B, 1, P)
-            points.transpose(1, 2),        # points          (B, 2, P)
+            scalars,
+            fourmomenta,
+            mask,
+            points,
         )
         return output, {}, None
 
