@@ -633,7 +633,7 @@ def _pairwise_minkowski(p4_part):
     return torch.sqrt(torch.abs(mink) + 1e-8)
 
 
-ddef generate_edges_vectorized(mask, points, k, M, device,
+def generate_edges_vectorized(mask, points, k, M, device,
                               metric="deltaR", fourmomenta=None):
     """Directed, fully-batched kNN edges. Each real particle connects to its k
     nearest real neighbours: edge (i -> j) means j is a neighbour of i, with i the
