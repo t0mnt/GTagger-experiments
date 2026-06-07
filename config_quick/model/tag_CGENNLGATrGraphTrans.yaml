@@ -1,0 +1,34 @@
+_target_: experiments.tagging.wrappers.CGENNLGATrGraphTransWrapper
+out_channels: null              # init_physics -> num_outputs 
+
+net:
+  _target_: experiments.baselines.CGENNLGATrGraphTransHybrid.CGENNLGATrGraphTrans
+  _partial_: true
+  in_s_channels: null          #should be 
+  # num_classes is supplied by the wrapper at call time (= out_channels)
+
+  hidden_mv_channels: 4
+  hidden_s_channels: 8
+  num_blocks: 2
+  num_heads: 2
+  head_scale: true
+  checkpoint_blocks: false
+
+  k: 4
+  cgenn_layers: 1
+  cgenn_hidden_h: 16
+  cgenn_hidden_x: 4
+  cgenn_aggregation: mean
+  cgenn_residual: true
+  cgenn_layer_type: fc
+  cgenn_normalization_init: 0
+  concat_original: true
+  use_explicit_edge_features: true
+
+  beam_spurion: xyplane
+  add_time_spurion: true
+  beam_mirror: true
+  knn_metric: minkowski
+
+defaults:
+  - framesnet: identity
