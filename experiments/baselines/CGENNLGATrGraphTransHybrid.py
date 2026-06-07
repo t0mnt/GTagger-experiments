@@ -1075,13 +1075,9 @@ class CGENNLGATrGraphTrans(nn.Module):
         )
 
     def forward(self, x, v, mask, points):
-        '''
-        Points: (N, 2, P)
-        Features: (N, C, P)
-        Vectors: (N, 4, P) [E, px, py, pz]      # was [px,py,pz,energy]
-        Mask: (N, 1, P) 
-        '''
-        # Reshape inputs
+   
+  
+
         x = x.transpose(1, 2)          # (B, P, C)
         v = v.transpose(1, 2)          # (B, P, 4)  
         mask = mask.transpose(1, 2)[:, :, 0]   # (B, P)
