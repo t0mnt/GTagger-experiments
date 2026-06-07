@@ -860,6 +860,36 @@ class LGATrSlimWrapper(nn.Module):
         return logits, {}, None
 
 
+class HybridCGENNLGATrWrapper(nn.Module):
+    def __init__(self, net, framesnet, out_channels):
+        super().__init__()
+        self.net = net(num_classes=out_channels)
+        self.framesnet = framesnet  # not actually used
+        assert isinstance(framesnet, IdentityFrames)
+    def forward(self, embedding):
+        fourmomenta = embedding["fourmomenta"]                 # (E, px, py, pz), incl. spurions
+        scalars = torch.cat([embedding["scalars"], embedding["tagging_features"]], dim=-1)
+        batch = embedding["batch"]
+        is_spurion = embedding["is_spurion"]
+        keep = ~is_spurion                                     # channel-spurions in model: drop the tokens
+        fourmomenta = fourmomenta[keep]
+        scalars = scalars[keep]
+        batch = batch[keep]
+        fourmomenta = (fourmomenta / 20).to(scalars.dtype)     # match the equivariant baselines; NO reorder
+        px, py, pz = fourmomenta[:, 1], fourmomenta[:, 2], fourmomenta[:, 3]   # (E, px, py, pz)
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+        fourmomenta, mask = to_dense_batch(fourmomenta, batch)
+        scalars, _ = to_dense_batch(scalars, batch)
+        points, _ = to_dense_batch(points, batch)
+        output = self.net(
+            scalars.transpose(1, 2),       # features        (B, C, P)
+            fourmomenta.transpose(1, 2),   # lorentz_vectors (B, 4, P)  (E, px, py, pz)
+            mask.unsqueeze(1),             # mask            (B, 1, P)
+            points.transpose(1, 2),        # points          (B, 2, P)
+        )
+        return output, {}, None
+
 def compile_flex_attention(package_name="lgatr"):
     """Run torch.compile on the flex_attention function.
 
