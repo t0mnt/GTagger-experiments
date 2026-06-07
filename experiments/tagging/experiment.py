@@ -53,15 +53,15 @@ class TaggingExperiment(BaseExperiment):
             elif modelname == "CGENN":
                 # CGENN cant handle zero scalar inputs -> give 1 input with zeros
                 self.cfg.model.net.in_features_h = 1 + in_s_channels
-            elif modelname == "CGENNLAGTrGraphTrans":
+            elif modelname == "CGENNLGATrGraphTrans":
                 # zero scalar inputs doesn't really happen so I ignore it out of practicality
-                self.cfg.model.net.in_features_h = in_s_channels
+                self.cfg.model.net.in_s_channels = in_s_channels
             elif modelname == "LorentzNetLGATrSlimGraphTrans":
-                self.cfg.model.net.in_features_h = in_s_channels
+                self.cfg.model.net.in_s_channels = in_s_channels
             elif modelname == "CGENNLGATrGraphGPS":
-                self.cfg.model.net.in_features_h = in_s_channels
+                self.cfg.model.net.in_s_channels = in_s_channels
             elif modelname == "LorentzNetLGATrSlimGraphGPS":
-                self.cfg.model.net.in_features_h = in_s_channels
+                self.cfg.model.net.in_s_channels = in_s_channels
 
             # doesn't affect results and never needed
             self.cfg.data.boost_jet = False
