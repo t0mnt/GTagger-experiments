@@ -1083,7 +1083,7 @@ class CGENNLGATrGraphTrans(nn.Module):
         '''
         # Reshape inputs
         x = x.transpose(1, 2)          # (B, P, C)
-        v = v.transpose(1, 2)          # (B, P, 4)  [px,py,pz,E]
+        v = v.transpose(1, 2)          # (B, P, 4)  
         mask = mask.transpose(1, 2)[:, :, 0]   # (B, P)
         points = points.transpose(1, 2)        # (B, P, 2)
 
@@ -1113,7 +1113,7 @@ class CGENNLGATrGraphTrans(nn.Module):
         mask_fp32 = mask.float()
         points_fp32 = points.float()
 
-        # For Minkowski metric, pass 4-momenta in (E,px,py,pz) order
+        
         fourmomenta_flat = None
         if self.knn_metric == "minkowski" and self.k is not None:
             fourmomenta_flat = v.float()
