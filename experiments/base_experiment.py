@@ -623,6 +623,9 @@ class BaseExperiment:
             f"after {dt / 60:.2f}min = {dt / 60**2:.2f}h"
         )
         LOGGER.info(f"Spend {train_time:.2f}s training and {val_time:.2f}s validating")
+        # expose for downstream reporting (e.g. the tagging results table)
+        self.train_time = train_time
+        self.train_wallclock = dt
         if self.cfg.use_mlflow:
             log_mlflow("iterations", step)
             log_mlflow("epochs", step / len(self.train_loader))

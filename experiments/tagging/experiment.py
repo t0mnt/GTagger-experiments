@@ -72,10 +72,11 @@ class TaggingExperiment(BaseExperiment):
             "GraphNet",
             "ParticleNet",
             "MIParticleTransformer",
-            "ParticleNetParTGraphTrans"
-            "ParticleNetParTGraphGPS"
-            "PlainGraphTrans"
-            "PlainGraphGPS"
+            "ParticleNetTransformer",
+            "ParticleNetParTGraphTrans",
+            "ParticleNetParTGraphGPS",
+            "PlainGraphTrans",
+            "PlainGraphGPS",
         ]:
             # Non-equivariant or canonicalization
             self.cfg.model.in_channels = 7 + self.extra_scalars
@@ -307,15 +308,54 @@ class TaggingExperiment(BaseExperiment):
                 log_mlflow(f"{name}.{key}", value, step=step)
 
         if mode == "eval":
+            modelname = type(self.model.net).__name__
             framesString = type(self.model.framesnet).__name__
             num_parameters = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            train_time = getattr(self, "train_time", float("nan"))
+            flops = self._count_flops(loader)
+            flops_str = f"{flops:.3e}" if flops is not None else "n/a"
+            knn = self._knn_description()
 
+            # columns: model & frames (iters) & params & acc & auc & rej03 & rej05
+            #          & rej08 & traintime & flops & knn
             LOGGER.info(
-                f"table {title}: {framesString} ({self.cfg.training.iterations} iterations)"
+                f"table {title}: {modelname} & {framesString}"
+                f" ({self.cfg.training.iterations} iterations)"
                 f" & {num_parameters} & {metrics['accuracy']:.4f} & {metrics['auc']:.4f}"
-                f" & {metrics['rej03']:.0f} & {metrics['rej05']:.0f} & {metrics['rej08']:.0f} \\\\"
+                f" & {metrics['rej03']:.0f} & {metrics['rej05']:.0f} & {metrics['rej08']:.0f}"
+                f" & {train_time:.0f}s & {flops_str} & {knn} \\\\"
             )
         return metrics
+
+    def _knn_description(self):
+        """Short label for the model's kNN graph metric, or '-' if it has none."""
+        net = getattr(self.model, "net", None)
+        metric = getattr(net, "knn_metric", None)
+        if metric is not None:
+            return metric
+        if type(net).__name__ == "ParticleNet":
+            return "deltaR"  # L2 on (eta, phi)
+        return "-"
+
+    @torch.no_grad()
+    def _count_flops(self, loader):
+        """Forward FLOPs for a single jet (batchsize 1), as in test_tag_flops."""
+        try:
+            from torch.utils.flop_counter import FlopCounterMode
+
+            batch = next(iter(loader)).clone().to(self.device)
+            n = int(batch.ptr[1].item())  # keep only the first jet
+            batch.x = batch.x[:n]
+            batch.scalars = batch.scalars[:n]
+            batch.batch = batch.batch[:n]
+            batch.ptr = batch.ptr[:2]
+            batch.label = batch.label[:1]
+            with FlopCounterMode(display=False) as flop_counter:
+                self._get_ypred_and_label(batch)
+            return flop_counter.get_total_flops()
+        except Exception as e:
+            LOGGER.warning(f"FLOPs counting failed: {e}")
+            return None
 
     def plot(self):
         plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")

@@ -1,0 +1,40 @@
+_target_: experiments.tagging.wrappers.ParticleNetTransformerWrapper
+in_channels: null               # init_physics -> 7 + extra_scalars
+out_channels: null              # init_physics -> num_outputs
+use_amp: false
+add_fourmomenta_backbone: false
+
+net:
+  _target_: experiments.baselines.particlenettransformer.ParticleNetTransformer
+  _partial_: true
+  input_dim: null               # supplied by the wrapper (= in_channels)
+  num_classes: null             # supplied by the wrapper (= out_channels)
+
+  # ParticleNet (EdgeConv) graph backbone
+  conv_params: [[16, [64, 64, 64]], [16, [128, 128, 128]]]
+  use_fusion: true
+  use_fts_bn: true
+  use_input_concat: true
+  knn_metric: deltaR            # first-layer kNN: 'deltaR' (eta-phi L2) or 'minkowski' (4-momenta)
+
+  # ParticleTransformer-style encoder
+  embed_dims: [128, 512, 128]
+  num_heads: 8
+  num_layers: 8
+  block_params: null
+  activation: gelu
+  fc_params: []
+
+  # pairwise Lorentz interaction features (from v as (px, py, pz, E)).
+  # bias=true adds them as an additive attention bias; bias=false disables them.
+  bias: true
+  pair_input_dim: 4
+  pair_extra_dim: 0
+  pair_embed_dims: [64, 64, 64]
+  remove_self_pair: false
+  use_pre_activation_pair: true
+
+  for_inference: false
+
+defaults:
+  - framesnet: identity

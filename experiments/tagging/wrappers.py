@@ -890,6 +890,67 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         )
         return output, {}, None
 
+
+class ParticleNetTransformerWrapper(TaggerWrapper):
+    """Wrapper for the ParticleNet-Transformer hybrid.
+
+    Like ParTWrapper / ParticleNetWrapper, this is a non-equivariant backbone
+    that is made Lorentz-equivariant through LLoCa input canonicalization:
+    TaggerWrapper expresses every particle in its learned local frame, and the
+    (frame-agnostic) backbone then operates on those canonicalized features. With
+    IdentityFrames this reduces to the plain baseline in the global frame, and any
+    learned framesnet is supported through the shared TaggerWrapper machinery.
+
+    The backbone differs from the rest of the repo only in its conventions: it is
+    channels-first (N, C, P), expects four-momenta as (px, py, pz, E) rather than
+    (E, px, py, pz), and takes a (N, 1, P) mask. It additionally needs (eta, phi)
+    points for the EdgeConv kNN, which we read off the local four-momenta.
+    """
+
+    def __init__(self, net, *args, use_amp=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_amp = use_amp
+        self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+
+    def forward(self, embedding):
+        (
+            features_local,
+            fourmomenta_local,
+            frames,
+            _,
+            batch,
+            tracker,
+        ) = super().forward(embedding)
+        fourmomenta_local = fourmomenta_local.to(features_local.dtype)
+        fourmomenta_local = fourmomenta_local[..., [1, 2, 3, 0]]  # need (px, py, pz, E)
+
+        # (eta, phi) points for the EdgeConv kNN, read off the local four-momenta
+        px, py, pz = (
+            fourmomenta_local[..., 0],
+            fourmomenta_local[..., 1],
+            fourmomenta_local[..., 2],
+        )
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+
+        features_local, mask = to_dense_batch(features_local, batch)
+        fourmomenta_local, _ = to_dense_batch(fourmomenta_local, batch)
+        points, _ = to_dense_batch(points, batch)
+        features_local = features_local.transpose(1, 2).contiguous()  # (B, C, P)
+        fourmomenta_local = fourmomenta_local.transpose(1, 2).contiguous()  # (B, 4, P)
+        points = points.transpose(1, 2).contiguous()  # (B, 2, P)
+        mask = mask.unsqueeze(1).float()  # (B, 1, P)
+
+        # the backbone handles AMP internally via use_amp
+        score = self.net(
+            points=points,
+            features=features_local,
+            v=fourmomenta_local,
+            mask=mask,
+        )
+        return score, tracker, frames
+
+
 def compile_flex_attention(package_name="lgatr"):
     """Run torch.compile on the flex_attention function.
 

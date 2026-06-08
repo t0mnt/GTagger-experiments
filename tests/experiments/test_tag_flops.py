@@ -22,6 +22,7 @@ from experiments.tagging.experiment import TopTaggingExperiment
     [
         ["model=tag_ParT"],
         ["model=tag_particlenet"],
+        ["model=tag_ParticleNetTransformer"],
         ["model=tag_transformer"],
         ["model=tag_graphnet"],
         ["model=tag_graphnet", "model.include_edges=true"],
@@ -30,6 +31,7 @@ from experiments.tagging.experiment import TopTaggingExperiment
         ["model=tag_MIParT-L"],
         ["model=tag_lorentznet"],
         ["model=tag_pelican_fair"],
+        ["model=tag_CGENNLGATrGraphTrans"],
     ],
 )
 def test_tagging(framesnet, model_list, equivectors, jet_size=50):
