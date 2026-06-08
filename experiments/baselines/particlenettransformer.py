@@ -4,7 +4,7 @@ A hybrid tagger: a ParticleNet (EdgeConv) graph backbone feeds a
 ParticleTransformer-style encoder with pairwise Lorentz interaction features and a
 class token. Like the ParT and ParticleNet baselines, this is a non-equivariant
 backbone that is made Lorentz-equivariant through LLoCa input canonicalization in
-``experiments.tagging.wrappers.ParticleNetTransformerWrapper`` (which inherits
+``experiments.tagging.wrappers.ParticleNetParTGraphTransWrapper`` (which inherits
 TaggerWrapper); the backbone itself is frame-agnostic.
 
 Adapted from the weaver implementation. The weaver-specific wrapper,
@@ -534,7 +534,7 @@ def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
         return tensor
 
 
-class ParticleNetTransformer(nn.Module):
+class ParticleNetParTGraphTrans(nn.Module):
 
     def __init__(self,
                  input_dim,

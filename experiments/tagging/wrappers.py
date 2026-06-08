@@ -891,8 +891,8 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         return output, {}, None
 
 
-class ParticleNetTransformerWrapper(TaggerWrapper):
-    """Wrapper for the ParticleNet-Transformer hybrid.
+class ParticleNetParTGraphTransWrapper(TaggerWrapper):
+    """Wrapper for the ParticleNet-ParT graph-transformer hybrid.
 
     Like ParTWrapper / ParticleNetWrapper, this is a non-equivariant backbone
     that is made Lorentz-equivariant through LLoCa input canonicalization:

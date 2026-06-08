@@ -22,7 +22,7 @@ from experiments.tagging.experiment import TopTaggingExperiment
     [
         ["model=tag_ParT"],
         ["model=tag_particlenet"],
-        ["model=tag_ParticleNetTransformer"],
+        ["model=tag_ParticleNetParTGraphTrans"],
         ["model=tag_transformer"],
         ["model=tag_graphnet"],
         ["model=tag_graphnet", "model.include_edges=true"],

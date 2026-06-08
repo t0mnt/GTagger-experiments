@@ -1,11 +1,11 @@
-_target_: experiments.tagging.wrappers.ParticleNetTransformerWrapper
+_target_: experiments.tagging.wrappers.ParticleNetParTGraphTransWrapper
 in_channels: null               # init_physics -> 7 + extra_scalars
 out_channels: null              # init_physics -> num_outputs
 use_amp: false
 add_fourmomenta_backbone: false
 
 net:
-  _target_: experiments.baselines.particlenettransformer.ParticleNetTransformer
+  _target_: experiments.baselines.particlenettransformer.ParticleNetParTGraphTrans
   _partial_: true
   input_dim: null               # supplied by the wrapper (= in_channels)
   num_classes: null             # supplied by the wrapper (= out_channels)
