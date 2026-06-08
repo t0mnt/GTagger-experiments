@@ -124,7 +124,7 @@ https://arxiv.org/abs/2508.14898 Figure 5
 ```bash
 python run.py -cp config -cn ttbar model=eg_transformer
 python run.py -cp config -cn ttbar model=eg_lgatr
-python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedpd
+python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedpd model.framesnet.gamma_max=3
 ```
 
 https://arxiv.org/abs/2508.14898 Figure 6
@@ -147,7 +147,7 @@ python run.py -cp config -cn ttbar data.n_jets=3
 python run.py -cp config -cn ttbar data.n_jets=4
 
 # Repeat each of these for different dataset sizes and multiplicities like above:
-python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedpd
+python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedpd model.framesnet.gamma_max=3
 python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=randomxyrotation # only upper two plots
 python run.py -cp config -cn ttbar model=eg_lgatr # only upper two plots
 python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedso2 # only lower two plots
@@ -157,9 +157,9 @@ python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learneds
 https://arxiv.org/abs/2508.14898 Table 2
 ```bash
 python run.py -cp config -cn ttbar model=eg_transformer
-python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedpd model.net.attn_reps=13x0n
-python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedpd model.net.attn_reps=9x0n+1x1n
-python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedpd model.net.attn_reps=5x0n+2x1n
+python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedpd model.net.attn_reps=13x0n model.framesnet.gamma_max=3
+python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedpd model.net.attn_reps=9x0n+1x1n model.framesnet.gamma_max=3
+python run.py -cp config -cn ttbar model=eg_transformer model/framesnet=learnedpd model.net.attn_reps=5x0n+2x1n model.framesnet.gamma_max=3
 ```
 
 ### 5) Jet tagging
