@@ -2,7 +2,15 @@
     python find_lr.py -cp config -cn jctagging model=tag_transformer save=false
     python find_lr.py -cp config -cn toptagging model=tag_transformer save=false
     python find_lr.py -cp config -cn jctagging model=tag_transformer model/framesnet=learnedpd save=false
- 
+
+The task is selected with `-cn` (toptagging / jctagging / amplitudes / ttbar / ...)
+and the dataset within a task with the usual data overrides (e.g. `data.dataset=mini`
+for top tagging); the sweep simply cycles that task's training dataloader, so a
+larger `+lr_find.num_iter` samples more of the data.
+
+The recommended learning rate is reported as `loss-min / 10` (a robust peak lr for
+an annealed / one-cycle schedule); the steepest-descent point is also printed.
+
 It reuses the experiment's own `_batch_loss`, optimizer, scaler and dataloader,
 so the measured loss-vs-lr curve reflects the exact training setup: param groups,
 `lr_factor_framesnet`, gradient clipping and amp are all honoured. The base
@@ -55,10 +63,10 @@ CONSTRUCTORS = {
 DEFAULTS = dict(
     start_lr=1e-7,
     end_lr=1e1,
-    num_iter=200,
+    num_iter=300,
     beta=0.98,
     diverge=5.0,
-    skip_start=5,
+    skip_start=10,
     skip_end=5,
     output="lr_finder.png",
 )
@@ -156,15 +164,33 @@ def range_test(exp, start_lr, end_lr, num_iter, beta, diverge):
     return np.array(lrs), np.array(losses)
  
  
-def suggest_lr(lrs, losses, skip_start, skip_end):
-    """Steepest-descent heuristic: lr at the minimum gradient of loss vs log(lr)."""
-    if len(lrs) <= skip_start + skip_end + 2:
+def suggest_lr(lrs, losses, skip_start, skip_end, beta=0.98):
+    """Two heuristics: `loss-min/10` (robust, the recommended one) and the
+    steepest-descent point (lr at the minimum gradient of loss vs log(lr)).
+
+    The EMA used to smooth the loss leaves a high-variance transient over its
+    ~1/(1-beta) warmup window; if the gradient search sees it, the "steepest"
+    point collapses onto that early dip (e.g. ~1e-7). We therefore skip the
+    warmup window before searching for the steepest point. `loss-min` is taken
+    over the whole trimmed curve since it is unaffected by the warmup.
+    """
+    n = len(lrs)
+    if n <= skip_start + skip_end + 2:
         skip_start, skip_end = 0, 0
-    lr_trim = lrs[skip_start : len(lrs) - skip_end]
-    loss_trim = losses[skip_start : len(losses) - skip_end]
- 
-    gradients = np.gradient(loss_trim, np.log(lr_trim))
-    steepest = float(lr_trim[int(np.argmin(gradients))])
+    end = n - skip_end
+    lr_trim = lrs[skip_start:end]
+    loss_trim = losses[skip_start:end]
+
+    # steepest descent, ignoring the EMA warmup transient
+    warmup = min(int(round(1.0 / (1.0 - beta))), max(0, (end - skip_start) // 3))
+    lr_grad = lrs[skip_start + warmup : end]
+    loss_grad = losses[skip_start + warmup : end]
+    if len(lr_grad) >= 2:
+        gradients = np.gradient(loss_grad, np.log(lr_grad))
+        steepest = float(lr_grad[int(np.argmin(gradients))])
+    else:
+        steepest = float(lr_trim[int(np.argmin(loss_trim))])
+
     min_loss_lr = float(lr_trim[int(np.argmin(loss_trim))])
     return steepest, min_loss_lr, lr_trim, loss_trim
  
@@ -229,15 +255,22 @@ def main(cfg):
         return
  
     steepest, min_loss_lr, _, _ = suggest_lr(
-        lrs, losses, skip_start=params["skip_start"], skip_end=params["skip_end"]
+        lrs,
+        losses,
+        skip_start=params["skip_start"],
+        skip_end=params["skip_end"],
+        beta=params["beta"],
     )
     make_plot(lrs, losses, steepest, min_loss_lr, params["output"])
     np.savez(os.path.splitext(params["output"])[0] + ".npz", lr=lrs, loss=losses)
- 
+
+    # loss-min/10 is the robust recommendation (peak lr for an annealed schedule);
+    # the steepest-descent point is reported as a usually-similar lower bound.
+    suggested = min_loss_lr / 10.0
     LOGGER.info("=" * 64)
+    LOGGER.info(f"Suggested lr (loss-min / 10):    {suggested:.2e}   [recommended]")
     LOGGER.info(f"Suggested lr (steepest descent): {steepest:.2e}")
-    LOGGER.info(f"Suggested lr (loss-min / 10):    {min_loss_lr / 10.0:.2e}")
-    LOGGER.info(f"  ->  reuse with:  training.lr={steepest:.2e}")
+    LOGGER.info(f"  ->  reuse with:  training.lr={suggested:.2e}")
     LOGGER.info("=" * 64)
  
  
