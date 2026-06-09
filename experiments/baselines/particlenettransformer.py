@@ -31,7 +31,12 @@ from functools import partial
 _logger = logging.getLogger(__name__)
 
 
-def knn(x, k, metric='deltaR'):
+def knn(x, k, metric='deltaR', mask=None):
+    # cap k: a node has at most (num_points - 1) possible neighbours, so this
+    # avoids a topk out-of-range crash on small/sparse events (e.g. few-particle
+    # jets) where k would otherwise exceed the available points.
+    num_points = x.size(-1)
+    k = min(k, max(1, num_points - 1))
     if metric == 'minkowski':
         # x: (N, 4, P) in (px, py, pz, E). Neighbours are ranked by the absolute
         # Minkowski interval |(x_i - x_j)^2| with metric diag(-1, -1, -1, +1).
@@ -42,9 +47,11 @@ def knn(x, k, metric='deltaR'):
         d2 = msq.transpose(2, 1) + msq - 2 * gram  # (N, P, P): (x_i - x_j)^2_mink
         pairwise_distance = -d2.abs()
         # drop self-loops explicitly (lightlike pairs can also reach |interval|=0)
-        num_points = x.size(-1)
         eye = torch.eye(num_points, dtype=torch.bool, device=x.device).unsqueeze(0)
         pairwise_distance = pairwise_distance.masked_fill(eye, float('-inf'))
+        if mask is not None:
+            # never rank a padded particle as a neighbour
+            pairwise_distance = pairwise_distance.masked_fill(~mask.bool().unsqueeze(1), float('-inf'))
         idx = pairwise_distance.topk(k=k, dim=-1)[1]  # (batch_size, num_points, k)
     else:
         # 'deltaR': L2 distance on the supplied coordinates -- sqrt(d_eta^2 + d_phi^2)
@@ -52,7 +59,14 @@ def knn(x, k, metric='deltaR'):
         inner = -2 * torch.matmul(x.transpose(2, 1), x)
         xx = torch.sum(x ** 2, dim=1, keepdim=True)
         pairwise_distance = -xx - inner - xx.transpose(2, 1)
-        idx = pairwise_distance.topk(k=k + 1, dim=-1)[1][:, :, 1:]  # (batch_size, num_points, k)
+        if mask is not None:
+            eye = torch.eye(num_points, dtype=torch.bool, device=x.device).unsqueeze(0)
+            pairwise_distance = pairwise_distance.masked_fill(
+                eye | ~mask.bool().unsqueeze(1), float('-inf')
+            )
+            idx = pairwise_distance.topk(k=k, dim=-1)[1]  # (batch_size, num_points, k)
+        else:
+            idx = pairwise_distance.topk(k=k + 1, dim=-1)[1][:, :, 1:]  # (batch_size, num_points, k)
     return idx
 
 
@@ -139,10 +153,11 @@ class EdgeConvBlock(nn.Module):
         if activation:
             self.sc_act = nn.ReLU()
 
-    def forward(self, points, features, knn_metric='deltaR'):
+    def forward(self, points, features, knn_metric='deltaR', mask=None):
 
-        topk_indices = knn(points, self.k, metric=knn_metric)
-        x = self.get_graph_feature(features, self.k, topk_indices)
+        topk_indices = knn(points, self.k, metric=knn_metric, mask=mask)
+        k = topk_indices.size(-1)  # may be capped below self.k for tiny events
+        x = self.get_graph_feature(features, k, topk_indices)
 
         for conv, bn, act in zip(self.convs, self.bns, self.acts):
             x = conv(x)  # (N, C', P, K)
@@ -670,6 +685,7 @@ class ParticleNetParTGraphTrans(nn.Module):
                 fts = self.bn_fts(features) * mask
             else:
                 fts = features
+            mask_knn = mask.squeeze(1)  # (N, P): padded particles excluded from the kNN
             outputs = []
             for idx, conv in enumerate(self.edge_convs):
                 # first layer: static graph from the input geometry (eta-phi or, for
@@ -678,7 +694,7 @@ class ParticleNetParTGraphTrans(nn.Module):
                     pts, metric = v + coord_shift, 'minkowski'
                 else:
                     pts, metric = (points if idx == 0 else fts) + coord_shift, 'deltaR'
-                fts = conv(pts, fts, knn_metric=metric) * mask
+                fts = conv(pts, fts, knn_metric=metric, mask=mask_knn) * mask
                 if self.use_fusion:
                     outputs.append(fts)
             if self.use_fusion:

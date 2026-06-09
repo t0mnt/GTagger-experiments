@@ -951,6 +951,63 @@ class ParticleNetParTGraphTransWrapper(TaggerWrapper):
         return score, tracker, frames
 
 
+class LorentzNetLGATrSlimGraphTransWrapper(nn.Module):
+    """Wrapper for the internally-equivariant LorentzNet -> L-GATr-slim hybrid.
+
+    Like CGENNLGATrGraphTransWrapper, the backbone is Lorentz-equivariant by
+    construction (LorentzNet GNN + L-GATr-slim, with symmetry broken only by its
+    own input-stage spurions), so no LLoCa canonicalization is applied and the
+    framesnet must be the identity -- hence we inherit nn.Module directly.
+
+    The backbone differs from the rest of the repo only in conventions: it is
+    channels-first (N, C, P), expects four-momenta as (px, py, pz, E) rather than
+    (E, px, py, pz), takes a (N, 1, P) mask, and uses (eta, phi) points only when
+    knn_metric='deltaR'.
+    """
+
+    def __init__(self, net, framesnet, out_channels):
+        super().__init__()
+        self.net = net(num_classes=out_channels)
+        self.framesnet = framesnet  # not actually used
+        assert isinstance(framesnet, IdentityFrames)
+
+    def forward(self, embedding):
+        fourmomenta = embedding["fourmomenta"]  # (E, px, py, pz), incl. spurions
+        scalars = torch.cat([embedding["scalars"], embedding["tagging_features"]], dim=-1)
+        batch = embedding["batch"]
+        is_spurion = embedding["is_spurion"]
+
+        # the model injects its own input-stage spurions: drop the token spurions
+        keep = ~is_spurion
+        fourmomenta = fourmomenta[keep]
+        scalars = scalars[keep]
+        batch = batch[keep]
+
+        # match the scale of the other equivariant baselines
+        fourmomenta = (fourmomenta / 20).to(scalars.dtype)
+
+        # (eta, phi) points for the deltaR kNN option (ignored for minkowski)
+        px, py, pz = fourmomenta[:, 1], fourmomenta[:, 2], fourmomenta[:, 3]
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+
+        # the model expects four-momenta as (px, py, pz, E)
+        fourmomenta = fourmomenta[:, [1, 2, 3, 0]]
+
+        # densify and switch to the (N, C, P) channels-first convention
+        fourmomenta, mask = to_dense_batch(fourmomenta, batch)  # (B, P, 4), (B, P)
+        scalars, _ = to_dense_batch(scalars, batch)  # (B, P, C)
+        points, _ = to_dense_batch(points, batch)  # (B, P, 2)
+
+        output = self.net(
+            scalars.transpose(1, 2).contiguous(),  # x: (B, C, P)
+            fourmomenta.transpose(1, 2).contiguous(),  # v: (B, 4, P)
+            mask.unsqueeze(1),  # (B, 1, P)
+            points.transpose(1, 2).contiguous(),  # (B, 2, P)
+        )
+        return output, {}, None
+
+
 def compile_flex_attention(package_name="lgatr"):
     """Run torch.compile on the flex_attention function.
 
