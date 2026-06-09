@@ -1074,6 +1074,15 @@ class CGENNLGATrGraphTrans(nn.Module):
             checkpoint_blocks=checkpoint_blocks,
         )
 
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        # both CLS tokens are learnable invariants; excluding them from weight
+        # decay is the ParT/ViT convention and does not affect equivariance
+        return {
+            "cls_mv_scalar",
+            "cls_s",
+        }
+
     def forward(self, x, v, mask, points):
    # points-first inputs from the wrapper:
         #   x: (B, P, C)   v: (B, P, 4) [E, px, py, pz]   mask: (B, P)   points: (B, P, 2)

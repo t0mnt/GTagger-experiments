@@ -184,6 +184,8 @@ class TaggingExperiment(BaseExperiment):
             "MIParticleTransformer",
             "ParticleNetParTGraphTrans",
             "LorentzNetLGATrSlimGraphTrans",
+            "CGENNLGATrGraphTrans",
+            "PlainGraphTrans",
         ]:
             # special treatment for ParT, see
             # https://github.com/hqucms/weaver-core/blob/dev/custom_train_eval/weaver/train.py#L464
@@ -194,7 +196,10 @@ class TaggingExperiment(BaseExperiment):
                 if (
                     len(param.shape) == 1
                     or name.endswith(".bias")
-                    or (hasattr(self.model.net, "no_weight_decay") and name in {"cls_token"})
+                    or (
+                        hasattr(self.model.net, "no_weight_decay")
+                        and name in self.model.net.no_weight_decay()
+                    )
                 ):
                     no_decay[name] = param
                 else:
