@@ -547,7 +547,7 @@ class ParticleNetParTGraphTrans(nn.Module):
                  pair_extra_dim=0,
                  remove_self_pair=False,
                  use_pre_activation_pair=True,
-                 embed_dims=[128, 512, 128], #should this be used since no more embed code? remove probably, simplify to just 128 in code or call it d_tf 128 instead?
+                 embed_dims=[128],  # transformer width; only embed_dims[-1] is used (no input-embedding MLP, the GNN+bridge replaces it)
                  pair_embed_dims=[64, 64, 64],
                  num_heads=8,
                  num_layers=8,

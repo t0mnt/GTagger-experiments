@@ -18,7 +18,7 @@ net:
   knn_metric: deltaR            # first-layer kNN: 'deltaR' (eta-phi L2) or 'minkowski' (4-momenta)
 
   # ParticleTransformer-style encoder
-  embed_dims: [32]
+  embed_dims: [32]              # single value: the transformer width (only the last entry is used)
   num_heads: 2
   num_layers: 2
   block_params: null

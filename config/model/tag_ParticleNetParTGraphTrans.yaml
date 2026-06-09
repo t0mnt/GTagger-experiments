@@ -11,14 +11,18 @@ net:
   num_classes: null             # supplied by the wrapper (= out_channels)
 
   # ParticleNet (EdgeConv) graph backbone
-  conv_params: [[16, [64, 64, 64]], [16, [128, 128, 128]]]
+  conv_params: [[16, [64, 64, 64]], [16, [128, 128, 128]], [16, [256, 256, 256]]]
   use_fusion: true
   use_fts_bn: true
   use_input_concat: true
   knn_metric: deltaR            # first-layer kNN: 'deltaR' (eta-phi L2) or 'minkowski' (4-momenta)
 
-  # ParticleTransformer-style encoder
-  embed_dims: [128, 512, 128]
+  # ParticleTransformer-style encoder.
+  # embed_dims is a single value: the transformer width. (It is a list only for
+  # historical compatibility with ParT, whose input-embedding MLP -- which used
+  # the earlier entries -- is replaced here by the GNN + bridge; only the last
+  # entry is used.)
+  embed_dims: [128]
   num_heads: 8
   num_layers: 8
   block_params: null
