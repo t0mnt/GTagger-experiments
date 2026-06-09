@@ -7,8 +7,8 @@ net:
   in_s_channels: null           # init_physics -> extra_scalars + tagging features
   # num_classes is supplied by the wrapper at call time (= out_channels)
 
-  # LorentzNet static-kNN GNN stage (gateless edge conv)
-  n_gnn_layers: 4
+  # LorentzNet static-kNN GNN stage (3 GNN blocks, matching the other hybrids)
+  n_gnn_layers: 3
   n_h_hidden: 72
   n_v_hidden: 16
   knn_k: 16

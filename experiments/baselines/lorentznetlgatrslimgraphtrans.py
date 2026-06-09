@@ -8,9 +8,10 @@ like CGENNLGATrGraphTransWrapper).
 
 Three deliberate departures from canonical LorentzNet:
 
-  1. NO per-edge soft-attention gate. LorentzNet's phi_m sigmoid is
-     removed: aggregation is a plain mean over valid kNN neighbours.
-     Learned soft attention is left exclusively to the transformer
+  1. Per-edge soft-attention gate (LorentzNet's phi_m sigmoid) is OPTIONAL
+     (use_phi_m, on by default). Aggregation matches official LorentzNet:
+     SUM for the scalar stream, MEAN for the vector stream. Turning phi_m off
+     gives a gateless block, leaving soft attention to the transformer
      downstream -- the GraphGPS division of labour.
 
   2. STATIC kNN graph, not ParticleNet-style dynamic EdgeConv. The graph is
@@ -147,10 +148,12 @@ def gather_neighbors(x, idx):
 class LorentzNetKNNBlock(nn.Module):
     """Lorentz-equivariant edge convolution on a static kNN graph.
 
-    Mirrors LorentzNet's LGEB except that the per-edge soft-attention gate
-    (phi_m sigmoid) is removed: aggregation is a plain mean over valid
-    neighbours. The transformer downstream is the only soft-attention
-    operator in the hybrid.
+    Mirrors LorentzNet's LGEB: the optional per-edge soft-attention gate (phi_m,
+    on by default) weights each message; the scalar stream is then SUM-aggregated
+    and the vector stream MEAN-aggregated over valid neighbours -- exactly as in
+    official LorentzNet (unsorted_segment_sum / unsorted_segment_mean). Set
+    use_phi_m=False for a gateless plain-sum/mean block (GraphGPS-style, leaving
+    soft attention to the transformer downstream).
 
     Streams maintained:
         h : (B, P, n_h_in)        Lorentz-invariant scalars
@@ -247,11 +250,13 @@ class LorentzNetKNNBlock(nn.Module):
             # LorentzNet edge gate: weight each message (feeds both updates below)
             m = m * self.phi_m(m)
 
-        # 5. Mask invalid edges; mean-aggregate.
+        # 5. Mask invalid edges, then aggregate. Matching official LorentzNet:
+        #    the scalar stream uses SUM (unsorted_segment_sum), the vector stream
+        #    uses MEAN (unsorted_segment_mean).
         nm = neighbor_mask.unsqueeze(1).to(m.dtype)                 # (B, 1, P, K)
         m = m * nm
         nm_count = nm.sum(dim=-1).clamp(min=1.0)                    # (B, 1, P)
-        h_msg = m.sum(dim=-1) / nm_count                           # (B, n_h_out, P)
+        h_msg = m.sum(dim=-1)                                       # (B, n_h_out, P): SUM
 
         # 6. Scalar update.
         h_in = h.transpose(1, 2)                                    # (B, n_h_in, P)
@@ -366,9 +371,10 @@ class LorentzNetLGATrSlimGraphTrans(nn.Module):
 
         # ---- Learnable CLS scalar (vector part is zero -- a learnable
         # 4-vector has a learnable direction and would break equivariance).
+        # Named cls_token so the tagging optimizer excludes it from weight decay.
         if global_token:
-            self.cls_s = nn.Parameter(torch.zeros(1, 1, hidden_s_channels))
-            nn.init.normal_(self.cls_s, std=0.02)
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_s_channels))
+            nn.init.normal_(self.cls_token, std=0.02)
 
         # ---- L-GATr-slim.
         self.net = LGATrSlim(
@@ -381,6 +387,12 @@ class LorentzNetLGATrSlimGraphTrans(nn.Module):
             num_blocks=num_blocks,
             num_heads=num_heads,
         )
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        return {
+            "cls_token",
+        }
 
     def forward(self, x, v, mask, points=None):
         """
@@ -466,7 +478,7 @@ class LorentzNetLGATrSlimGraphTrans(nn.Module):
                 B, 1, self.in_v_channels, 4,
                 device=v_lgatr.device, dtype=v_lgatr.dtype,
             )
-            cls_s = self.cls_s.expand(B, -1, -1)
+            cls_s = self.cls_token.expand(B, -1, -1)
             v_lgatr = torch.cat([cls_v, v_lgatr], dim=1)
             s = torch.cat([cls_s, s], dim=1)
             mask_seq = torch.cat([

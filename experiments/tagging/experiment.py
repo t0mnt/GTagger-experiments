@@ -182,6 +182,8 @@ class TaggingExperiment(BaseExperiment):
         if self.cfg.model.net._target_.rsplit(".", 1)[-1] in [
             "ParticleTransformer",
             "MIParticleTransformer",
+            "ParticleNetParTGraphTrans",
+            "LorentzNetLGATrSlimGraphTrans",
         ]:
             # special treatment for ParT, see
             # https://github.com/hqucms/weaver-core/blob/dev/custom_train_eval/weaver/train.py#L464
