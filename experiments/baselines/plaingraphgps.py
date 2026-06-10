@@ -20,12 +20,27 @@ This is the "plain", non-equivariant variant:
     on the four-momenta) -- and the usual robustness tweaks (k capped at P-1,
     padded nodes excluded), shared with PlainGraphTrans via ``knn``;
   * a plain static message-passing local branch with the default update function
-    (message MLP on [h_i, h_j, e_ij] -> masked mean -> update MLP), NOT GatedGCN;
-  * a plain global branch of torch ``nn.MultiheadAttention`` (NOT L-GATr);
-  * NO positional/structural encodings (LapPE/RWSE): jet constituents are never
-    anonymous nodes, so PE/SE is unmotivated here. The only relative encoding is
-    the physically-meaningful, canonicalization-invariant Minkowski edge feature
-    log|(p_i + p_j)^2|, fed into the local MPNN messages (toggle ``use_edge_attr``).
+    (message MLP on [h_i, h_j(, e_ij)] -> masked mean -> update MLP), NOT GatedGCN;
+  * a plain global branch of torch ``nn.MultiheadAttention`` (NOT L-GATr).
+
+Three GraphGPS ingredients are exposed as toggles, all OFF in the default configs
+so that PlainGraphGPS vs PlainGraphTrans isolates the *fusion* (interleaved vs
+sequential) and nothing else:
+  * ``use_edge_attr`` -- feed the Minkowski edge invariant log|(p_i + p_j)^2| into
+    the local MPNN messages. GraphGPS's local MPNN "encodes real edge features",
+    but PlainGraphTrans's MPNN does not, so this is off by default for a fair
+    head-to-head; turning it on is the "physically-motivated relative PE" ablation;
+  * ``use_rwse`` -- Random-Walk Structural Encoding (return probabilities of
+    length-1..``rwse_k`` walks on the static kNN graph) concatenated to the node
+    inputs. This is the only PE/SE that stays a Lorentz invariant when the graph
+    is invariant (e.g. minkowski kNN); LapPE is permissible but unmotivated. Jet
+    constituents are never anonymous nodes, so PE/SE is not expected to help here
+    -- it is provided purely for ablation. (In a *dynamic*-graph model that rebuilds
+    the kNN graph each layer, RWSE would have to be recomputed per layer.)
+  * ``norm`` -- 'layer' (default) or 'batch'. GraphGPS defaults to BatchNorm; we
+    default to LayerNorm because it is per-token and so unaffected by the zero
+    padding of variable-size jets, and makes each jet's score independent of its
+    batch-mates. 'batch' applies BatchNorm1d over the real nodes only.
 
 Being non-equivariant, it is made Lorentz-equivariant through LLoCa input
 canonicalization in PlainGraphGPSWrapper (which inherits TaggerWrapper), exactly like
@@ -51,7 +66,7 @@ def minkowski_edge_attr(v, idx, eps=1e-8):
 
     v: (B, 4, P) as (px, py, pz, E); idx: (B, P, K). Returns (B, 1, P, K). This is
     the physically-motivated, frame-invariant relative encoding GraphGPS's local
-    MPNN consumes here in place of PE/SE.
+    MPNN can consume in place of PE/SE (toggle ``use_edge_attr``).
     """
     nbr = gather_neighbors(v, idx)            # (B, 4, P, K)
     psum = v.unsqueeze(-1) + nbr              # (B, 4, P, K), center broadcast over K
@@ -60,10 +75,52 @@ def minkowski_edge_attr(v, idx, eps=1e-8):
     return m2.abs().clamp(min=eps).log().unsqueeze(1)   # (B, 1, P, K)
 
 
+def rwse_encoding(idx, mask_p, k):
+    """Random-Walk Structural Encoding on the static kNN graph.
+
+    For each node, the landing (return) probabilities diag(M^s) for s = 1..k of a
+    random walk on the symmetrized, degree-normalized kNN graph M = D^-1 A. It is a
+    cheap graph-structural node feature, invariant whenever the graph is invariant
+    (e.g. minkowski kNN). idx: (B, P, K); mask_p: (B, P). Returns (B, P, k), with
+    padded nodes zeroed.
+    """
+    B, P, _ = idx.shape
+    m = mask_p.to(idx.device, torch.float32)                  # (B, P)
+    A = torch.zeros(B, P, P, device=idx.device)
+    A.scatter_(2, idx, 1.0)                                    # i -> its kNN neighbours
+    A = torch.maximum(A, A.transpose(1, 2))                   # symmetrize
+    A = A * m.unsqueeze(1) * m.unsqueeze(2)                   # drop padded rows/cols
+    A.diagonal(dim1=1, dim2=2).zero_()                        # no self-loops
+    M = A / A.sum(-1, keepdim=True).clamp(min=1.0)            # row-normalized RW matrix
+    out, Mp = [], M
+    for _ in range(k):
+        out.append(torch.diagonal(Mp, dim1=1, dim2=2))       # (B, P): return prob this step
+        Mp = torch.bmm(Mp, M)
+    return torch.stack(out, dim=-1) * m.unsqueeze(-1)         # (B, P, k)
+
+
+class MaskedNorm(nn.Module):
+    """LayerNorm (per-token, padding-safe) or masked BatchNorm over real nodes only."""
+
+    def __init__(self, dim, kind="layer"):
+        super().__init__()
+        if kind not in ("layer", "batch"):
+            raise ValueError(f"norm must be 'layer' or 'batch', got '{kind}'")
+        self.kind = kind
+        self.norm = nn.LayerNorm(dim) if kind == "layer" else nn.BatchNorm1d(dim)
+
+    def forward(self, h, mask_bool):          # h: (B, P, C); mask_bool: (B, P)
+        if self.kind == "layer":
+            return self.norm(h)
+        out = h.clone()
+        out[mask_bool] = self.norm(h[mask_bool])   # BatchNorm over the real nodes only
+        return out
+
+
 class GPSLocalMPNN(nn.Module):
     """Local branch (Eq. 7): a plain static-graph message-passing block.
 
-    message m_ij = MLP([h_i, h_j, e_ij]); aggregate = masked mean over the kNN
+    message m_ij = MLP([h_i, h_j(, e_ij)]); aggregate = masked mean over the kNN
     neighbours; update h' = MLP([h_i, agg]). It carries NO internal residual or
     norm -- the GPS layer owns the external dropout -> residual -> norm (Eq. 9).
     """
@@ -98,21 +155,20 @@ class GPSLocalMPNN(nn.Module):
 class GPSLayer(nn.Module):
     """One GraphGPS layer: parallel local-MPNN + global-attention, fused by sum.
 
-    Faithful to the paper's residual/norm placement (Eq. 9-11). LayerNorm is used
-    (rather than GraphGPS's default BatchNorm) because it is per-token and so
-    padding-safe for the variable-size jets here; it is a documented GPS option.
+    Faithful to the paper's residual/norm placement (Eq. 9-11); see the module
+    docstring for the ``norm`` choice.
     """
 
     def __init__(self, dim, num_heads, edge_dim=0, ffn_ratio=2,
-                 dropout=0.0, attn_dropout=0.0, act="relu"):
+                 dropout=0.0, attn_dropout=0.0, act="relu", norm="layer"):
         super().__init__()
         Act = _ACT[act]
         self.local = GPSLocalMPNN(dim, edge_dim, act)
         self.attn = nn.MultiheadAttention(dim, num_heads, dropout=attn_dropout, batch_first=True)
 
-        self.norm_local = nn.LayerNorm(dim)
-        self.norm_attn = nn.LayerNorm(dim)
-        self.norm_ffn = nn.LayerNorm(dim)
+        self.norm_local = MaskedNorm(dim, norm)
+        self.norm_attn = MaskedNorm(dim, norm)
+        self.norm_ffn = MaskedNorm(dim, norm)
         self.drop_local = nn.Dropout(dropout)
         self.drop_attn = nn.Dropout(dropout)
         self.drop_ffn = nn.Dropout(dropout)
@@ -123,16 +179,17 @@ class GPSLayer(nn.Module):
 
     def forward(self, h, idx, nbr_mask, key_padding_mask, node_mask, edge_attr=None):
         # h: (B, P, C); node_mask: (B, P, 1) float
+        mask_bool = ~key_padding_mask                                # (B, P)
         # ---- local branch (Eq. 9) ----
         h_cf = (h * node_mask).transpose(1, 2)                       # (B, C, P)
         m_local = self.local(h_cf, idx, nbr_mask, edge_attr).transpose(1, 2)  # (B, P, C)
-        h_local = self.norm_local(self.drop_local(m_local) + h)
+        h_local = self.norm_local(self.drop_local(m_local) + h, mask_bool)
         # ---- global branch (Eq. 10) ----
         a = self.attn(h, h, h, key_padding_mask=key_padding_mask, need_weights=False)[0]
-        h_attn = self.norm_attn(self.drop_attn(a) + h)
+        h_attn = self.norm_attn(self.drop_attn(a) + h, mask_bool)
         # ---- fuse by SUM, then FFN (Eq. 11) ----
         h = h_local + h_attn
-        h = self.norm_ffn(self.drop_ffn(self.ffn(h)) + h)
+        h = self.norm_ffn(self.drop_ffn(self.ffn(h)) + h, mask_bool)
         return h * node_mask
 
 
@@ -144,8 +201,11 @@ class PlainGraphGPS(nn.Module):
                  # static kNN graph
                  knn_k=16,
                  knn_metric="deltaR",
-                 use_edge_attr=True,
+                 use_edge_attr=False,
                  use_fts_bn=True,
+                 # positional/structural encoding (ablation; off by default)
+                 use_rwse=False,
+                 rwse_k=16,
                  # GPS layers
                  dim=128,
                  num_layers=10,
@@ -154,6 +214,7 @@ class PlainGraphGPS(nn.Module):
                  dropout=0.0,
                  attn_dropout=0.0,
                  act="relu",
+                 norm="layer",
                  # readout
                  head_layers=2,
                  for_inference=False,
@@ -165,16 +226,19 @@ class PlainGraphGPS(nn.Module):
         self.knn_k = knn_k
         self.knn_metric = knn_metric
         self.use_edge_attr = use_edge_attr
+        self.use_rwse = use_rwse
+        self.rwse_k = rwse_k
         self.for_inference = for_inference
         self.use_amp = use_amp
         Act = _ACT[act]
 
         self.bn_fts = nn.BatchNorm1d(input_dim) if use_fts_bn else None
-        self.node_encoder = nn.Linear(input_dim, dim)
+        enc_in = input_dim + (rwse_k if use_rwse else 0)
+        self.node_encoder = nn.Linear(enc_in, dim)
 
         edge_dim = 1 if use_edge_attr else 0
         self.layers = nn.ModuleList([
-            GPSLayer(dim, num_heads, edge_dim, ffn_ratio, dropout, attn_dropout, act)
+            GPSLayer(dim, num_heads, edge_dim, ffn_ratio, dropout, attn_dropout, act, norm)
             for _ in range(num_layers)
         ])
 
@@ -208,7 +272,11 @@ class PlainGraphGPS(nn.Module):
                 edge_attr = edge_attr * nbr_mask.unsqueeze(1).to(edge_attr.dtype)
 
             fts = self.bn_fts(features) * mask if self.bn_fts is not None else features
-            h = self.node_encoder(fts.transpose(1, 2))                        # (B, P, dim)
+            h_in = fts.transpose(1, 2)                                        # (B, P, input_dim)
+            if self.use_rwse:
+                rwse = rwse_encoding(idx, mask_p, self.rwse_k).to(h_in.dtype)  # (B, P, rwse_k)
+                h_in = torch.cat([h_in, rwse], dim=-1)
+            h = self.node_encoder(h_in)                                       # (B, P, dim)
 
             node_mask = mask_p.unsqueeze(-1).to(h.dtype)                      # (B, P, 1)
             key_padding_mask = ~mask_p                                        # (B, P), True = ignore
