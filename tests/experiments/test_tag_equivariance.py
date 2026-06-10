@@ -70,6 +70,7 @@ GRAPH_TRANS_MODELS = [
     "tag_LorentzNetLGATrSlimGraphTrans",
     "tag_ParticleNetParTGraphTrans",
     "tag_PlainGraphTrans",
+    "tag_PlainGraphGPS",
 ]
 
 
@@ -138,7 +139,11 @@ def test_full_group_invariance(model, full_group_off, transform):
 # features are frame-invariant and the (non-equivariant) backbone becomes Lorentz
 # invariant. Beam/time references and the global tagging features are switched off
 # so nothing else breaks the symmetry; learned frames run in float64.
-CANONICALIZED_MODELS = ["tag_ParticleNetParTGraphTrans", "tag_PlainGraphTrans"]
+CANONICALIZED_MODELS = [
+    "tag_ParticleNetParTGraphTrans",
+    "tag_PlainGraphTrans",
+    "tag_PlainGraphGPS",
+]
 
 
 @pytest.mark.parametrize("model", CANONICALIZED_MODELS)

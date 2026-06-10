@@ -1055,6 +1055,52 @@ class PlainGraphTransWrapper(TaggerWrapper):
         return score, tracker, frames
 
 
+class PlainGraphGPSWrapper(TaggerWrapper):
+    """Wrapper for the plain GraphGPS hybrid (interleaved static-MPNN + torch-MHA).
+
+    Non-equivariant, made Lorentz-equivariant by LLoCa input canonicalization,
+    exactly like PlainGraphTransWrapper: channels-first (N, C, P), four-momenta as
+    (px, py, pz, E), a (N, 1, P) mask, and (eta, phi) points for the deltaR kNN.
+    """
+
+    def __init__(self, net, *args, use_amp=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_amp = use_amp
+        self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+
+    def forward(self, embedding):
+        (
+            features_local,
+            fourmomenta_local,
+            frames,
+            _,
+            batch,
+            tracker,
+        ) = super().forward(embedding)
+        fourmomenta_local = fourmomenta_local.to(features_local.dtype)
+        fourmomenta_local = fourmomenta_local[..., [1, 2, 3, 0]]  # need (px, py, pz, E)
+
+        px, py, pz = (
+            fourmomenta_local[..., 0],
+            fourmomenta_local[..., 1],
+            fourmomenta_local[..., 2],
+        )
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+
+        features_local, mask = to_dense_batch(features_local, batch)
+        fourmomenta_local, _ = to_dense_batch(fourmomenta_local, batch)
+        points, _ = to_dense_batch(points, batch)
+
+        score = self.net(
+            points=points.transpose(1, 2).contiguous(),  # (B, 2, P)
+            features=features_local.transpose(1, 2).contiguous(),  # (B, C, P)
+            v=fourmomenta_local.transpose(1, 2).contiguous(),  # (B, 4, P)
+            mask=mask.unsqueeze(1).float(),  # (B, 1, P)
+        )
+        return score, tracker, frames
+
+
 def compile_flex_attention(package_name="lgatr"):
     """Run torch.compile on the flex_attention function.
 
