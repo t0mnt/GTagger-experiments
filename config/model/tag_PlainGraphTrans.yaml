@@ -19,7 +19,7 @@ net:
 
   # plain transformer encoder (torch nn.MultiheadAttention)
   embed_dim: 128
-  num_layers: 8
+  num_layers: 10
   num_heads: 8
   ffn_ratio: 4
   dropout: 0.1
