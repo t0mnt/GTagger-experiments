@@ -29,7 +29,7 @@ net:
   dropout: 0.0
   attn_dropout: 0.0
   act: relu
-  norm: layer                   # 'layer' (padding-safe; default) or 'batch' (GraphGPS default)
+  norm: batch                   # 'batch' (GraphGPS default, every config) or 'layer' (padding-safe ablation)
 
   head_layers: 2
   for_inference: false

@@ -37,10 +37,12 @@ sequential) and nothing else:
     constituents are never anonymous nodes, so PE/SE is not expected to help here
     -- it is provided purely for ablation. (In a *dynamic*-graph model that rebuilds
     the kNN graph each layer, RWSE would have to be recomputed per layer.)
-  * ``norm`` -- 'layer' (default) or 'batch'. GraphGPS defaults to BatchNorm; we
-    default to LayerNorm because it is per-token and so unaffected by the zero
-    padding of variable-size jets, and makes each jet's score independent of its
-    batch-mates. 'batch' applies BatchNorm1d over the real nodes only.
+  * ``norm`` -- 'batch' (default) or 'layer'. GraphGPS uses BatchNorm in every
+    one of its 59 dataset configs (the ``gt.batch_norm`` flag; ``gt.layer_norm``
+    is never True), so 'batch' is the faithful default; here it is applied over
+    the real nodes only, which matches GraphGPS's sparse BatchNorm1d (padded
+    slots excluded). 'layer' is the padding-safe per-token alternative for
+    ablation (it is unaffected by jet size and batch composition).
 
 Being non-equivariant, it is made Lorentz-equivariant through LLoCa input
 canonicalization in PlainGraphGPSWrapper (which inherits TaggerWrapper), exactly like
@@ -160,7 +162,7 @@ class GPSLayer(nn.Module):
     """
 
     def __init__(self, dim, num_heads, edge_dim=0, ffn_ratio=2,
-                 dropout=0.0, attn_dropout=0.0, act="relu", norm="layer"):
+                 dropout=0.0, attn_dropout=0.0, act="relu", norm="batch"):
         super().__init__()
         Act = _ACT[act]
         self.local = GPSLocalMPNN(dim, edge_dim, act)
@@ -214,7 +216,7 @@ class PlainGraphGPS(nn.Module):
                  dropout=0.0,
                  attn_dropout=0.0,
                  act="relu",
-                 norm="layer",
+                 norm="batch",
                  # readout
                  head_layers=2,
                  for_inference=False,
