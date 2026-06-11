@@ -71,6 +71,7 @@ GRAPH_TRANS_MODELS = [
     "tag_ParticleNetParTGraphTrans",
     "tag_PlainGraphTrans",
     "tag_PlainGraphGPS",
+    "tag_ParticleNetParTGraphGPS",
 ]
 
 
@@ -143,6 +144,7 @@ CANONICALIZED_MODELS = [
     "tag_ParticleNetParTGraphTrans",
     "tag_PlainGraphTrans",
     "tag_PlainGraphGPS",
+    "tag_ParticleNetParTGraphGPS",
 ]
 
 

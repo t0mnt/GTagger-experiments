@@ -187,6 +187,7 @@ class TaggingExperiment(BaseExperiment):
             "CGENNLGATrGraphTrans",
             "PlainGraphTrans",
             "PlainGraphGPS",
+            "ParticleNetParTGraphGPS",
         ]:
             # special treatment for ParT, see
             # https://github.com/hqucms/weaver-core/blob/dev/custom_train_eval/weaver/train.py#L464
