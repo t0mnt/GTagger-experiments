@@ -1049,6 +1049,58 @@ class LorentzNetLGATrSlimGraphTransWrapper(nn.Module):
         return output, {}, None
 
 
+class LorentzNetLGATrSlimGraphGPSWrapper(nn.Module):
+    """Wrapper for the equivariant LorentzNet-L-GATr-slim GraphGPS hybrid.
+
+    Equivariant by construction (broken only by the model's own input spurions),
+    so no LLoCa canonicalization: inherits nn.Module + identity framesnet, exactly
+    like LorentzNetLGATrSlimGraphTransWrapper. Drops the token spurions, rescales
+    by 1/20, and reorders four-momenta to the (px, py, pz, E) the model expects.
+    """
+
+    def __init__(self, net, framesnet, out_channels):
+        super().__init__()
+        self.net = net(num_classes=out_channels)
+        self.framesnet = framesnet  # not actually used
+        assert isinstance(framesnet, IdentityFrames)
+
+    def forward(self, embedding):
+        fourmomenta = embedding["fourmomenta"]  # (E, px, py, pz), incl. spurions
+        scalars = torch.cat([embedding["scalars"], embedding["tagging_features"]], dim=-1)
+        batch = embedding["batch"]
+        is_spurion = embedding["is_spurion"]
+
+        # the model injects its own input-stage spurions: drop the token spurions
+        keep = ~is_spurion
+        fourmomenta = fourmomenta[keep]
+        scalars = scalars[keep]
+        batch = batch[keep]
+
+        # match the scale of the other equivariant baselines
+        fourmomenta = (fourmomenta / 20).to(scalars.dtype)
+
+        # (eta, phi) points for the deltaR kNN option (ignored for minkowski)
+        px, py, pz = fourmomenta[:, 1], fourmomenta[:, 2], fourmomenta[:, 3]
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+
+        # the model expects four-momenta as (px, py, pz, E)
+        fourmomenta = fourmomenta[:, [1, 2, 3, 0]]
+
+        # densify and switch to the (N, C, P) channels-first convention
+        fourmomenta, mask = to_dense_batch(fourmomenta, batch)  # (B, P, 4), (B, P)
+        scalars, _ = to_dense_batch(scalars, batch)  # (B, P, C)
+        points, _ = to_dense_batch(points, batch)  # (B, P, 2)
+
+        output = self.net(
+            scalars.transpose(1, 2).contiguous(),  # x: (B, C, P)
+            fourmomenta.transpose(1, 2).contiguous(),  # v: (B, 4, P)
+            mask.unsqueeze(1),  # (B, 1, P)
+            points.transpose(1, 2).contiguous(),  # (B, 2, P)
+        )
+        return output, {}, None
+
+
 class PlainGraphTransWrapper(TaggerWrapper):
     """Wrapper for the plain graph-transformer (static MPNN + torch-MHA encoder).
 

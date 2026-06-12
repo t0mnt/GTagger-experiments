@@ -37,6 +37,7 @@ from experiments.tagging.experiment import TopTaggingExperiment
         ["model=tag_PlainGraphGPS"],
         ["model=tag_ParticleNetParTGraphGPS"],
         ["model=tag_CGENNLGATrGraphGPS"],
+        ["model=tag_LorentzNetLGATrSlimGraphGPS"],
     ],
 )
 def test_tagging(framesnet, model_list, equivectors, jet_size=50):

@@ -73,6 +73,7 @@ GRAPH_TRANS_MODELS = [
     "tag_PlainGraphGPS",
     "tag_ParticleNetParTGraphGPS",
     "tag_CGENNLGATrGraphGPS",
+    "tag_LorentzNetLGATrSlimGraphGPS",
 ]
 
 
@@ -101,6 +102,14 @@ FULL_GROUP_MODELS = [
             "model.net.beam_spurion=null",
             "model.net.add_time_spurion=false",
             "model.net.k=null",  # fully connected: no kNN neighbour-flip discontinuity
+        ],
+    ),
+    (
+        "tag_LorentzNetLGATrSlimGraphGPS",
+        [
+            "model.net.use_time_spurion=false",
+            "model.net.use_beam_spurion=false",
+            "model.net.knn_k=9999",  # >= P-1 -> fully connected
         ],
     ),
     (
