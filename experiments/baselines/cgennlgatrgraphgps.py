@@ -105,15 +105,22 @@ class CGENNLGATrGPSLayer(nn.Module):
         self.norm = EquiLayerNorm()
         self.dropout = GradeDropout(dropout_prob if dropout_prob is not None else 0.0)
 
-    def forward(self, mv, s, edges, attn_mask):
-        # mv: (B, P, C_mv, 16); s: (B, P, C_s)
+    def forward(self, mv, s, edges, keep, attn_mask):
+        # mv: (B, P, C_mv, 16); s: (B, P, C_s); keep: (B*P,) bool real-node mask;
+        # edges already remapped to the compact real-node indexing
         B, P = mv.shape[0], mv.shape[1]
 
-        # ---- local branch (Eq. 9): CGENN message passing on the static kNN graph ----
-        s_loc, mv_loc = self.cgenn(
-            s.reshape(B * P, -1), mv.reshape(B * P, -1, 16), edges,
+        # ---- local branch (Eq. 9): CGENN message passing on the static kNN graph.
+        # Run on the REAL nodes only: CGLayer's scalar MLPs contain BatchNorm1d,
+        # whose statistics must not depend on the batch's padding fraction. ----
+        s_r, mv_r = self.cgenn(
+            s.reshape(B * P, -1)[keep], mv.reshape(B * P, -1, 16)[keep], edges,
             node_attr_h=None, node_attr_x=None, edge_attr_h=None, edge_attr_x=None,
         )
+        mv_loc = mv_r.new_zeros(B * P, mv_r.shape[1], 16)
+        mv_loc[keep] = mv_r
+        s_loc = s_r.new_zeros(B * P, s_r.shape[-1])
+        s_loc[keep] = s_r
         mv_loc = mv_loc.view(B, P, -1, 16)
         s_loc = s_loc.view(B, P, -1)
         mv_loc, s_loc = self.dropout(mv_loc, s_loc)
@@ -213,12 +220,15 @@ class CGENNLGATrGraphGPS(nn.Module):
             mv = torch.cat([mv, spur[None, None].expand(B, P, -1, -1)], dim=2)
         s = x
 
-        # Stage 2: static kNN graph (shared by every layer's local branch)
-        fourmomenta_flat = v.float() if (self.knn_metric == "minkowski" and self.k is not None) else None
+        # Stage 2: static kNN graph (native dtype; shared by every layer's local
+        # branch), remapped once to compact real-node indices (see GPS layer)
+        fourmomenta_flat = v if (self.knn_metric == "minkowski" and self.k is not None) else None
         edges = generate_edges_vectorized(
-            mask.float(), points.float(), self.k, P, device,
+            mask, points, self.k, P, device,
             metric=self.knn_metric, fourmomenta=fourmomenta_flat,
         )
+        keep = mask.reshape(B * P).bool()
+        edges = (torch.cumsum(keep.long(), dim=0) - 1)[edges]
 
         # Stage 3: equivariant input projection to hidden channels
         mv, s = self.linear_in(mv, scalars=s)            # (B, P, C_mv, 16), (B, P, C_s)
@@ -226,7 +236,7 @@ class CGENNLGATrGraphGPS(nn.Module):
         # Stage 4: interleaved equivariant GPS layers
         attn_mask = mask[:, None, None, :]               # (B, 1, 1, P) bool, True = real
         for layer in self.layers:
-            mv, s = layer(mv, s, edges, attn_mask)
+            mv, s = layer(mv, s, edges, keep, attn_mask)
 
         # Stage 5: final norm + masked mean pool + invariant head
         mv, s = self.final_norm(mv, scalars=s)

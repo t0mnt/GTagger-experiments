@@ -653,15 +653,17 @@ def generate_edges_vectorized(mask, points, k, M, device,
         return torch.stack([b * M + i, b * M + j])
 
     # ---- pairwise distance for the whole batch: (B, P, P) ----
+    # distances follow the input dtype: a .float() downcast here would silently
+    # defeat use_float64 runs (near-tied intervals re-rank under transforms)
     if metric == "minkowski":
         # Δp² = m_i² + m_j² - 2<p_i,p_j>, via a gram matrix (no (B,P,P,4) tensor)
-        p4 = fourmomenta.float()
+        p4 = fourmomenta
         sig = p4.new_tensor([1.0, -1.0, -1.0, -1.0])              # (E, px, py, pz) metric
         msq = (p4 * p4 * sig).sum(-1)                             # (B, P)
         gram = torch.bmm(p4 * sig, p4.transpose(1, 2))           # (B, P, P)
         dist = torch.sqrt((msq[:, :, None] + msq[:, None, :] - 2 * gram).abs() + 1e-8)
     else:  # deltaR with phi wrap
-        eta, phi = points[..., 0].float(), points[..., 1].float()
+        eta, phi = points[..., 0], points[..., 1]
         deta = eta[:, :, None] - eta[:, None, :]
         dphi = (phi[:, :, None] - phi[:, None, :]).abs()
         dphi = torch.minimum(dphi, 2 * math.pi - dphi)
@@ -1109,18 +1111,14 @@ class CGENNLGATrGraphTrans(nn.Module):
         B, P, _ = s.shape
         M = P
 
-        # Stage 3: Build graph edges
-        mask_fp32 = mask.float()
-        points_fp32 = points.float()
-
-        
+        # Stage 3: Build graph edges (native dtype: see generate_edges_vectorized)
         fourmomenta_flat = None
         if self.knn_metric == "minkowski" and self.k is not None:
-            fourmomenta_flat = v.float()
+            fourmomenta_flat = v
 
         edges = generate_edges_vectorized(
-            mask_fp32,
-            points_fp32,
+            mask,
+            points,
             self.k,
             M,
             device,
@@ -1128,10 +1126,17 @@ class CGENNLGATrGraphTrans(nn.Module):
             fourmomenta=fourmomenta_flat,
         )
 
-        # Stage 4: Flatten for CGENN
+        # Stage 4: Flatten for CGENN -- on the REAL nodes only. The scalar MLPs in
+        # CGLayer contain BatchNorm1d; running them over the dense B*P layout lets
+        # the per-batch padding fraction pollute the BN statistics (official CGENN
+        # has the same dense-padding artifact; node_mask shows padding was meant to
+        # be inert, so we compact instead). Edges already connect only real nodes.
         total_nodes = B * M
-        h_flat = s.reshape(total_nodes, -1)
-        x_flat_raw = mv.reshape(total_nodes, -1, 16)  # (B*P, 1+num_spurions, 16)
+        keep = mask.reshape(total_nodes).bool()
+        compact = torch.cumsum(keep.long(), dim=0) - 1
+        edges = compact[edges]
+        h_flat = s.reshape(total_nodes, -1)[keep]
+        x_flat_raw = mv.reshape(total_nodes, -1, 16)[keep]  # (N_real, 1+num_spurions, 16)
 
         if self.use_explicit_edge_features:
             i, j = edges
@@ -1156,9 +1161,13 @@ class CGENNLGATrGraphTrans(nn.Module):
             edge_attr_x=edge_attr_x,
         )
 
-        # Reshape back
-        h = h_flat.view(B, M, -1)
-        x = x_flat.view(B, M, -1, 16)
+        # Scatter back to the dense layout (padded rows zero) and reshape
+        h_full = h_flat.new_zeros(total_nodes, h_flat.shape[-1])
+        h_full[keep] = h_flat
+        x_full = x_flat.new_zeros(total_nodes, x_flat.shape[1], 16)
+        x_full[keep] = x_flat
+        h = h_full.view(B, M, -1)
+        x = x_full.view(B, M, -1, 16)
 
         # Stage 6: Linear bridge
         if self.concat_original:
