@@ -891,6 +891,47 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         return output, {}, None
 
 
+class CGENNLGATrGraphGPSWrapper(nn.Module):
+    """Wrapper for the equivariant CGENN-L-GATr GraphGPS hybrid.
+
+    Equivariant by construction (CGENN + L-GATr, symmetry broken only by the model's
+    own input spurions), so no LLoCa canonicalization: inherits nn.Module with the
+    identity framesnet, exactly like CGENNLGATrGraphTransWrapper. Drops the token
+    spurions (the model injects its own as mv channels), rescales by 1/20, and keeps
+    the time-first (E, px, py, pz) convention (no reorder).
+    """
+
+    def __init__(self, net, framesnet, out_channels):
+        super().__init__()
+        self.net = net(num_classes=out_channels)
+        self.framesnet = framesnet  # not actually used
+        assert isinstance(framesnet, IdentityFrames)
+
+    def forward(self, embedding):
+        fourmomenta = embedding["fourmomenta"]                 # (E, px, py, pz), incl. spurions
+        scalars = torch.cat([embedding["scalars"], embedding["tagging_features"]], dim=-1)
+        batch = embedding["batch"]
+        is_spurion = embedding["is_spurion"]
+        keep = ~is_spurion                                     # channel-spurions in model: drop the tokens
+        fourmomenta = fourmomenta[keep]
+        scalars = scalars[keep]
+        batch = batch[keep]
+        fourmomenta = (fourmomenta / 20).to(scalars.dtype)     # match the equivariant baselines; NO reorder
+        px, py, pz = fourmomenta[:, 1], fourmomenta[:, 2], fourmomenta[:, 3]   # (E, px, py, pz)
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+        fourmomenta, mask = to_dense_batch(fourmomenta, batch)
+        scalars, _ = to_dense_batch(scalars, batch)
+        points, _ = to_dense_batch(points, batch)
+        output = self.net(
+            scalars,
+            fourmomenta,
+            mask,
+            points,
+        )
+        return output, {}, None
+
+
 class ParticleNetParTGraphTransWrapper(TaggerWrapper):
     """Wrapper for the ParticleNet-ParT graph-transformer hybrid.
 

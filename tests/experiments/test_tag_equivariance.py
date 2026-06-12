@@ -72,6 +72,7 @@ GRAPH_TRANS_MODELS = [
     "tag_PlainGraphTrans",
     "tag_PlainGraphGPS",
     "tag_ParticleNetParTGraphGPS",
+    "tag_CGENNLGATrGraphGPS",
 ]
 
 
@@ -94,6 +95,14 @@ def test_xyrotation_invariance(model):
 # removed, and a fully connected graph (no kNN discontinuity), CGENN/LorentzNet
 # are equivariant under the whole group -> an invariant score.
 FULL_GROUP_MODELS = [
+    (
+        "tag_CGENNLGATrGraphGPS",
+        [
+            "model.net.beam_spurion=null",
+            "model.net.add_time_spurion=false",
+            "model.net.k=null",  # fully connected: no kNN neighbour-flip discontinuity
+        ],
+    ),
     (
         "tag_CGENNLGATrGraphTrans",
         [
