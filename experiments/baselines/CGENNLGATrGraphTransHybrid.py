@@ -1126,17 +1126,14 @@ class CGENNLGATrGraphTrans(nn.Module):
             fourmomenta=fourmomenta_flat,
         )
 
-        # Stage 4: Flatten for CGENN -- on the REAL nodes only. The scalar MLPs in
-        # CGLayer contain BatchNorm1d; running them over the dense B*P layout lets
-        # the per-batch padding fraction pollute the BN statistics (official CGENN
-        # has the same dense-padding artifact; node_mask shows padding was meant to
-        # be inert, so we compact instead). Edges already connect only real nodes.
+        # Stage 4: Flatten for CGENN over the dense B*P layout (padded slots
+        # included), matching official CGENN: its theta_h BatchNorm also runs over
+        # the padded nodes. Edges connect real nodes only, so padding never
+        # propagates through message passing -- it only enters the scalar BN stats,
+        # exactly as upstream.
         total_nodes = B * M
-        keep = mask.reshape(total_nodes).bool()
-        compact = torch.cumsum(keep.long(), dim=0) - 1
-        edges = compact[edges]
-        h_flat = s.reshape(total_nodes, -1)[keep]
-        x_flat_raw = mv.reshape(total_nodes, -1, 16)[keep]  # (N_real, 1+num_spurions, 16)
+        h_flat = s.reshape(total_nodes, -1)
+        x_flat_raw = mv.reshape(total_nodes, -1, 16)  # (B*P, 1+num_spurions, 16)
 
         if self.use_explicit_edge_features:
             i, j = edges
@@ -1161,13 +1158,9 @@ class CGENNLGATrGraphTrans(nn.Module):
             edge_attr_x=edge_attr_x,
         )
 
-        # Scatter back to the dense layout (padded rows zero) and reshape
-        h_full = h_flat.new_zeros(total_nodes, h_flat.shape[-1])
-        h_full[keep] = h_flat
-        x_full = x_flat.new_zeros(total_nodes, x_flat.shape[1], 16)
-        x_full[keep] = x_flat
-        h = h_full.view(B, M, -1)
-        x = x_full.view(B, M, -1, 16)
+        # Reshape back
+        h = h_flat.view(B, M, -1)
+        x = x_flat.view(B, M, -1, 16)
 
         # Stage 6: Linear bridge
         if self.concat_original:
