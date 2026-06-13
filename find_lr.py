@@ -32,6 +32,20 @@ Pass `save=false` so no run directory is created. Tune the sweep on the CLI unde
     +lr_find.skip_start=5    points dropped from the start          (default 5)
     +lr_find.skip_end=5      points dropped from the end            (default 5)
     +lr_find.output=lr_finder.png   plot path                       (default lr_finder.png)
+
+On a GPU you can also auto-size the batch first, then sweep the lr at that size
+(so the suggested lr matches the regime you will train in):
+
+    +lr_find.find_batch_size=true   double the batchsize until CUDA OOM, back off
+    +lr_find.bs_start=16            smallest batchsize tried               (default 16)
+    +lr_find.bs_max=16384           largest batchsize tried                (default 16384)
+    +lr_find.bs_safety=0.85         keep this fraction of the largest fit  (default 0.85)
+
+e.g.  python find_lr.py -cp config -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \\
+          save=false +lr_find.find_batch_size=true
+prints both the GPU-fit batchsize and the suggested lr. (On CPU the batch-size
+search is a no-op.) Verify the printed batchsize with a short real run before a
+long job -- it measures one fwd+bwd, not a full training trajectory.
 """
  
 import os
@@ -39,7 +53,7 @@ import os
 import hydra
 import numpy as np
 import torch
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, open_dict
  
 from experiments.amplitudes.experiment import AmplitudeExperiment
 from experiments.amplitudes.experimentxl import AmplitudeXLExperiment
@@ -69,6 +83,11 @@ DEFAULTS = dict(
     skip_start=10,
     skip_end=5,
     output="lr_finder.png",
+    # optional GPU batch-size search (CUDA only; no-op on CPU)
+    find_batch_size=False,
+    bs_start=16,       # smallest batchsize tried
+    bs_max=16384,      # largest batchsize tried
+    bs_safety=0.85,    # back off to this fraction of the largest fitting batchsize
 )
  
  
@@ -98,6 +117,64 @@ def build_experiment(cfg):
     return exp
  
  
+def _is_oom(err):
+    return isinstance(err, torch.cuda.OutOfMemoryError) or "out of memory" in str(err).lower()
+
+
+def find_max_batch_size(exp, start, max_cap, safety):
+    """Doubling search for the largest batchsize that survives a fwd+bwd pass.
+
+    Doubles the batchsize until a CUDA OOM, then backs off to ``safety`` of the
+    largest size that fit -- the backoff covers the optimizer-state allocation
+    (not exercised here, to leave the model weights clean for the lr sweep) plus
+    fragmentation headroom for a long run. CUDA only; returns the configured
+    batchsize unchanged on CPU. Uses the real (variable-length) jets, so the
+    measured memory reflects padding to the per-batch maximum.
+
+    NOTE: this exercises one fwd+bwd at each size; verify the printed batchsize
+    with a short real run before launching a multi-day job.
+    """
+    if not torch.cuda.is_available():
+        LOGGER.info("No CUDA device -> skipping batch-size search (keeping configured batchsize).")
+        return int(exp.cfg.training.batchsize)
+
+    exp.model.train()
+    last_ok, bs = None, int(start)
+    LOGGER.info("Searching for the largest batchsize that fits (fwd+bwd):")
+    while bs <= max_cap:
+        try:
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
+            with open_dict(exp.cfg):
+                exp.cfg.training.batchsize = bs
+            exp._init_dataloader()
+            data = next(iter(exp.train_loader))
+            loss, _ = exp._batch_loss(data)
+            exp.optimizer.zero_grad(set_to_none=True)
+            exp.scaler.scale(loss).backward()
+            exp.optimizer.zero_grad(set_to_none=True)
+            peak = torch.cuda.max_memory_allocated() / 1e9
+            LOGGER.info(f"  batchsize {bs:6d}: OK  (peak {peak:.1f} GB)")
+            last_ok = bs
+            bs *= 2
+        except RuntimeError as err:
+            if not _is_oom(err):
+                raise
+            LOGGER.info(f"  batchsize {bs:6d}: OOM")
+            torch.cuda.empty_cache()
+            break
+
+    if last_ok is None:
+        LOGGER.warning(f"Even batchsize {start} does not fit; keeping {start}.")
+        return int(start)
+    chosen = max(int(start), int(last_ok * safety))
+    LOGGER.info(
+        f"Largest fitting batchsize {last_ok} -> using {chosen} "
+        f"({safety:.0%} backoff for optimizer state + training headroom)."
+    )
+    return chosen
+
+
 def _cycle(loader):
     while True:
         yield from loader
@@ -234,6 +311,15 @@ def main(cfg):
         params.update({k: v for k, v in overrides.items() if v is not None})
  
     exp = build_experiment(cfg)
+
+    # optional: size the batch to the GPU before the lr sweep, then sweep at that
+    # batchsize so the suggested lr matches the regime you will actually train in
+    if params["find_batch_size"]:
+        bs = find_max_batch_size(exp, params["bs_start"], params["bs_max"], params["bs_safety"])
+        with open_dict(cfg):
+            cfg.training.batchsize = bs
+        exp._init_dataloader()  # rebuild the loaders at the chosen batchsize
+
     LOGGER.info(
         f"Running LR range test: {params['start_lr']:.1e} -> {params['end_lr']:.1e} "
         f"over <= {params['num_iter']} batches (batchsize={cfg.training.batchsize})"
@@ -267,10 +353,16 @@ def main(cfg):
     # loss-min/10 is the robust recommendation (peak lr for an annealed schedule);
     # the steepest-descent point is reported as a usually-similar lower bound.
     suggested = min_loss_lr / 10.0
+    bs = cfg.training.batchsize
     LOGGER.info("=" * 64)
+    if params["find_batch_size"]:
+        LOGGER.info(f"Batchsize (fit to GPU):          {bs}")
     LOGGER.info(f"Suggested lr (loss-min / 10):    {suggested:.2e}   [recommended]")
     LOGGER.info(f"Suggested lr (steepest descent): {steepest:.2e}")
-    LOGGER.info(f"  ->  reuse with:  training.lr={suggested:.2e}")
+    reuse = f"training.lr={suggested:.2e}"
+    if params["find_batch_size"]:
+        reuse = f"training.batchsize={bs} " + reuse
+    LOGGER.info(f"  ->  reuse with:  {reuse}")
     LOGGER.info("=" * 64)
  
  
