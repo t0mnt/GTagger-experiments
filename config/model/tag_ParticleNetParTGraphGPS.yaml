@@ -24,10 +24,16 @@ net:
   remove_self_pair: false
   use_pre_activation_pair: true
 
-  # interleaved GPS layers (EdgeConv local + ParT-biased MHA global, fused per layer)
+  # interleaved GPS layers (tensorial EdgeConv local + LLoCa-tensorial ParT attn global)
   dim: 128
   num_layers: 10
   num_heads: 8
+  # LLoCa message-passing reps (shared by every layer, since h keeps width dim):
+  #   attn_reps per head -> dim = attn_reps.dim(16) * num_heads(8) = 128
+  #   edge_reps for the EdgeConv hidden features -> edge_reps.dim = dim = 128
+  # Both carry vectors (Nx1n) so geometry flows through the frame transport.
+  attn_reps: "8x0n+2x1n"
+  edge_reps: "64x0n+16x1n"
   ffn_ratio: 2                  # GraphGPS FFN inner width = 2 * dim
   dropout: 0.0
   attn_dropout: 0.0

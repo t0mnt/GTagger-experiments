@@ -158,17 +158,25 @@ def test_full_group_invariance(model, full_group_off, transform):
 # features are frame-invariant and the (non-equivariant) backbone becomes Lorentz
 # invariant. Beam/time references and the global tagging features are switched off
 # so nothing else breaks the symmetry; learned frames run in float64.
+#
+# The ParticleNet-ParT hybrids now do genuine LLoCa tensorial message-passing (neighbours
+# transported in the EdgeConv, q/k/v transported in the attention), so this pins down the
+# transport, not just input canonicalization -- exact to ~1e-6. ParticleNetParTGraphGPS
+# rebuilds a *dynamic* kNN graph every layer (DGCNN-style), so under a boost near-tied
+# neighbours re-rank and the graph jumps (the ~1e-3 kNN floor of test 1, amplified by the
+# tensorial transport). We test its transport fully connected to isolate it from that
+# discontinuity, which test 1 covers separately.
 CANONICALIZED_MODELS = [
-    "tag_ParticleNetParTGraphTrans",
-    "tag_PlainGraphTrans",
-    "tag_PlainGraphGPS",
-    "tag_ParticleNetParTGraphGPS",
+    ("tag_ParticleNetParTGraphTrans", []),
+    ("tag_PlainGraphTrans", []),
+    ("tag_PlainGraphGPS", []),
+    ("tag_ParticleNetParTGraphGPS", ["model.net.knn_k=9999"]),  # dynamic kNN -> fully connected
 ]
 
 
-@pytest.mark.parametrize("model", CANONICALIZED_MODELS)
+@pytest.mark.parametrize("model,extra", CANONICALIZED_MODELS)
 @pytest.mark.parametrize("transform", ["rotation", "lorentz"])
-def test_lloca_frame_invariance(model, transform):
+def test_lloca_frame_invariance(model, transform, extra):
     exp = _build(
         [
             f"model={model}",
@@ -177,6 +185,7 @@ def test_lloca_frame_invariance(model, transform):
             "data.tagging_features=null",
             "data.beam_reference=null",
             "data.add_time_reference=false",
+            *extra,
         ]
     )
     data = next(iter(exp.train_loader))

@@ -24,10 +24,12 @@ net:
   remove_self_pair: false
   use_pre_activation_pair: true
 
-  # interleaved GPS layers (EdgeConv local + ParT-biased MHA global, fused per layer)
+  # interleaved GPS layers (tensorial EdgeConv local + LLoCa-tensorial ParT attn global)
   dim: 16
   num_layers: 2
   num_heads: 2
+  attn_reps: "4x0n+1x1n"        # attn_reps.dim(8) * num_heads(2) = 16 = dim
+  edge_reps: "8x0n+2x1n"        # edge_reps.dim = 16 = dim
   ffn_ratio: 2                  # GraphGPS FFN inner width = 2 * dim
   dropout: 0.0
   attn_dropout: 0.0

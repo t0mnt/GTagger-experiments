@@ -1240,12 +1240,14 @@ class PlainGraphGPSWrapper(TaggerWrapper):
 
 
 class ParticleNetParTGraphGPSWrapper(TaggerWrapper):
-    """Wrapper for the ParticleNet-ParT GraphGPS hybrid (EdgeConv + ParT-biased MHA).
+    """Wrapper for the ParticleNet-ParT GraphGPS hybrid (tensorial EdgeConv + ParT attn).
 
-    Non-equivariant, made Lorentz-equivariant by LLoCa input canonicalization,
-    exactly like ParticleNetParTGraphTransWrapper / PlainGraphGPSWrapper:
-    channels-first (N, C, P), four-momenta as (px, py, pz, E), a (N, 1, P) mask,
-    and (eta, phi) points seeding the layer-0 deltaR kNN.
+    Lorentz-equivariant by LLoCa tensorial message-passing (matching the library): the
+    inputs are canonicalized and the per-particle frames are passed into the backbone,
+    which transports neighbours (EdgeConv) and q/k/v (attention) between frames. Like the
+    GraphTrans wrapper it is channels-first (N, C, P), four-momenta as (px, py, pz, E), a
+    (N, 1, P) mask, and (eta, phi) points seeding the layer-0 deltaR kNN. No jet frame is
+    needed -- the mean-pool readout over invariant local features is already invariant.
     """
 
     def __init__(self, net, *args, use_amp=False, **kwargs):
@@ -1277,10 +1279,22 @@ class ParticleNetParTGraphGPSWrapper(TaggerWrapper):
         fourmomenta_local, _ = to_dense_batch(fourmomenta_local, batch)
         points, _ = to_dense_batch(points, batch)
 
+        # densify the per-particle local frames to (B, P, 4, 4); padded particles -> identity
+        frames_matrices, _ = to_dense_batch(frames.matrices, batch)
+        frames_matrices[~mask] = lorentz_eye(
+            frames_matrices[~mask].shape[:-2], device=frames.device, dtype=frames.dtype
+        )
+        dense_frames = Frames(
+            matrices=frames_matrices,
+            is_global=frames.is_global,
+            is_identity=frames.is_identity,
+        )
+
         score = self.net(
             points=points.transpose(1, 2).contiguous(),  # (B, 2, P)
             features=features_local.transpose(1, 2).contiguous(),  # (B, C, P)
             v=fourmomenta_local.transpose(1, 2).contiguous(),  # (B, 4, P)
+            frames=dense_frames,
             mask=mask.unsqueeze(1).float(),  # (B, 1, P)
         )
         return score, tracker, frames
