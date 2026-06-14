@@ -40,16 +40,27 @@ class TaggerWrapper(nn.Module):
         self._jet_frames = None
 
     def jet_frames(self, fourmomenta, scalars, ptr):
-        """A single covariant frame per event, from the framesnet's global path: average
-        the per-particle equivariant reference vectors over the event, then orthonormalise.
-        Returns Frames with matrices (B, 4, 4), or None for a non-learned (identity) framesnet.
+        """A single covariant frame per event: the boost into the jet rest frame.
+
+        orthogonalize_4d makes the first of its three reference vectors the timelike axis,
+        so we pass the jet four-momentum (the sum of the particle four-momenta) as that
+        first vector -- the frame's time axis is then the jet direction (its rest frame).
+        The two remaining axes (the spatial orientation, which a single momentum leaves
+        undetermined) are fixed covariantly by the framesnet's per-particle equivariant
+        reference vectors, averaged over the event. All inputs are covariant, so the frame
+        is covariant and the readout stays Lorentz-invariant. Returns Frames (B, 4, 4), or
+        None for a non-learned (identity) framesnet.
         """
         fn = self.framesnet
         if not hasattr(fn, "equivectors"):
             return None  # IdentityFrames etc. -> identity readout frame (handled downstream)
-        vecs = fn.equivectors(fn.mass_regularize(fourmomenta), scalars=scalars, ptr=ptr)
         batch = get_batch_from_ptr(ptr)
+        jet_p = scatter(fourmomenta, batch, dim=0, reduce="sum")  # (B, 4): jet four-momentum
+        jet_p = fn.mass_regularize(jet_p)
+        vecs = fn.equivectors(fn.mass_regularize(fourmomenta), scalars=scalars, ptr=ptr)
         vecs = scatter(vecs, batch, dim=0, reduce="mean")  # (B, n_vectors, 4) per event
+        # time axis = jet momentum; spatial orientation from the (covariant) equivectors
+        vecs = torch.cat([jet_p.unsqueeze(1), vecs[:, :2]], dim=1)  # (B, 3, 4)
         trafo = orthogonalize_4d(vecs, **fn.ortho_kwargs)  # (B, 4, 4)
         return Frames(trafo.to(fourmomenta.dtype))
 
