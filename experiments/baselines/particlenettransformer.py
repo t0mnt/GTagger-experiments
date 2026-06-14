@@ -31,6 +31,7 @@ from functools import partial
 from lloca.backbone.attention import LLoCaAttention
 from lloca.backbone.particlenet import change_local_frame
 from lloca.backbone.particletransformer import Block as LLoCaBlock
+from lloca.backbone.particletransformer import pairwise_lv_fts_pp
 from lloca.framesnet.frames import Frames
 from lloca.reps.tensorreps import TensorReps
 from lloca.reps.tensorreps_transform import TensorRepsTransform
@@ -200,109 +201,6 @@ class EdgeConvBlock(nn.Module):
         return self.sc_act(sc + fts)  # (N, C_out, P)
 
 
-
-@torch.jit.script
-def delta_phi(a, b):
-    return (a - b + math.pi) % (2 * math.pi) - math.pi
-
-
-@torch.jit.script
-def delta_r2(eta1, phi1, eta2, phi2):
-    return (eta1 - eta2)**2 + delta_phi(phi1, phi2)**2
-
-
-def to_pt2(x, eps=1e-8):
-    pt2 = x[:, :2].square().sum(dim=1, keepdim=True)
-    if eps is not None:
-        pt2 = pt2.clamp(min=eps)
-    return pt2
-
-
-def to_m2(x, eps=1e-8):
-    m2 = x[:, 3:4].square() - x[:, :3].square().sum(dim=1, keepdim=True)
-    if eps is not None:
-        m2 = m2.clamp(min=eps)
-    return m2
-
-
-def atan2(y, x):
-    sx = torch.sign(x)
-    sy = torch.sign(y)
-    pi_part = (sy + sx * (sy ** 2 - 1)) * (sx - 1) * (-math.pi / 2)
-    atan_part = torch.arctan(y / (x + (1 - sx ** 2))) * sx ** 2
-    return atan_part + pi_part
-
-
-def to_ptrapphim(x, return_mass=True, eps=1e-8, for_onnx=False):
-    # x: (N, 4, ...), dim1 : (px, py, pz, E)
-    px, py, pz, energy = x.split((1, 1, 1, 1), dim=1)
-    pt = torch.sqrt(to_pt2(x, eps=eps))
-    # rapidity = 0.5 * torch.log((energy + pz) / (energy - pz))
-    rapidity = 0.5 * torch.log(1 + (2 * pz) / (energy - pz).clamp(min=1e-20))
-    phi = (atan2 if for_onnx else torch.atan2)(py, px)
-    if not return_mass:
-        return torch.cat((pt, rapidity, phi), dim=1)
-    else:
-        m = torch.sqrt(to_m2(x, eps=eps))
-        return torch.cat((pt, rapidity, phi, m), dim=1)
-
-
-def boost(x, boostp4, eps=1e-8):
-    # boost x to the rest frame of boostp4
-    # x: (N, 4, ...), dim1 : (px, py, pz, E)
-    p3 = -boostp4[:, :3] / boostp4[:, 3:].clamp(min=eps)
-    b2 = p3.square().sum(dim=1, keepdim=True)
-    gamma = (1 - b2).clamp(min=eps)**(-0.5)
-    gamma2 = (gamma - 1) / b2
-    gamma2.masked_fill_(b2 == 0, 0)
-    bp = (x[:, :3] * p3).sum(dim=1, keepdim=True)
-    v = x[:, :3] + gamma2 * bp * p3 + x[:, 3:] * gamma * p3
-    return v
-
-
-def p3_norm(p, eps=1e-8):
-    return p[:, :3] / p[:, :3].norm(dim=1, keepdim=True).clamp(min=eps)
-
-
-def pairwise_lv_fts(xi, xj, num_outputs=4, eps=1e-8, for_onnx=False):
-    pti, rapi, phii = to_ptrapphim(xi, False, eps=None, for_onnx=for_onnx).split((1, 1, 1), dim=1)
-    ptj, rapj, phij = to_ptrapphim(xj, False, eps=None, for_onnx=for_onnx).split((1, 1, 1), dim=1)
-
-    delta = delta_r2(rapi, phii, rapj, phij).sqrt()
-    lndelta = torch.log(delta.clamp(min=eps))
-    if num_outputs == 1:
-        return lndelta
-
-    if num_outputs > 1:
-        ptmin = ((pti <= ptj) * pti + (pti > ptj) * ptj) if for_onnx else torch.minimum(pti, ptj)
-        lnkt = torch.log((ptmin * delta).clamp(min=eps))
-        lnz = torch.log((ptmin / (pti + ptj).clamp(min=eps)).clamp(min=eps))
-        outputs = [lnkt, lnz, lndelta]
-
-    if num_outputs > 3:
-        xij = xi + xj
-        lnm2 = torch.log(to_m2(xij, eps=eps))
-        outputs.append(lnm2)
-
-    if num_outputs > 4:
-        lnds2 = torch.log(torch.clamp(-to_m2(xi - xj, eps=None), min=eps))
-        outputs.append(lnds2)
-
-    # the following features are not symmetric for (i, j)
-    if num_outputs > 5:
-        xj_boost = boost(xj, xij)
-        costheta = (p3_norm(xj_boost, eps=eps) * p3_norm(xij, eps=eps)).sum(dim=1, keepdim=True)
-        outputs.append(costheta)
-
-    if num_outputs > 6:
-        deltarap = rapi - rapj
-        deltaphi = delta_phi(phii, phij)
-        outputs += [deltarap, deltaphi]
-
-    assert (len(outputs) == num_outputs)
-    return torch.cat(outputs, dim=1)
-
-
 def build_sparse_tensor(uu, idx, seq_len):
     # inputs: uu (N, C, num_pairs), idx (N, 2, num_pairs)
     # return: (N, C, seq_len, seq_len)
@@ -334,7 +232,11 @@ class PairEmbed(nn.Module):
         self.remove_self_pair = remove_self_pair
         self.mode = mode
         self.for_onnx = for_onnx
-        self.pairwise_lv_fts = partial(pairwise_lv_fts, num_outputs=pairwise_lv_dim, eps=eps, for_onnx=for_onnx)
+        # Use the library's exact pairwise interaction features (lloca pairwise_lv_fts_pp:
+        # [ln m^2, ln kT, ln z, ln Delta]) rather than the weaver variant, so the ParT bias
+        # matches the LLoCa ParT. (lloca's to_ptrapphim also clamps the rapidity log argument,
+        # avoiding a -inf the weaver version can hit for a massless particle along -z.)
+        self.pairwise_lv_fts = partial(pairwise_lv_fts_pp, num_outputs=pairwise_lv_dim, eps=eps)
         self.out_dim = dims[-1]
 
         if self.mode == 'concat':
