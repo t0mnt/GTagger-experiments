@@ -36,10 +36,12 @@ Pass `save=false` so no run directory is created. Tune the sweep on the CLI unde
 On a GPU you can also auto-size the batch first, then sweep the lr at that size
 (so the suggested lr matches the regime you will train in):
 
-    +lr_find.find_batch_size=true   double the batchsize until CUDA OOM, back off
+    +lr_find.find_batch_size=true   double the batchsize until CUDA OOM (full step)
     +lr_find.bs_start=16            smallest batchsize tried               (default 16)
     +lr_find.bs_max=16384           largest batchsize tried                (default 16384)
-    +lr_find.bs_safety=0.85         keep this fraction of the largest fit  (default 0.85)
+    +lr_find.bs_safety=1.0          fraction of the largest fit to use     (default 1.0,
+                                    i.e. the largest fitting power of two; <1 adds
+                                    headroom but breaks the power of two)
 
 e.g.  python find_lr.py -cp config -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \\
           save=false +lr_find.find_batch_size=true
@@ -87,7 +89,7 @@ DEFAULTS = dict(
     find_batch_size=False,
     bs_start=16,       # smallest batchsize tried
     bs_max=16384,      # largest batchsize tried
-    bs_safety=0.85,    # back off to this fraction of the largest fitting batchsize
+    bs_safety=1.0,     # fraction of the largest fitting batchsize to use (1.0 keeps a power of two)
 )
  
  
@@ -122,17 +124,21 @@ def _is_oom(err):
 
 
 def find_max_batch_size(exp, start, max_cap, safety):
-    """Doubling search for the largest batchsize that survives a fwd+bwd pass.
+    """Doubling search for the largest batchsize that survives a full training step.
 
-    Doubles the batchsize until a CUDA OOM, then backs off to ``safety`` of the
-    largest size that fit -- the backoff covers the optimizer-state allocation
-    (not exercised here, to leave the model weights clean for the lr sweep) plus
-    fragmentation headroom for a long run. CUDA only; returns the configured
-    batchsize unchanged on CPU. Uses the real (variable-length) jets, so the
-    measured memory reflects padding to the per-batch maximum.
+    At each candidate it runs a real fwd + bwd + optimizer step (scaler + gradient
+    clipping, exactly as ``range_test``), so the measured memory reflects what
+    training actually uses -- not just a fwd+bwd lower bound. The search doubles
+    until a CUDA OOM, so the largest size that fits is a power of two; with the
+    default ``safety=1.0`` that power of two is returned unchanged (a fractional
+    ``safety`` trades GPU utilisation / the power-of-two for headroom and is only
+    worth it if you see OOM later from jets larger than those in the probe batch).
 
-    NOTE: this exercises one fwd+bwd at each size; verify the printed batchsize
-    with a short real run before launching a multi-day job.
+    CUDA only (returns the configured batchsize on CPU). The optimizer step mutates
+    the model + optimizer state, so the caller MUST re-initialise before the lr sweep.
+
+    NOTE: it probes one batch per size; verify the chosen batchsize with a short
+    real run before launching a multi-day job.
     """
     if not torch.cuda.is_available():
         LOGGER.info("No CUDA device -> skipping batch-size search (keeping configured batchsize).")
@@ -140,7 +146,7 @@ def find_max_batch_size(exp, start, max_cap, safety):
 
     exp.model.train()
     last_ok, bs = None, int(start)
-    LOGGER.info("Searching for the largest batchsize that fits (fwd+bwd):")
+    LOGGER.info("Searching for the largest batchsize that fits a full training step:")
     while bs <= max_cap:
         try:
             torch.cuda.empty_cache()
@@ -152,7 +158,14 @@ def find_max_batch_size(exp, start, max_cap, safety):
             loss, _ = exp._batch_loss(data)
             exp.optimizer.zero_grad(set_to_none=True)
             exp.scaler.scale(loss).backward()
-            exp.optimizer.zero_grad(set_to_none=True)
+            exp.scaler.unscale_(exp.optimizer)
+            if exp.cfg.training.clip_grad_norm is not None:
+                torch.nn.utils.clip_grad_norm_(
+                    exp.model.parameters(), exp.cfg.training.clip_grad_norm,
+                    error_if_nonfinite=False,
+                )
+            exp.scaler.step(exp.optimizer)
+            exp.scaler.update()
             peak = torch.cuda.max_memory_allocated() / 1e9
             LOGGER.info(f"  batchsize {bs:6d}: OK  (peak {peak:.1f} GB)")
             last_ok = bs
@@ -168,10 +181,12 @@ def find_max_batch_size(exp, start, max_cap, safety):
         LOGGER.warning(f"Even batchsize {start} does not fit; keeping {start}.")
         return int(start)
     chosen = max(int(start), int(last_ok * safety))
-    LOGGER.info(
-        f"Largest fitting batchsize {last_ok} -> using {chosen} "
-        f"({safety:.0%} backoff for optimizer state + training headroom)."
+    note = (
+        "the largest fitting power of two"
+        if safety >= 1.0
+        else f"{safety:.0%} of {last_ok} (NOT a power of two)"
     )
+    LOGGER.info(f"Largest fitting batchsize {last_ok} -> using {chosen} ({note}).")
     return chosen
 
 
@@ -318,7 +333,13 @@ def main(cfg):
         bs = find_max_batch_size(exp, params["bs_start"], params["bs_max"], params["bs_safety"])
         with open_dict(cfg):
             cfg.training.batchsize = bs
-        exp._init_dataloader()  # rebuild the loaders at the chosen batchsize
+        # the search ran optimizer steps -> rebuild a clean model/optimizer/scaler so
+        # the lr sweep starts from a fresh init (as real training would)
+        exp.init_model()
+        exp._init_optimizer()
+        exp._init_scaler()
+        exp.model.to(exp.device)
+        exp._init_dataloader()
 
     LOGGER.info(
         f"Running LR range test: {params['start_lr']:.1e} -> {params['end_lr']:.1e} "
