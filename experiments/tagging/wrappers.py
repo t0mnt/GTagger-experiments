@@ -963,6 +963,39 @@ class ParticleNetParTGraphTransWrapper(TaggerWrapper):
             tracker,
         ) = super().forward(embedding)
         fourmomenta_local = fourmomenta_local.to(features_local.dtype)
+
+        # --- active LLoCa transport for the pairwise interaction bias ---
+        # The backbone's PairEmbed builds its attention bias from pairwise invariants
+        # (ln m^2_ij, ln kT, ln z, ln Delta). Computed on the canonicalized momenta
+        # directly, those mix frames: v_local_i and v_local_j live in *different*
+        # local frames (R_i vs R_j), so e.g. (v_local_i + v_local_j)^2 is not the true
+        # pair mass. Here we instead express every neighbour j in the centre i's frame
+        # first, v_j^(i) = M_i M_j^{-1} v_local_j = R_i^{-1} v_j, so the pair (i, j) is
+        # evaluated entirely within i's frame -> the invariants are both undistorted
+        # (true m^2_ij, ...) and Lorentz-invariant. The relative transform M_i M_j^{-1}
+        # equals R_i^{-1} R_j independent of the frame convention, and reduces to the
+        # identity for global/identity frames -- in which case we pass None and the
+        # backbone takes its original symmetric tril path (bit-identical to before).
+        pairwise_v = None
+        if not frames.is_identity and not frames.is_global:
+            with torch.no_grad():
+                # native (E, px, py, pz) order: frames act in this basis
+                fm_native, mask_t = to_dense_batch(fourmomenta_local, batch)  # (B, P, 4)
+                M, _ = to_dense_batch(frames.matrices, batch)  # (B, P, 4, 4); v_local = M v
+                M_inv, _ = to_dense_batch(frames.inv, batch)  # (B, P, 4, 4)
+                eye = lorentz_eye(
+                    M[~mask_t].shape[:-2], device=frames.device, dtype=frames.dtype
+                )
+                M[~mask_t] = eye  # padded particles -> identity frame (masked anyway)
+                M_inv[~mask_t] = eye
+                M = M.to(fm_native.dtype)
+                M_inv = M_inv.to(fm_native.dtype)
+                # neighbour j in centre i's frame: M_i (M_j^{-1} v_local_j) = M_i v_j
+                v_global = torch.einsum("bjxy,bjy->bjx", M_inv, fm_native)  # (B, P, 4)
+                v_trans = torch.einsum("bixy,bjy->bijx", M, v_global)  # (B, Pi, Pj, 4)
+                # -> (px, py, pz, E), channels-first (B, 4, Pi, Pj) to match the net's v
+                pairwise_v = v_trans[..., [1, 2, 3, 0]].permute(0, 3, 1, 2).contiguous()
+
         fourmomenta_local = fourmomenta_local[..., [1, 2, 3, 0]]  # need (px, py, pz, E)
 
         # (eta, phi) points for the EdgeConv kNN, read off the local four-momenta
@@ -988,6 +1021,7 @@ class ParticleNetParTGraphTransWrapper(TaggerWrapper):
             features=features_local,
             v=fourmomenta_local,
             mask=mask,
+            pairwise_v=pairwise_v,
         )
         return score, tracker, frames
 

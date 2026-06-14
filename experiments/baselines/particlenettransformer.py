@@ -359,16 +359,30 @@ class PairEmbed(nn.Module):
         else:
             raise RuntimeError('`mode` can only be `sum` or `concat`')
 
-    def forward(self, x, uu=None):
+    def forward(self, x, uu=None, pairwise_x=None):
         # x: (batch, v_dim, seq_len)
         # uu: (batch, v_dim, seq_len, seq_len)
+        # pairwise_x: (batch, v_dim, seq_len, seq_len) -- LLoCa transport. Entry
+        #   [b, :, i, j] is neighbour j's four-momentum expressed in centre i's
+        #   local frame (M_i M_j^-1 v_local_j = R_i^-1 v_j). When given, the interaction
+        #   is asymmetric and computed over all pairs (the symmetric tril shortcut is
+        #   bypassed); when None the behaviour is exactly the original (canonicalization).
         assert (x is not None or uu is not None)
         with torch.no_grad():
             if x is not None:
                 batch_size, _, seq_len = x.size()
             else:
                 batch_size, _, seq_len, _ = uu.size()
-            if self.is_symmetric and not self.for_onnx:
+            if pairwise_x is not None:
+                # x_i vs (neighbour j in i's frame); not symmetric -> full P^2.
+                x = self.pairwise_lv_fts(x.unsqueeze(-1), pairwise_x)
+                if self.remove_self_pair:
+                    diag = torch.arange(0, seq_len, device=x.device)
+                    x[:, :, diag, diag] = 0
+                x = x.view(-1, self.pairwise_lv_dim, seq_len * seq_len)
+                if uu is not None:
+                    uu = uu.view(-1, self.pairwise_input_dim, seq_len * seq_len)
+            elif self.is_symmetric and not self.for_onnx:
                 i, j = torch.tril_indices(seq_len, seq_len, offset=-1 if self.remove_self_pair else 0,
                                           device=(x if x is not None else uu).device)
                 if x is not None:
@@ -406,7 +420,7 @@ class PairEmbed(nn.Module):
             else:
                 elements = self.embed(x) + self.fts_embed(uu)
 
-        if self.is_symmetric and not self.for_onnx:
+        if self.is_symmetric and not self.for_onnx and pairwise_x is None:
             y = torch.zeros(batch_size, self.out_dim, seq_len, seq_len, dtype=elements.dtype, device=elements.device)
             y[:, :, i, j] = elements
             y[:, :, j, i] = elements
@@ -656,13 +670,17 @@ class ParticleNetParTGraphTrans(nn.Module):
     def no_weight_decay(self):
         return {'cls_token', }
 
-    def forward(self, points, features, v=None, mask=None, uu=None, uu_idx=None):
+    def forward(self, points, features, v=None, mask=None, uu=None, uu_idx=None, pairwise_v=None):
 
         '''
         Points: (N, 2, P)
         Features: (N, C, P)
         Vectors: (N, 4, P) [px,py,pz,energy]
         Mask: (N, 1, P)
+        pairwise_v: (N, 4, P, P) or None. When given, entry [n,:,i,j] is neighbour j's
+            four-momentum transported into centre i's local frame (active LLoCa). The
+            PairEmbed then builds an asymmetric all-pairs interaction from it instead of
+            the symmetric tril over the shared global momenta. None -> original behaviour.
         '''
 
         if mask is None:
@@ -714,7 +732,7 @@ class ParticleNetParTGraphTrans(nn.Module):
             attn_mask = None
             if (v is not None or uu is not None) and self.pair_embed is not None:
                 #pair embed internally pads for CLS
-                attn_mask = self.pair_embed(v, uu).view(-1, v.size(-1)+1, v.size(-1)+1)  # (N, num_heads, P+1, P+1)
+                attn_mask = self.pair_embed(v, uu, pairwise_x=pairwise_v).view(-1, v.size(-1)+1, v.size(-1)+1)  # (N, num_heads, P+1, P+1)
 
             #prepend CLS token
             cls = self.cls_token.expand(1, x.size(1), -1)
