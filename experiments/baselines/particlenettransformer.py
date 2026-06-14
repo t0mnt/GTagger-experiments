@@ -275,7 +275,10 @@ def to_ptrapphim(x, return_mass=True, eps=1e-8, for_onnx=False):
     px, py, pz, energy = x.split((1, 1, 1, 1), dim=1)
     pt = torch.sqrt(to_pt2(x, eps=eps))
     # rapidity = 0.5 * torch.log((energy + pz) / (energy - pz))
-    rapidity = 0.5 * torch.log(1 + (2 * pz) / (energy - pz).clamp(min=1e-20))
+    # clamp the log argument as in lloca's to_ptrapphim: avoids a -inf for a massless
+    # particle pointing exactly along -z. Inactive (hence bit-identical to the original)
+    # for any physical momentum; only the measure-zero edge case differs.
+    rapidity = 0.5 * torch.log((1 + (2 * pz) / (energy - pz).clamp(min=1e-20)).clamp(min=1e-20))
     phi = (atan2 if for_onnx else torch.atan2)(py, px)
     if not return_mass:
         return torch.cat((pt, rapidity, phi), dim=1)
