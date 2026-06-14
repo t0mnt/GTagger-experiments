@@ -10,24 +10,30 @@ net:
   input_dim: null               # supplied by the wrapper (= in_channels)
   num_classes: null             # supplied by the wrapper (= out_channels)
 
-  # ParticleNet (EdgeConv) graph backbone
+  # ParticleNet (EdgeConv) graph backbone with LLoCa tensorial message-passing.
+  # hidden_reps_list types each EdgeConv's input for the frame transport (matching the
+  # lloca ParticleNet): layer 0 is null (pure scalars = input_dim, set by the wrapper),
+  # deeper layers carry vectors (Nx1n) so geometry is communicated between frames. Each
+  # rep's dim must equal the previous layer's output width (here 64, 128).
   conv_params: [[16, [64, 64, 64]], [16, [128, 128, 128]], [16, [256, 256, 256]]]
+  hidden_reps_list: [null, "32x0n+8x1n", "64x0n+16x1n"]
   use_fusion: true
   use_fts_bn: true
   use_input_concat: true
   knn_metric: deltaR            # first-layer kNN: 'deltaR' (eta-phi L2) or 'minkowski' (4-momenta)
 
-  # ParticleTransformer-style encoder.
-  # embed_dims is a single value: the transformer width. (It is a list only for
-  # historical compatibility with ParT, whose input-embedding MLP -- which used
-  # the earlier entries -- is replaced here by the GNN + bridge; only the last
-  # entry is used.)
-  embed_dims: [128]
+  # ParticleTransformer-style encoder with LLoCa tensorial attention (LLoCaAttention).
+  # attn_reps is the per-head tensor representation; the transformer width is
+  # embed_dim = attn_reps.dim * num_heads (here (8 + 2*4) * 8 = 128). It must carry >=1
+  # vector (Nx1n) for the q/k/v frame transport to communicate geometric information.
+  attn_reps: "8x0n+2x1n"
   num_heads: 8
   num_layers: 10
   block_params: null
   activation: gelu
   fc_params: []
+  # The prepended class token rides in the covariant jet frame (computed by the wrapper
+  # from the framesnet's global path) so the tensorial readout stays Lorentz-invariant.
 
   # pairwise Lorentz interaction features (from v as (px, py, pz, E)).
   # bias=true adds them as an additive attention bias; bias=false disables them.

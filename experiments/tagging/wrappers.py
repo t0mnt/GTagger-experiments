@@ -5,6 +5,7 @@ from lloca.framesnet.nonequi_frames import IdentityFrames
 from lloca.reps.tensorreps import TensorReps
 from lloca.reps.tensorreps_transform import TensorRepsTransform
 from lloca.utils.lorentz import lorentz_eye
+from lloca.utils.orthogonalize_4d import orthogonalize_4d
 from lloca.utils.utils import (
     get_batch_from_ptr,
     get_edge_attr,
@@ -33,6 +34,24 @@ class TaggerWrapper(nn.Module):
         self.add_fourmomenta_backbone = add_fourmomenta_backbone
         self.framesnet = framesnet
         self.trafo_fourmomenta = TensorRepsTransform(TensorReps("1x1n"))
+        # subclasses that need a single covariant per-event frame (e.g. for a prepended
+        # readout token in a tensorial backbone) set this; forward then fills _jet_frames.
+        self.compute_jet_frames = False
+        self._jet_frames = None
+
+    def jet_frames(self, fourmomenta, scalars, ptr):
+        """A single covariant frame per event, from the framesnet's global path: average
+        the per-particle equivariant reference vectors over the event, then orthonormalise.
+        Returns Frames with matrices (B, 4, 4), or None for a non-learned (identity) framesnet.
+        """
+        fn = self.framesnet
+        if not hasattr(fn, "equivectors"):
+            return None  # IdentityFrames etc. -> identity readout frame (handled downstream)
+        vecs = fn.equivectors(fn.mass_regularize(fourmomenta), scalars=scalars, ptr=ptr)
+        batch = get_batch_from_ptr(ptr)
+        vecs = scatter(vecs, batch, dim=0, reduce="mean")  # (B, n_vectors, 4) per event
+        trafo = orthogonalize_4d(vecs, **fn.ortho_kwargs)  # (B, 4, 4)
+        return Frames(trafo.to(fourmomenta.dtype))
 
     def init_standardization(self, fourmomenta, ptr, reduce_size=None):
         # framesnet equivectors edge_attr standardization (if applicable)
@@ -84,6 +103,14 @@ class TaggerWrapper(nn.Module):
             dtype=frames_spurions.dtype,
             shape=matrices.shape,
         )
+
+        # optional single covariant per-event (jet) frame, from the real particles only
+        if self.compute_jet_frames:
+            self._jet_frames = self.jet_frames(
+                fourmomenta_nospurions,
+                scalars_withspurions.index_select(0, nospurion_idxs),
+                ptr_nospurions,
+            )
 
         # transform features into local frames
         fourmomenta_local_nospurions = self.trafo_fourmomenta(
@@ -952,6 +979,8 @@ class ParticleNetParTGraphTransWrapper(TaggerWrapper):
         super().__init__(*args, **kwargs)
         self.use_amp = use_amp
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+        # the prepended class token rides in the covariant jet frame -> request it
+        self.compute_jet_frames = True
 
     def forward(self, embedding):
         (
@@ -963,39 +992,6 @@ class ParticleNetParTGraphTransWrapper(TaggerWrapper):
             tracker,
         ) = super().forward(embedding)
         fourmomenta_local = fourmomenta_local.to(features_local.dtype)
-
-        # --- active LLoCa transport for the pairwise interaction bias ---
-        # The backbone's PairEmbed builds its attention bias from pairwise invariants
-        # (ln m^2_ij, ln kT, ln z, ln Delta). Computed on the canonicalized momenta
-        # directly, those mix frames: v_local_i and v_local_j live in *different*
-        # local frames (R_i vs R_j), so e.g. (v_local_i + v_local_j)^2 is not the true
-        # pair mass. Here we instead express every neighbour j in the centre i's frame
-        # first, v_j^(i) = M_i M_j^{-1} v_local_j = R_i^{-1} v_j, so the pair (i, j) is
-        # evaluated entirely within i's frame -> the invariants are both undistorted
-        # (true m^2_ij, ...) and Lorentz-invariant. The relative transform M_i M_j^{-1}
-        # equals R_i^{-1} R_j independent of the frame convention, and reduces to the
-        # identity for global/identity frames -- in which case we pass None and the
-        # backbone takes its original symmetric tril path (bit-identical to before).
-        pairwise_v = None
-        if not frames.is_identity and not frames.is_global:
-            with torch.no_grad():
-                # native (E, px, py, pz) order: frames act in this basis
-                fm_native, mask_t = to_dense_batch(fourmomenta_local, batch)  # (B, P, 4)
-                M, _ = to_dense_batch(frames.matrices, batch)  # (B, P, 4, 4); v_local = M v
-                M_inv, _ = to_dense_batch(frames.inv, batch)  # (B, P, 4, 4)
-                eye = lorentz_eye(
-                    M[~mask_t].shape[:-2], device=frames.device, dtype=frames.dtype
-                )
-                M[~mask_t] = eye  # padded particles -> identity frame (masked anyway)
-                M_inv[~mask_t] = eye
-                M = M.to(fm_native.dtype)
-                M_inv = M_inv.to(fm_native.dtype)
-                # neighbour j in centre i's frame: M_i (M_j^{-1} v_local_j) = M_i v_j
-                v_global = torch.einsum("bjxy,bjy->bjx", M_inv, fm_native)  # (B, P, 4)
-                v_trans = torch.einsum("bixy,bjy->bijx", M, v_global)  # (B, Pi, Pj, 4)
-                # -> (px, py, pz, E), channels-first (B, 4, Pi, Pj) to match the net's v
-                pairwise_v = v_trans[..., [1, 2, 3, 0]].permute(0, 3, 1, 2).contiguous()
-
         fourmomenta_local = fourmomenta_local[..., [1, 2, 3, 0]]  # need (px, py, pz, E)
 
         # (eta, phi) points for the EdgeConv kNN, read off the local four-momenta
@@ -1013,15 +1009,30 @@ class ParticleNetParTGraphTransWrapper(TaggerWrapper):
         features_local = features_local.transpose(1, 2).contiguous()  # (B, C, P)
         fourmomenta_local = fourmomenta_local.transpose(1, 2).contiguous()  # (B, 4, P)
         points = points.transpose(1, 2).contiguous()  # (B, 2, P)
+
+        # densify the per-particle local frames to (B, P, 4, 4); padded particles get the
+        # identity frame (they are masked out of the kNN and attention anyway). The
+        # tensorial backbone transports neighbours/q-k-v between these frames (LLoCa).
+        frames_matrices, _ = to_dense_batch(frames.matrices, batch)
+        frames_matrices[~mask] = lorentz_eye(
+            frames_matrices[~mask].shape[:-2], device=frames.device, dtype=frames.dtype
+        )
+        dense_frames = Frames(
+            matrices=frames_matrices,
+            is_global=frames.is_global,
+            is_identity=frames.is_identity,
+        )
         mask = mask.unsqueeze(1).float()  # (B, 1, P)
 
-        # the backbone handles AMP internally via use_amp
+        # the backbone handles AMP internally via use_amp. cls_frames is the covariant
+        # jet frame for the prepended class token (None for IdentityFrames -> identity slot).
         score = self.net(
             points=points,
             features=features_local,
             v=fourmomenta_local,
+            frames=dense_frames,
             mask=mask,
-            pairwise_v=pairwise_v,
+            cls_frames=self._jet_frames,
         )
         return score, tracker, frames
 

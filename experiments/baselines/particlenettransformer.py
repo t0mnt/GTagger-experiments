@@ -28,6 +28,14 @@ import torch
 import torch.nn as nn
 from functools import partial
 
+from lloca.backbone.attention import LLoCaAttention
+from lloca.backbone.particlenet import change_local_frame
+from lloca.backbone.particletransformer import Block as LLoCaBlock
+from lloca.framesnet.frames import Frames
+from lloca.reps.tensorreps import TensorReps
+from lloca.reps.tensorreps_transform import TensorRepsTransform
+from lloca.utils.lorentz import lorentz_eye
+
 _logger = logging.getLogger(__name__)
 
 
@@ -71,7 +79,7 @@ def knn(x, k, metric='deltaR', mask=None):
 
 
 # v1 is faster on GPU
-def get_graph_feature_v1(x, k, idx):
+def get_graph_feature_v1(x, k, idx, frames=None, trafo=None):
     batch_size, num_dims, num_points = x.size()
 
     idx_base = torch.arange(0, batch_size, device=x.device).view(-1, 1, 1) * num_points
@@ -82,12 +90,17 @@ def get_graph_feature_v1(x, k, idx):
     fts = fts[idx, :].view(batch_size, num_points, k, num_dims)  # neighbors: -> (batch_size*num_points*k, num_dims) -> ...
     fts = fts.permute(0, 3, 1, 2).contiguous()  # (batch_size, num_dims, num_points, k)
     x = x.view(batch_size, num_dims, num_points, 1).repeat(1, 1, 1, k)
+    # LLoCa tensorial message-passing: express neighbour j (in its own local frame)
+    # in the centre i's frame before forming the edge feature fts - x (no-op for
+    # identity frames / pure-scalar reps). Mirrors lloca.backbone.particlenet.
+    if frames is not None:
+        fts = change_local_frame(fts, idx, frames, trafo)
     fts = torch.cat((x, fts - x), dim=1)  # ->(batch_size, 2*num_dims, num_points, k)
     return fts
 
 
 # v2 is faster on CPU
-def get_graph_feature_v2(x, k, idx):
+def get_graph_feature_v2(x, k, idx, frames=None, trafo=None):
     batch_size, num_dims, num_points = x.size()
 
     idx_base = torch.arange(0, batch_size, device=x.device).view(-1, 1, 1) * num_points
@@ -97,6 +110,8 @@ def get_graph_feature_v2(x, k, idx):
     fts = x.transpose(0, 1).reshape(num_dims, -1)  # -> (num_dims, batch_size, num_points) -> (num_dims, batch_size*num_points)
     fts = fts[:, idx].view(num_dims, batch_size, num_points, k)  # neighbors: -> (num_dims, batch_size*num_points*k) -> ...
     fts = fts.transpose(1, 0).contiguous()  # (batch_size, num_dims, num_points, k)
+    if frames is not None:
+        fts = change_local_frame(fts, idx, frames, trafo)
 
     x = x.view(batch_size, num_dims, num_points, 1).repeat(1, 1, 1, k)
     fts = torch.cat((x, fts - x), dim=1)  # ->(batch_size, 2*num_dims, num_points, k)
@@ -122,13 +137,20 @@ class EdgeConvBlock(nn.Module):
         Whether to include batch normalization on messages.
     """
 
-    def __init__(self, k, in_feat, out_feats, batch_norm=True, activation=True, cpu_mode=False):
+    def __init__(self, k, in_reps, out_feats, batch_norm=True, activation=True, cpu_mode=False):
         super(EdgeConvBlock, self).__init__()
         self.k = k
         self.batch_norm = batch_norm
         self.activation = activation
         self.num_layers = len(out_feats)
         self.get_graph_feature = get_graph_feature_v2 if cpu_mode else get_graph_feature_v1
+        # in_reps types the input features for LLoCa transport (e.g. "32x0n+8x1n"):
+        # change_local_frame uses it to rotate neighbours into the centre frame.
+        # An int is accepted as a pure-scalar rep ("<n>x0n"), for which the transport
+        # is the identity (recovers the plain, non-equivariant EdgeConv).
+        in_reps = TensorReps(f"{in_reps}x0n") if isinstance(in_reps, int) else TensorReps(in_reps)
+        self.trafo = TensorRepsTransform(in_reps)
+        in_feat = in_reps.dim
 
         self.convs = nn.ModuleList()
         for i in range(self.num_layers):
@@ -153,11 +175,11 @@ class EdgeConvBlock(nn.Module):
         if activation:
             self.sc_act = nn.ReLU()
 
-    def forward(self, points, features, knn_metric='deltaR', mask=None):
+    def forward(self, points, features, frames=None, knn_metric='deltaR', mask=None):
 
         topk_indices = knn(points, self.k, metric=knn_metric, mask=mask)
         k = topk_indices.size(-1)  # may be capped below self.k for tiny events
-        x = self.get_graph_feature(features, k, topk_indices)
+        x = self.get_graph_feature(features, k, topk_indices, frames, self.trafo)
 
         for conv, bn, act in zip(self.convs, self.bns, self.acts):
             x = conv(x)  # (N, C', P, K)
@@ -359,30 +381,19 @@ class PairEmbed(nn.Module):
         else:
             raise RuntimeError('`mode` can only be `sum` or `concat`')
 
-    def forward(self, x, uu=None, pairwise_x=None):
-        # x: (batch, v_dim, seq_len)
+    def forward(self, x, uu=None):
+        # x: (batch, v_dim, seq_len) -- four-momenta in the local (canonicalized) frames
         # uu: (batch, v_dim, seq_len, seq_len)
-        # pairwise_x: (batch, v_dim, seq_len, seq_len) -- LLoCa transport. Entry
-        #   [b, :, i, j] is neighbour j's four-momentum expressed in centre i's
-        #   local frame (M_i M_j^-1 v_local_j = R_i^-1 v_j). When given, the interaction
-        #   is asymmetric and computed over all pairs (the symmetric tril shortcut is
-        #   bypassed); when None the behaviour is exactly the original (canonicalization).
+        # Returns the interaction bias padded for a prepended CLS token, shape
+        # (batch, out_dim=num_heads, P+1, P+1) with a zero CLS row/column. As in the LLoCa
+        # ParT the bias is built from the canonicalized local momenta directly.
         assert (x is not None or uu is not None)
         with torch.no_grad():
             if x is not None:
                 batch_size, _, seq_len = x.size()
             else:
                 batch_size, _, seq_len, _ = uu.size()
-            if pairwise_x is not None:
-                # x_i vs (neighbour j in i's frame); not symmetric -> full P^2.
-                x = self.pairwise_lv_fts(x.unsqueeze(-1), pairwise_x)
-                if self.remove_self_pair:
-                    diag = torch.arange(0, seq_len, device=x.device)
-                    x[:, :, diag, diag] = 0
-                x = x.view(-1, self.pairwise_lv_dim, seq_len * seq_len)
-                if uu is not None:
-                    uu = uu.view(-1, self.pairwise_input_dim, seq_len * seq_len)
-            elif self.is_symmetric and not self.for_onnx:
+            if self.is_symmetric and not self.for_onnx:
                 i, j = torch.tril_indices(seq_len, seq_len, offset=-1 if self.remove_self_pair else 0,
                                           device=(x if x is not None else uu).device)
                 if x is not None:
@@ -420,96 +431,18 @@ class PairEmbed(nn.Module):
             else:
                 elements = self.embed(x) + self.fts_embed(uu)
 
-        if self.is_symmetric and not self.for_onnx and pairwise_x is None:
+        if self.is_symmetric and not self.for_onnx:
             y = torch.zeros(batch_size, self.out_dim, seq_len, seq_len, dtype=elements.dtype, device=elements.device)
             y[:, :, i, j] = elements
             y[:, :, j, i] = elements
         else:
             y = elements.view(-1, self.out_dim, seq_len, seq_len)
 
-        # Create padded tensor with zeros for CLS position
+        # pad for the prepended CLS token: CLS-CLS / CLS-particle / particle-CLS = 0
         y_padded = torch.zeros(batch_size, self.out_dim, seq_len + 1, seq_len + 1,
-                          dtype=y.dtype, device=y.device)
-        # Fill in the particle-particle interactions (indices 1:, 1:)
+                               dtype=y.dtype, device=y.device)
         y_padded[:, :, 1:, 1:] = y
-        # CLS-to-CLS, CLS-to-particle, particle-to-CLS remain zero (no physical info)
-
-        return y_padded
-
-
-class Block(nn.Module):
-    def __init__(self, embed_dim=128, num_heads=8, ffn_ratio=4,
-                 dropout=0.1, attn_dropout=0.1, activation_dropout=0.1,
-                 add_bias_kv=False, activation='gelu',
-                 scale_fc=True, scale_attn=True, scale_heads=True, scale_resids=True):
-        super().__init__()
-
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-        self.ffn_dim = embed_dim * ffn_ratio
-
-        self.pre_attn_norm = nn.LayerNorm(embed_dim)
-        self.attn = nn.MultiheadAttention(
-            embed_dim,
-            num_heads,
-            dropout=attn_dropout,
-            add_bias_kv=add_bias_kv,
-        )
-        self.post_attn_norm = nn.LayerNorm(embed_dim) if scale_attn else None
-        self.dropout = nn.Dropout(dropout)
-
-        self.pre_fc_norm = nn.LayerNorm(embed_dim)
-        self.fc1 = nn.Linear(embed_dim, self.ffn_dim)
-        self.act = nn.GELU() if activation == 'gelu' else nn.ReLU()
-        self.act_dropout = nn.Dropout(activation_dropout)
-        self.post_fc_norm = nn.LayerNorm(self.ffn_dim) if scale_fc else None
-        self.fc2 = nn.Linear(self.ffn_dim, embed_dim)
-
-        self.c_attn = nn.Parameter(torch.ones(num_heads), requires_grad=True) if scale_heads else None
-        self.w_resid = nn.Parameter(torch.ones(embed_dim), requires_grad=True) if scale_resids else None
-
-    def forward(self, x, padding_mask=None, attn_mask=None):
-        """
-        Args:
-            x (Tensor): input to the layer of shape `(seq_len, batch, embed_dim)`
-            padding_mask (ByteTensor, optional): binary
-                ByteTensor of shape `(batch, seq_len)` where padding
-                elements are indicated by ``1``.
-
-        Returns:
-            encoded output of shape `(seq_len, batch, embed_dim)`
-        """
-
-
-        residual = x
-        x = self.pre_attn_norm(x)
-        x = self.attn(x, x, x, key_padding_mask=padding_mask,
-                          attn_mask=attn_mask)[0]  # (seq_len, batch, embed_dim)
-
-        if self.c_attn is not None:
-            tgt_len = x.size(0)
-            x = x.view(tgt_len, -1, self.num_heads, self.head_dim)
-            x = torch.einsum('tbhd,h->tbdh', x, self.c_attn)
-            x = x.reshape(tgt_len, -1, self.embed_dim)
-        if self.post_attn_norm is not None:
-            x = self.post_attn_norm(x)
-        x = self.dropout(x)
-        x += residual
-
-        residual = x
-        x = self.pre_fc_norm(x)
-        x = self.act(self.fc1(x))
-        x = self.act_dropout(x)
-        if self.post_fc_norm is not None:
-            x = self.post_fc_norm(x)
-        x = self.fc2(x)
-        x = self.dropout(x)
-        if self.w_resid is not None:
-            residual = torch.mul(self.w_resid, residual)
-        x += residual
-
-        return x
+        return y_padded  # (batch, out_dim=num_heads, P+1, P+1)
 
 
 def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
@@ -568,6 +501,8 @@ class ParticleNetParTGraphTrans(nn.Module):
     def __init__(self,
                  input_dim,
                  num_classes=None,
+                 hidden_reps_list=None,   # per-edge-conv input reps, e.g. ["7x0n","32x0n+8x1n",...]
+                 attn_reps="8x0n+2x1n",   # per-head transformer rep; embed_dim = attn_reps.dim * num_heads
                  use_input_concat=True, #change to false if ablation implies so
                  conv_params=[(7, (32, 32, 32)), (7, (64, 64, 64))],
 
@@ -576,7 +511,6 @@ class ParticleNetParTGraphTrans(nn.Module):
                  pair_extra_dim=0,
                  remove_self_pair=False,
                  use_pre_activation_pair=True,
-                 embed_dims=[128],  # transformer width; only embed_dims[-1] is used (no input-embedding MLP, the GNN+bridge replaces it)
                  pair_embed_dims=[64, 64, 64],
                  num_heads=8,
                  num_layers=8,
@@ -600,17 +534,30 @@ class ParticleNetParTGraphTrans(nn.Module):
         if self.use_fts_bn:
             self.bn_fts = nn.BatchNorm1d(input_dim)
 
+        # --- GNN: tensorial EdgeConv stack (LLoCa change_local_frame) ---
+        # hidden_reps_list[i] types edge_conv[i]'s input features so the neighbours can be
+        # transported into the centre frame. A None entry (or None list) falls back to the
+        # pure-scalar rep of the right width, for which the transport is the identity (i.e.
+        # the original non-tensorial EdgeConv) -- useful for layer 0 whose input_dim is set
+        # by the wrapper. Deeper entries should carry >=1 vector to communicate geometry.
+        if hidden_reps_list is None:
+            hidden_reps_list = [None] * len(conv_params)
+        assert len(hidden_reps_list) == len(conv_params)
         self.edge_convs = nn.ModuleList()
         for idx, layer_param in enumerate(conv_params):
             k, channels = layer_param
-            in_feat = input_dim if idx == 0 else conv_params[idx - 1][1][-1]
-            self.edge_convs.append(EdgeConvBlock(k=k, in_feat=in_feat, out_feats=channels, cpu_mode=for_inference))
-
+            expected = input_dim if idx == 0 else conv_params[idx - 1][1][-1]
+            in_reps = hidden_reps_list[idx]
+            if in_reps is None:
+                in_reps = expected  # pure-scalar fallback (int -> "<expected>x0n")
+            reps_dim = (TensorReps(f"{in_reps}x0n") if isinstance(in_reps, int) else TensorReps(in_reps)).dim
+            assert reps_dim == expected, f"hidden_reps_list[{idx}].dim={reps_dim} != expected {expected}"
+            self.edge_convs.append(EdgeConvBlock(k=k, in_reps=in_reps, out_feats=channels, cpu_mode=for_inference))
 
         self.use_fusion = use_fusion
         if self.use_fusion:
             in_chn = sum(x[-1] for _, x in conv_params)
-            out_chn = np.clip((in_chn // 128) * 128, 128, 1024)
+            out_chn = int(np.clip((in_chn // 128) * 128, 128, 1024))
             self.fusion_block = nn.Sequential(nn.Conv1d(in_chn, out_chn, kernel_size=1, bias=False), nn.BatchNorm1d(out_chn), nn.ReLU())
         else:
             out_chn = conv_params[-1][-1][-1] #if no fusion, output dimension of gnn is the last edgeconv block's
@@ -619,11 +566,16 @@ class ParticleNetParTGraphTrans(nn.Module):
         self.for_inference = for_inference
         self.use_amp = use_amp
 
-        embed_dim = embed_dims[-1] if len(embed_dims) > 0 else input_dim
-
         self.knn_metric = knn_metric
         if knn_metric not in ('deltaR', 'minkowski'):
             raise ValueError(f"knn_metric must be 'deltaR' or 'minkowski', got '{knn_metric}'")
+
+        # --- transformer: LLoCa tensorial attention (transports q/k/v between frames) ---
+        self.attn_reps = TensorReps(attn_reps)
+        embed_dim = self.attn_reps.dim * num_heads
+        self.num_heads = num_heads
+        self.head_dim = self.attn_reps.dim
+        self.attention = LLoCaAttention(self.attn_reps, num_heads)
 
         bridge_in_dim = out_chn + input_dim if use_input_concat else out_chn
         self.bridge = nn.Linear(bridge_in_dim, embed_dim)
@@ -631,7 +583,7 @@ class ParticleNetParTGraphTrans(nn.Module):
 
         default_cfg = dict(embed_dim=embed_dim, num_heads=num_heads, ffn_ratio=4,
                            dropout=0.1, attn_dropout=0.1, activation_dropout=0.1,
-                           add_bias_kv=False, activation=activation,
+                           activation=activation,
                            scale_fc=True, scale_attn=True, scale_heads=True, scale_resids=True)
 
         cfg_block = copy.deepcopy(default_cfg)
@@ -639,16 +591,17 @@ class ParticleNetParTGraphTrans(nn.Module):
             cfg_block.update(block_params)
         _logger.info('cfg_block: %s' % str(cfg_block))
 
-
         self.pair_extra_dim = pair_extra_dim
         # `bias` toggles the pairwise additive attention bias: when False, no
         # PairEmbed is built and the transformer runs without interaction features.
-        #self.embed = Embed(input_dim, embed_dims, activation=activation) if len(embed_dims) > 0 else nn.Identity() | No Direct Embedding algo for input (GNN used)
         self.pair_embed = PairEmbed(
-            pair_input_dim, pair_extra_dim, pair_embed_dims + [cfg_block['num_heads']],
+            pair_input_dim, pair_extra_dim, pair_embed_dims + [num_heads],
             remove_self_pair=remove_self_pair, use_pre_activation_pair=use_pre_activation_pair,
             for_onnx=for_inference) if bias and pair_embed_dims is not None and pair_input_dim + pair_extra_dim > 0 else None
-        self.blocks = nn.ModuleList([Block(**cfg_block) for _ in range(num_layers)])
+        # The class token is prepended to the particle sequence and goes through every
+        # (tensorial) block, GraphTrans-style; it occupies the covariant jet-frame slot in
+        # the per-token frames so the readout token stays Lorentz-invariant.
+        self.blocks = nn.ModuleList([LLoCaBlock(attention=self.attention, **cfg_block) for _ in range(num_layers)])
         self.norm = nn.LayerNorm(embed_dim)
 
         if fc_params is not None:
@@ -670,84 +623,92 @@ class ParticleNetParTGraphTrans(nn.Module):
     def no_weight_decay(self):
         return {'cls_token', }
 
-    def forward(self, points, features, v=None, mask=None, uu=None, uu_idx=None, pairwise_v=None):
+    def forward(self, points, features, v=None, frames=None, mask=None, uu=None, uu_idx=None, cls_frames=None):
 
         '''
-        Points: (N, 2, P)
-        Features: (N, C, P)
-        Vectors: (N, 4, P) [px,py,pz,energy]
-        Mask: (N, 1, P)
-        pairwise_v: (N, 4, P, P) or None. When given, entry [n,:,i,j] is neighbour j's
-            four-momentum transported into centre i's local frame (active LLoCa). The
-            PairEmbed then builds an asymmetric all-pairs interaction from it instead of
-            the symmetric tril over the shared global momenta. None -> original behaviour.
+        points:   (B, 2, P)   kNN coordinates (eta, phi)
+        features: (B, C, P)   canonicalized scalar features
+        v:        (B, 4, P)   local four-momenta (px, py, pz, E)
+        frames:   Frames with matrices (B, P, 4, 4) -- the per-particle local frames
+        mask:     (B, 1, P)   1 for real particles, 0 for padding
+        cls_frames: Frames (B, 4, 4) -- the covariant jet frame for the prepended CLS
+                    token's slot. A prepended token going through the tensorial blocks
+                    must live in a covariant frame to stay Lorentz-invariant; the jet
+                    frame is that frame. None falls back to identity (e.g. IdentityFrames,
+                    where everything is identity anyway).
         '''
 
         if mask is None:
-            mask = (features.abs().sum(dim=1, keepdim=True) != 0)  # (N, 1, P)
+            mask = (features.abs().sum(dim=1, keepdim=True) != 0)  # (B, 1, P)
         else:
-            mask=mask.bool()
+            mask = mask.bool()
 
-        points *= mask
-        features *= mask
+        points = points * mask
+        features = features * mask
         coord_shift = (mask == 0) * 1e9
+        B, _, P = features.size()
 
-        with torch.no_grad(): #extra pairwise feature handling
-            if not self.for_inference:
-                if uu_idx is not None:
-                    # Rebuild dense (N, C', P, P)
-                    uu = build_sparse_tensor(uu, uu_idx, features.size(-1))
+        # per-particle frames flattened (B*P, 4, 4) for the EdgeConv change_local_frame
+        frames_flat = frames.reshape(-1, 4, 4) if frames is not None else None
+
+        with torch.no_grad():  # extra pairwise feature handling
+            if not self.for_inference and uu_idx is not None:
+                uu = build_sparse_tensor(uu, uu_idx, P)  # rebuild dense (B, C', P, P)
 
         with torch.cuda.amp.autocast(enabled=self.use_amp):
-            if self.use_fts_bn:
-                fts = self.bn_fts(features) * mask
-            else:
-                fts = features
-            mask_knn = mask.squeeze(1)  # (N, P): padded particles excluded from the kNN
+            fts = self.bn_fts(features) * mask if self.use_fts_bn else features
+            mask_knn = mask.squeeze(1)  # (B, P): padded particles excluded from the kNN
             outputs = []
             for idx, conv in enumerate(self.edge_convs):
                 # first layer: static graph from the input geometry (eta-phi or, for
-                # 'minkowski', the four-momenta); deeper layers: dynamic feature graph
+                # 'minkowski', the four-momenta); deeper layers: dynamic feature graph.
+                # frames_flat drives the tensorial transport of neighbours into the centre.
                 if idx == 0 and self.knn_metric == 'minkowski' and v is not None:
                     pts, metric = v + coord_shift, 'minkowski'
                 else:
                     pts, metric = (points if idx == 0 else fts) + coord_shift, 'deltaR'
-                fts = conv(pts, fts, knn_metric=metric, mask=mask_knn) * mask
+                fts = conv(pts, fts, frames=frames_flat, knn_metric=metric, mask=mask_knn) * mask
                 if self.use_fusion:
                     outputs.append(fts)
             if self.use_fusion:
                 fts = self.fusion_block(torch.cat(outputs, dim=1)) * mask
-    #---
-            if self.use_input_concat:
-                bridge_in = torch.cat([fts, features], dim=1)
-            else:
-                bridge_in = fts
 
-            #linear projection
-            x=bridge_in.permute(0,2,1) # (N, P, in_dim)
-            x=self.bridge_norm(self.bridge(x))
-
-            x = x.permute(1, 0, 2).contiguous()  # (P, N, embed_dim)
+            bridge_in = torch.cat([fts, features], dim=1) if self.use_input_concat else fts
+            x = bridge_in.permute(0, 2, 1)                  # (B, P, in_dim)
+            x = self.bridge_norm(self.bridge(x))            # (B, P, embed_dim)
 
             attn_mask = None
             if (v is not None or uu is not None) and self.pair_embed is not None:
-                #pair embed internally pads for CLS
-                attn_mask = self.pair_embed(v, uu, pairwise_x=pairwise_v).view(-1, v.size(-1)+1, v.size(-1)+1)  # (N, num_heads, P+1, P+1)
+                attn_mask = self.pair_embed(v, uu)          # (B, num_heads, P+1, P+1)
 
-            #prepend CLS token
-            cls = self.cls_token.expand(1, x.size(1), -1)
-            x= torch.cat([cls, x], dim=0)
+            # prepend the class token, then run the tensorial blocks over [CLS, particles]
+            cls = self.cls_token.expand(B, 1, -1)
+            x = torch.cat([cls, x], dim=1)                  # (B, P+1, embed_dim)
 
+            pad = ~mask.squeeze(1)                          # (B, P), True = padded
+            padding_mask = torch.cat([torch.zeros_like(pad[:, :1]), pad], dim=1)  # CLS valid
 
-            pad = ~mask.squeeze(1)  # (N,P)
-            # CLS is always valid
-            padding_mask = torch.cat([torch.zeros_like(pad[:, :1], dtype=torch.bool), pad], dim=1)
-
+            # per-token frames including the CLS slot (the covariant jet frame, so the
+            # prepended token stays invariant); LLoCaAttention transports every token.
+            if frames is not None:
+                if cls_frames is not None:
+                    cls_mat = cls_frames.matrices.to(frames.dtype)
+                    cls_is_id = cls_frames.is_identity
+                else:
+                    cls_mat = lorentz_eye((B,), device=frames.device, dtype=frames.dtype)
+                    cls_is_id = True
+                seq_mat = torch.cat([cls_mat.unsqueeze(1), frames.matrices], dim=1)  # (B, P+1, 4, 4)
+                frames_seq = Frames(
+                    seq_mat,
+                    is_global=frames.is_global and cls_is_id,
+                    is_identity=frames.is_identity and cls_is_id,
+                )
+                self.attention.prepare_frames(frames_seq)
 
             for block in self.blocks:
-                x = block(x, padding_mask=padding_mask, attn_mask=attn_mask)
+                x = block(x, x_cls=None, padding_mask=padding_mask, attn_mask=attn_mask)
 
-            x_cls = self.norm(x[0]) #is a norm necessary here? it shows up in ParT but ParT's class token is used only in the final 2 blocks to aggregate and so needs to be normalized, but this doesn't appear to be the case in GraphTrans?
+            x_cls = self.norm(x[:, 0])
 
             if self.fc is None:
                 return x_cls
