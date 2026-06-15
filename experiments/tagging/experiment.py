@@ -1,3 +1,4 @@
+import json
 import os
 import time
 
@@ -45,7 +46,7 @@ class TaggingExperiment(BaseExperiment):
                 self.cfg.model.net.in_s_channels = 0 if self.cfg.model.mean_aggregation else 1
                 self.cfg.model.net.in_s_channels += in_s_channels
             elif modelname == "LorentzNet":
-                self.cfg.model.net.in_s_channels = in_s_channels
+                self.cfg.model.net.n_scalar = in_s_channels
             elif modelname == "PELICAN":
                 self.cfg.model.net.in_channels_rank1 = in_s_channels
             elif modelname == "PELICANOfficial":
@@ -72,10 +73,10 @@ class TaggingExperiment(BaseExperiment):
             "GraphNet",
             "ParticleNet",
             "MIParticleTransformer",
-            "ParticleNetParTGraphTrans"
-            "ParticleNetParTGraphGPS"
-            "PlainGraphTrans"
-            "PlainGraphGPS"
+            "ParticleNetParTGraphTrans",
+            "ParticleNetParTGraphGPS",
+            "PlainGraphTrans",
+            "PlainGraphGPS",
         ]:
             # Non-equivariant or canonicalization
             self.cfg.model.in_channels = 7 + self.extra_scalars
@@ -181,6 +182,12 @@ class TaggingExperiment(BaseExperiment):
         if self.cfg.model.net._target_.rsplit(".", 1)[-1] in [
             "ParticleTransformer",
             "MIParticleTransformer",
+            "ParticleNetParTGraphTrans",
+            "LorentzNetLGATrSlimGraphTrans",
+            "CGENNLGATrGraphTrans",
+            "PlainGraphTrans",
+            "PlainGraphGPS",
+            "ParticleNetParTGraphGPS",
         ]:
             # special treatment for ParT, see
             # https://github.com/hqucms/weaver-core/blob/dev/custom_train_eval/weaver/train.py#L464
@@ -191,7 +198,10 @@ class TaggingExperiment(BaseExperiment):
                 if (
                     len(param.shape) == 1
                     or name.endswith(".bias")
-                    or (hasattr(self.model.net, "no_weight_decay") and name in {"cls_token"})
+                    or (
+                        hasattr(self.model.net, "no_weight_decay")
+                        and name in self.model.net.no_weight_decay()
+                    )
                 ):
                     no_decay[name] = param
                 else:
@@ -307,15 +317,103 @@ class TaggingExperiment(BaseExperiment):
                 log_mlflow(f"{name}.{key}", value, step=step)
 
         if mode == "eval":
+            modelname = type(self.model.net).__name__
             framesString = type(self.model.framesnet).__name__
             num_parameters = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            knn = self._knn_description()
+            flops = self._count_flops(loader)
+            flops_str = f"{flops:.3e}" if flops is not None else "n/a"
 
+            # per-trial scalars; accumulated across run_idx so the table can show
+            # mean +- std error bars when an experiment has several trials/seeds
+            row = {
+                "accuracy": metrics["accuracy"],
+                "auc": metrics["auc"],
+                "rej03": metrics["rej03"],
+                "rej05": metrics["rej05"],
+                "rej08": metrics["rej08"],
+                "train_time": getattr(self, "train_time", None),
+            }
+            rows = self._collect_table_rows(title, row)
+            n_trials = len(rows)
+
+            def cell(key, fmt):
+                vals = [r[key] for r in rows if r.get(key) is not None]
+                if not vals:
+                    return "n/a"
+                if len(vals) == 1:
+                    return format(vals[0], fmt)
+                arr = np.asarray(vals, dtype=float)
+                return f"${format(arr.mean(), fmt)} \\pm {format(arr.std(ddof=1), fmt)}$"
+
+            trials = f" [{n_trials} trials]" if n_trials > 1 else ""
+            # columns: model & frames (iters)[trials] & params & acc & auc & rej03
+            #          & rej05 & rej08 & traintime & flops & knn
             LOGGER.info(
-                f"table {title}: {framesString} ({self.cfg.training.iterations} iterations)"
-                f" & {num_parameters} & {metrics['accuracy']:.4f} & {metrics['auc']:.4f}"
-                f" & {metrics['rej03']:.0f} & {metrics['rej05']:.0f} & {metrics['rej08']:.0f} \\\\"
+                f"table {title}: {modelname} & {framesString}"
+                f" ({self.cfg.training.iterations} iterations){trials}"
+                f" & {num_parameters} & {cell('accuracy', '.4f')} & {cell('auc', '.4f')}"
+                f" & {cell('rej03', '.0f')} & {cell('rej05', '.0f')} & {cell('rej08', '.0f')}"
+                f" & {cell('train_time', '.0f')}s & {flops_str} & {knn} \\\\"
             )
         return metrics
+
+    def _collect_table_rows(self, title, row):
+        """Persist this run's table metrics and return all trials in the run dir.
+
+        Multiple trials/seeds are launched as successive run_idx that share one
+        run directory (warm starts), each a separate process. We accumulate their
+        scalar metrics in a JSON file so the final table reports mean +- std
+        automatically. With save=False (e.g. tests) nothing is written and only
+        the current run is returned.
+        """
+        if not self.cfg.save:
+            return [row]
+        path = os.path.join(self.cfg.run_dir, f"table_metrics_{title}.json")
+        rows = []
+        if os.path.exists(path):
+            try:
+                with open(path) as f:
+                    rows = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                rows = []
+        rows.append(row)
+        try:
+            with open(path, "w") as f:
+                json.dump(rows, f)
+        except OSError as e:
+            LOGGER.warning(f"Could not persist table metrics to {path}: {e}")
+        return rows
+
+    def _knn_description(self):
+        """Short label for the model's kNN graph metric, or '-' if it has none."""
+        net = getattr(self.model, "net", None)
+        metric = getattr(net, "knn_metric", None)
+        if metric is not None:
+            return metric
+        if type(net).__name__ == "ParticleNet":
+            return "deltaR"  # L2 on (eta, phi)
+        return "-"
+
+    @torch.no_grad()
+    def _count_flops(self, loader):
+        """Forward FLOPs for a single jet (batchsize 1), as in test_tag_flops."""
+        try:
+            from torch.utils.flop_counter import FlopCounterMode
+
+            batch = next(iter(loader)).clone().to(self.device)
+            n = int(batch.ptr[1].item())  # keep only the first jet
+            batch.x = batch.x[:n]
+            batch.scalars = batch.scalars[:n]
+            batch.batch = batch.batch[:n]
+            batch.ptr = batch.ptr[:2]
+            batch.label = batch.label[:1]
+            with FlopCounterMode(display=False) as flop_counter:
+                self._get_ypred_and_label(batch)
+            return flop_counter.get_total_flops()
+        except Exception as e:
+            LOGGER.warning(f"FLOPs counting failed: {e}")
+            return None
 
     def plot(self):
         plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")

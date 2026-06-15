@@ -5,6 +5,7 @@ from lloca.framesnet.nonequi_frames import IdentityFrames
 from lloca.reps.tensorreps import TensorReps
 from lloca.reps.tensorreps_transform import TensorRepsTransform
 from lloca.utils.lorentz import lorentz_eye
+from lloca.utils.orthogonalize_4d import orthogonalize_4d
 from lloca.utils.utils import (
     get_batch_from_ptr,
     get_edge_attr,
@@ -33,6 +34,35 @@ class TaggerWrapper(nn.Module):
         self.add_fourmomenta_backbone = add_fourmomenta_backbone
         self.framesnet = framesnet
         self.trafo_fourmomenta = TensorRepsTransform(TensorReps("1x1n"))
+        # subclasses that need a single covariant per-event frame (e.g. for a prepended
+        # readout token in a tensorial backbone) set this; forward then fills _jet_frames.
+        self.compute_jet_frames = False
+        self._jet_frames = None
+
+    def jet_frames(self, fourmomenta, scalars, ptr):
+        """A single covariant frame per event: the boost into the jet rest frame.
+
+        orthogonalize_4d makes the first of its three reference vectors the timelike axis,
+        so we pass the jet four-momentum (the sum of the particle four-momenta) as that
+        first vector -- the frame's time axis is then the jet direction (its rest frame).
+        The two remaining axes (the spatial orientation, which a single momentum leaves
+        undetermined) are fixed covariantly by the framesnet's per-particle equivariant
+        reference vectors, averaged over the event. All inputs are covariant, so the frame
+        is covariant and the readout stays Lorentz-invariant. Returns Frames (B, 4, 4), or
+        None for a non-learned (identity) framesnet.
+        """
+        fn = self.framesnet
+        if not hasattr(fn, "equivectors"):
+            return None  # IdentityFrames etc. -> identity readout frame (handled downstream)
+        batch = get_batch_from_ptr(ptr)
+        jet_p = scatter(fourmomenta, batch, dim=0, reduce="sum")  # (B, 4): jet four-momentum
+        jet_p = fn.mass_regularize(jet_p)
+        vecs = fn.equivectors(fn.mass_regularize(fourmomenta), scalars=scalars, ptr=ptr)
+        vecs = scatter(vecs, batch, dim=0, reduce="mean")  # (B, n_vectors, 4) per event
+        # time axis = jet momentum; spatial orientation from the (covariant) equivectors
+        vecs = torch.cat([jet_p.unsqueeze(1), vecs[:, :2]], dim=1)  # (B, 3, 4)
+        trafo = orthogonalize_4d(vecs, **fn.ortho_kwargs)  # (B, 4, 4)
+        return Frames(trafo.to(fourmomenta.dtype))
 
     def init_standardization(self, fourmomenta, ptr, reduce_size=None):
         # framesnet equivectors edge_attr standardization (if applicable)
@@ -84,6 +114,14 @@ class TaggerWrapper(nn.Module):
             dtype=frames_spurions.dtype,
             shape=matrices.shape,
         )
+
+        # optional single covariant per-event (jet) frame, from the real particles only
+        if self.compute_jet_frames:
+            self._jet_frames = self.jet_frames(
+                fourmomenta_nospurions,
+                scalars_withspurions.index_select(0, nospurion_idxs),
+                ptr_nospurions,
+            )
 
         # transform features into local frames
         fourmomenta_local_nospurions = self.trafo_fourmomenta(
@@ -889,6 +927,389 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
             points,
         )
         return output, {}, None
+
+
+class CGENNLGATrGraphGPSWrapper(nn.Module):
+    """Wrapper for the equivariant CGENN-L-GATr GraphGPS hybrid.
+
+    Equivariant by construction (CGENN + L-GATr, symmetry broken only by the model's
+    own input spurions), so no LLoCa canonicalization: inherits nn.Module with the
+    identity framesnet, exactly like CGENNLGATrGraphTransWrapper. Drops the token
+    spurions (the model injects its own as mv channels), rescales by 1/20, and keeps
+    the time-first (E, px, py, pz) convention (no reorder).
+    """
+
+    def __init__(self, net, framesnet, out_channels):
+        super().__init__()
+        self.net = net(num_classes=out_channels)
+        self.framesnet = framesnet  # not actually used
+        assert isinstance(framesnet, IdentityFrames)
+
+    def forward(self, embedding):
+        fourmomenta = embedding["fourmomenta"]                 # (E, px, py, pz), incl. spurions
+        scalars = torch.cat([embedding["scalars"], embedding["tagging_features"]], dim=-1)
+        batch = embedding["batch"]
+        is_spurion = embedding["is_spurion"]
+        keep = ~is_spurion                                     # channel-spurions in model: drop the tokens
+        fourmomenta = fourmomenta[keep]
+        scalars = scalars[keep]
+        batch = batch[keep]
+        fourmomenta = (fourmomenta / 20).to(scalars.dtype)     # match the equivariant baselines; NO reorder
+        px, py, pz = fourmomenta[:, 1], fourmomenta[:, 2], fourmomenta[:, 3]   # (E, px, py, pz)
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+        fourmomenta, mask = to_dense_batch(fourmomenta, batch)
+        scalars, _ = to_dense_batch(scalars, batch)
+        points, _ = to_dense_batch(points, batch)
+        output = self.net(
+            scalars,
+            fourmomenta,
+            mask,
+            points,
+        )
+        return output, {}, None
+
+
+class ParticleNetParTGraphTransWrapper(TaggerWrapper):
+    """Wrapper for the ParticleNet-ParT graph-transformer hybrid.
+
+    Like ParTWrapper / ParticleNetWrapper, this is a non-equivariant backbone
+    that is made Lorentz-equivariant through LLoCa input canonicalization:
+    TaggerWrapper expresses every particle in its learned local frame, and the
+    (frame-agnostic) backbone then operates on those canonicalized features. With
+    IdentityFrames this reduces to the plain baseline in the global frame, and any
+    learned framesnet is supported through the shared TaggerWrapper machinery.
+
+    The backbone differs from the rest of the repo only in its conventions: it is
+    channels-first (N, C, P), expects four-momenta as (px, py, pz, E) rather than
+    (E, px, py, pz), and takes a (N, 1, P) mask. It additionally needs (eta, phi)
+    points for the EdgeConv kNN, which we read off the local four-momenta.
+    """
+
+    def __init__(self, net, *args, use_amp=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_amp = use_amp
+        self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+        # the prepended class token rides in the covariant jet frame -> request it
+        self.compute_jet_frames = True
+
+    def forward(self, embedding):
+        (
+            features_local,
+            fourmomenta_local,
+            frames,
+            _,
+            batch,
+            tracker,
+        ) = super().forward(embedding)
+        fourmomenta_local = fourmomenta_local.to(features_local.dtype)
+        fourmomenta_local = fourmomenta_local[..., [1, 2, 3, 0]]  # need (px, py, pz, E)
+
+        # (eta, phi) points for the EdgeConv kNN, read off the local four-momenta
+        px, py, pz = (
+            fourmomenta_local[..., 0],
+            fourmomenta_local[..., 1],
+            fourmomenta_local[..., 2],
+        )
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+
+        features_local, mask = to_dense_batch(features_local, batch)
+        fourmomenta_local, _ = to_dense_batch(fourmomenta_local, batch)
+        points, _ = to_dense_batch(points, batch)
+        features_local = features_local.transpose(1, 2).contiguous()  # (B, C, P)
+        fourmomenta_local = fourmomenta_local.transpose(1, 2).contiguous()  # (B, 4, P)
+        points = points.transpose(1, 2).contiguous()  # (B, 2, P)
+
+        # densify the per-particle local frames to (B, P, 4, 4); padded particles get the
+        # identity frame (they are masked out of the kNN and attention anyway). The
+        # tensorial backbone transports neighbours/q-k-v between these frames (LLoCa).
+        frames_matrices, _ = to_dense_batch(frames.matrices, batch)
+        frames_matrices[~mask] = lorentz_eye(
+            frames_matrices[~mask].shape[:-2], device=frames.device, dtype=frames.dtype
+        )
+        dense_frames = Frames(
+            matrices=frames_matrices,
+            is_global=frames.is_global,
+            is_identity=frames.is_identity,
+        )
+        mask = mask.unsqueeze(1).float()  # (B, 1, P)
+
+        # the backbone handles AMP internally via use_amp. cls_frames is the covariant
+        # jet frame for the prepended class token (None for IdentityFrames -> identity slot).
+        score = self.net(
+            points=points,
+            features=features_local,
+            v=fourmomenta_local,
+            frames=dense_frames,
+            mask=mask,
+            cls_frames=self._jet_frames,
+        )
+        return score, tracker, frames
+
+
+class LorentzNetLGATrSlimGraphTransWrapper(nn.Module):
+    """Wrapper for the internally-equivariant LorentzNet -> L-GATr-slim hybrid.
+
+    Like CGENNLGATrGraphTransWrapper, the backbone is Lorentz-equivariant by
+    construction (LorentzNet GNN + L-GATr-slim, with symmetry broken only by its
+    own input-stage spurions), so no LLoCa canonicalization is applied and the
+    framesnet must be the identity -- hence we inherit nn.Module directly.
+
+    The backbone differs from the rest of the repo only in conventions: it is
+    channels-first (N, C, P), expects four-momenta as (px, py, pz, E) rather than
+    (E, px, py, pz), takes a (N, 1, P) mask, and uses (eta, phi) points only when
+    knn_metric='deltaR'.
+    """
+
+    def __init__(self, net, framesnet, out_channels):
+        super().__init__()
+        self.net = net(num_classes=out_channels)
+        self.framesnet = framesnet  # not actually used
+        assert isinstance(framesnet, IdentityFrames)
+
+    def forward(self, embedding):
+        fourmomenta = embedding["fourmomenta"]  # (E, px, py, pz), incl. spurions
+        scalars = torch.cat([embedding["scalars"], embedding["tagging_features"]], dim=-1)
+        batch = embedding["batch"]
+        is_spurion = embedding["is_spurion"]
+
+        # the model injects its own input-stage spurions: drop the token spurions
+        keep = ~is_spurion
+        fourmomenta = fourmomenta[keep]
+        scalars = scalars[keep]
+        batch = batch[keep]
+
+        # match the scale of the other equivariant baselines
+        fourmomenta = (fourmomenta / 20).to(scalars.dtype)
+
+        # (eta, phi) points for the deltaR kNN option (ignored for minkowski)
+        px, py, pz = fourmomenta[:, 1], fourmomenta[:, 2], fourmomenta[:, 3]
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+
+        # the model expects four-momenta as (px, py, pz, E)
+        fourmomenta = fourmomenta[:, [1, 2, 3, 0]]
+
+        # densify and switch to the (N, C, P) channels-first convention
+        fourmomenta, mask = to_dense_batch(fourmomenta, batch)  # (B, P, 4), (B, P)
+        scalars, _ = to_dense_batch(scalars, batch)  # (B, P, C)
+        points, _ = to_dense_batch(points, batch)  # (B, P, 2)
+
+        output = self.net(
+            scalars.transpose(1, 2).contiguous(),  # x: (B, C, P)
+            fourmomenta.transpose(1, 2).contiguous(),  # v: (B, 4, P)
+            mask.unsqueeze(1),  # (B, 1, P)
+            points.transpose(1, 2).contiguous(),  # (B, 2, P)
+        )
+        return output, {}, None
+
+
+class LorentzNetLGATrSlimGraphGPSWrapper(nn.Module):
+    """Wrapper for the equivariant LorentzNet-L-GATr-slim GraphGPS hybrid.
+
+    Equivariant by construction (broken only by the model's own input spurions),
+    so no LLoCa canonicalization: inherits nn.Module + identity framesnet, exactly
+    like LorentzNetLGATrSlimGraphTransWrapper. Drops the token spurions, rescales
+    by 1/20, and reorders four-momenta to the (px, py, pz, E) the model expects.
+    """
+
+    def __init__(self, net, framesnet, out_channels):
+        super().__init__()
+        self.net = net(num_classes=out_channels)
+        self.framesnet = framesnet  # not actually used
+        assert isinstance(framesnet, IdentityFrames)
+
+    def forward(self, embedding):
+        fourmomenta = embedding["fourmomenta"]  # (E, px, py, pz), incl. spurions
+        scalars = torch.cat([embedding["scalars"], embedding["tagging_features"]], dim=-1)
+        batch = embedding["batch"]
+        is_spurion = embedding["is_spurion"]
+
+        # the model injects its own input-stage spurions: drop the token spurions
+        keep = ~is_spurion
+        fourmomenta = fourmomenta[keep]
+        scalars = scalars[keep]
+        batch = batch[keep]
+
+        # match the scale of the other equivariant baselines
+        fourmomenta = (fourmomenta / 20).to(scalars.dtype)
+
+        # (eta, phi) points for the deltaR kNN option (ignored for minkowski)
+        px, py, pz = fourmomenta[:, 1], fourmomenta[:, 2], fourmomenta[:, 3]
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+
+        # the model expects four-momenta as (px, py, pz, E)
+        fourmomenta = fourmomenta[:, [1, 2, 3, 0]]
+
+        # densify and switch to the (N, C, P) channels-first convention
+        fourmomenta, mask = to_dense_batch(fourmomenta, batch)  # (B, P, 4), (B, P)
+        scalars, _ = to_dense_batch(scalars, batch)  # (B, P, C)
+        points, _ = to_dense_batch(points, batch)  # (B, P, 2)
+
+        output = self.net(
+            scalars.transpose(1, 2).contiguous(),  # x: (B, C, P)
+            fourmomenta.transpose(1, 2).contiguous(),  # v: (B, 4, P)
+            mask.unsqueeze(1),  # (B, 1, P)
+            points.transpose(1, 2).contiguous(),  # (B, 2, P)
+        )
+        return output, {}, None
+
+
+class PlainGraphTransWrapper(TaggerWrapper):
+    """Wrapper for the plain graph-transformer (static MPNN + torch-MHA encoder).
+
+    Non-equivariant, made Lorentz-equivariant by LLoCa input canonicalization,
+    exactly like ParTWrapper / ParticleNetParTGraphTransWrapper: channels-first
+    (N, C, P), four-momenta as (px, py, pz, E), a (N, 1, P) mask, and (eta, phi)
+    points for the deltaR kNN.
+    """
+
+    def __init__(self, net, *args, use_amp=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_amp = use_amp
+        self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+
+    def forward(self, embedding):
+        (
+            features_local,
+            fourmomenta_local,
+            frames,
+            _,
+            batch,
+            tracker,
+        ) = super().forward(embedding)
+        fourmomenta_local = fourmomenta_local.to(features_local.dtype)
+        fourmomenta_local = fourmomenta_local[..., [1, 2, 3, 0]]  # need (px, py, pz, E)
+
+        px, py, pz = (
+            fourmomenta_local[..., 0],
+            fourmomenta_local[..., 1],
+            fourmomenta_local[..., 2],
+        )
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+
+        features_local, mask = to_dense_batch(features_local, batch)
+        fourmomenta_local, _ = to_dense_batch(fourmomenta_local, batch)
+        points, _ = to_dense_batch(points, batch)
+
+        score = self.net(
+            points=points.transpose(1, 2).contiguous(),  # (B, 2, P)
+            features=features_local.transpose(1, 2).contiguous(),  # (B, C, P)
+            v=fourmomenta_local.transpose(1, 2).contiguous(),  # (B, 4, P)
+            mask=mask.unsqueeze(1).float(),  # (B, 1, P)
+        )
+        return score, tracker, frames
+
+
+class PlainGraphGPSWrapper(TaggerWrapper):
+    """Wrapper for the plain GraphGPS hybrid (interleaved static-MPNN + torch-MHA).
+
+    Non-equivariant, made Lorentz-equivariant by LLoCa input canonicalization,
+    exactly like PlainGraphTransWrapper: channels-first (N, C, P), four-momenta as
+    (px, py, pz, E), a (N, 1, P) mask, and (eta, phi) points for the deltaR kNN.
+    """
+
+    def __init__(self, net, *args, use_amp=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_amp = use_amp
+        self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+
+    def forward(self, embedding):
+        (
+            features_local,
+            fourmomenta_local,
+            frames,
+            _,
+            batch,
+            tracker,
+        ) = super().forward(embedding)
+        fourmomenta_local = fourmomenta_local.to(features_local.dtype)
+        fourmomenta_local = fourmomenta_local[..., [1, 2, 3, 0]]  # need (px, py, pz, E)
+
+        px, py, pz = (
+            fourmomenta_local[..., 0],
+            fourmomenta_local[..., 1],
+            fourmomenta_local[..., 2],
+        )
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+
+        features_local, mask = to_dense_batch(features_local, batch)
+        fourmomenta_local, _ = to_dense_batch(fourmomenta_local, batch)
+        points, _ = to_dense_batch(points, batch)
+
+        score = self.net(
+            points=points.transpose(1, 2).contiguous(),  # (B, 2, P)
+            features=features_local.transpose(1, 2).contiguous(),  # (B, C, P)
+            v=fourmomenta_local.transpose(1, 2).contiguous(),  # (B, 4, P)
+            mask=mask.unsqueeze(1).float(),  # (B, 1, P)
+        )
+        return score, tracker, frames
+
+
+class ParticleNetParTGraphGPSWrapper(TaggerWrapper):
+    """Wrapper for the ParticleNet-ParT GraphGPS hybrid (tensorial EdgeConv + ParT attn).
+
+    Lorentz-equivariant by LLoCa tensorial message-passing (matching the library): the
+    inputs are canonicalized and the per-particle frames are passed into the backbone,
+    which transports neighbours (EdgeConv) and q/k/v (attention) between frames. Like the
+    GraphTrans wrapper it is channels-first (N, C, P), four-momenta as (px, py, pz, E), a
+    (N, 1, P) mask, and (eta, phi) points seeding the layer-0 deltaR kNN. No jet frame is
+    needed -- the mean-pool readout over invariant local features is already invariant.
+    """
+
+    def __init__(self, net, *args, use_amp=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_amp = use_amp
+        self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+
+    def forward(self, embedding):
+        (
+            features_local,
+            fourmomenta_local,
+            frames,
+            _,
+            batch,
+            tracker,
+        ) = super().forward(embedding)
+        fourmomenta_local = fourmomenta_local.to(features_local.dtype)
+        fourmomenta_local = fourmomenta_local[..., [1, 2, 3, 0]]  # need (px, py, pz, E)
+
+        px, py, pz = (
+            fourmomenta_local[..., 0],
+            fourmomenta_local[..., 1],
+            fourmomenta_local[..., 2],
+        )
+        pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
+        points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
+
+        features_local, mask = to_dense_batch(features_local, batch)
+        fourmomenta_local, _ = to_dense_batch(fourmomenta_local, batch)
+        points, _ = to_dense_batch(points, batch)
+
+        # densify the per-particle local frames to (B, P, 4, 4); padded particles -> identity
+        frames_matrices, _ = to_dense_batch(frames.matrices, batch)
+        frames_matrices[~mask] = lorentz_eye(
+            frames_matrices[~mask].shape[:-2], device=frames.device, dtype=frames.dtype
+        )
+        dense_frames = Frames(
+            matrices=frames_matrices,
+            is_global=frames.is_global,
+            is_identity=frames.is_identity,
+        )
+
+        score = self.net(
+            points=points.transpose(1, 2).contiguous(),  # (B, 2, P)
+            features=features_local.transpose(1, 2).contiguous(),  # (B, C, P)
+            v=fourmomenta_local.transpose(1, 2).contiguous(),  # (B, 4, P)
+            frames=dense_frames,
+            mask=mask.unsqueeze(1).float(),  # (B, 1, P)
+        )
+        return score, tracker, frames
+
 
 def compile_flex_attention(package_name="lgatr"):
     """Run torch.compile on the flex_attention function.

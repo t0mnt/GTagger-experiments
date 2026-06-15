@@ -1,0 +1,34 @@
+_target_: experiments.tagging.wrappers.LorentzNetLGATrSlimGraphTransWrapper
+out_channels: null              # init_physics -> num_outputs
+
+net:
+  _target_: experiments.baselines.lorentznetlgatrslimgraphtrans.LorentzNetLGATrSlimGraphTrans
+  _partial_: true
+  in_s_channels: null           # init_physics -> extra_scalars + tagging features
+  # num_classes is supplied by the wrapper at call time (= out_channels)
+
+  # LorentzNet static-kNN GNN stage (3 GNN blocks, matching the other hybrids)
+  n_gnn_layers: 3
+  n_h_hidden: 72
+  n_v_hidden: 16
+  knn_k: 16
+  knn_metric: minkowski         # 'minkowski' (Lorentz-invariant) or 'deltaR' (eta-phi L2)
+  c_weight: 1e-3
+  use_phi_m: true               # LorentzNet per-edge gate (weights within the kNN nbhd); false -> plain mean
+  concat_original: true
+
+  # input-stage spurions (both on -> residual symmetry SO(2) about the beam)
+  use_time_spurion: true
+  use_beam_spurion: true
+
+  # global CLS token for classification
+  global_token: true
+
+  # L-GATr-slim transformer
+  hidden_v_channels: 16
+  hidden_s_channels: 32
+  num_blocks: 10
+  num_heads: 8
+
+defaults:
+  - framesnet: identity

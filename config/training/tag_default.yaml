@@ -20,8 +20,15 @@ reduceplateau_factor: 0.1
 reduceplateau_patience: 50
 onecycle_div_factor: 25
 onecycle_pct_start: 0.3
+# CosineAnnealingWarmup: linear warmup over warmup_pct_start of the schedule (from
+# warmup_start_factor*lr up to lr), then cosine decay to cosanneal_eta_min
+warmup_pct_start: 0.05
+warmup_start_factor: 0.01
 
-es_patience: 100
+# es_patience=null -> no early *termination* (train the full iteration budget, so a late
+# post-plateau improvement is not missed); es_load_best_model still reports the best
+# validation checkpoint, so accuracy is never capped by stopping early.
+es_patience: null
 es_load_best_model: true
 
 log_every_n_steps: 200

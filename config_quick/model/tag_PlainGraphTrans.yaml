@@ -1,0 +1,32 @@
+_target_: experiments.tagging.wrappers.PlainGraphTransWrapper
+in_channels: null               # init_physics -> 7 + extra_scalars
+out_channels: null              # init_physics -> num_outputs
+use_amp: false
+add_fourmomenta_backbone: false
+
+net:
+  _target_: experiments.baselines.plaingraphtrans.PlainGraphTrans
+  _partial_: true
+  input_dim: null               # supplied by the wrapper (= in_channels)
+  num_classes: null             # supplied by the wrapper (= out_channels)
+
+  # static plain-MPNN graph backbone (3 GNN blocks)
+  gnn_dims: [16, 16, 16]
+  knn_k: 4
+  knn_metric: deltaR            # 'deltaR' (eta-phi L2) or 'minkowski' (4-momenta)
+  use_fts_bn: true
+  use_input_concat: true
+
+  # plain transformer encoder (torch nn.MultiheadAttention)
+  embed_dim: 16
+  num_layers: 2
+  num_heads: 2
+  ffn_ratio: 4
+  dropout: 0.1
+  activation: gelu
+  fc_params: []
+
+  for_inference: false
+
+defaults:
+  - framesnet: identity

@@ -653,15 +653,17 @@ def generate_edges_vectorized(mask, points, k, M, device,
         return torch.stack([b * M + i, b * M + j])
 
     # ---- pairwise distance for the whole batch: (B, P, P) ----
+    # distances follow the input dtype: a .float() downcast here would silently
+    # defeat use_float64 runs (near-tied intervals re-rank under transforms)
     if metric == "minkowski":
         # Δp² = m_i² + m_j² - 2<p_i,p_j>, via a gram matrix (no (B,P,P,4) tensor)
-        p4 = fourmomenta.float()
+        p4 = fourmomenta
         sig = p4.new_tensor([1.0, -1.0, -1.0, -1.0])              # (E, px, py, pz) metric
         msq = (p4 * p4 * sig).sum(-1)                             # (B, P)
         gram = torch.bmm(p4 * sig, p4.transpose(1, 2))           # (B, P, P)
         dist = torch.sqrt((msq[:, :, None] + msq[:, None, :] - 2 * gram).abs() + 1e-8)
     else:  # deltaR with phi wrap
-        eta, phi = points[..., 0].float(), points[..., 1].float()
+        eta, phi = points[..., 0], points[..., 1]
         deta = eta[:, :, None] - eta[:, None, :]
         dphi = (phi[:, :, None] - phi[:, None, :]).abs()
         dphi = torch.minimum(dphi, 2 * math.pi - dphi)
@@ -1074,6 +1076,15 @@ class CGENNLGATrGraphTrans(nn.Module):
             checkpoint_blocks=checkpoint_blocks,
         )
 
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        # both CLS tokens are learnable invariants; excluding them from weight
+        # decay is the ParT/ViT convention and does not affect equivariance
+        return {
+            "cls_mv_scalar",
+            "cls_s",
+        }
+
     def forward(self, x, v, mask, points):
    # points-first inputs from the wrapper:
         #   x: (B, P, C)   v: (B, P, 4) [E, px, py, pz]   mask: (B, P)   points: (B, P, 2)
@@ -1100,18 +1111,14 @@ class CGENNLGATrGraphTrans(nn.Module):
         B, P, _ = s.shape
         M = P
 
-        # Stage 3: Build graph edges
-        mask_fp32 = mask.float()
-        points_fp32 = points.float()
-
-        
+        # Stage 3: Build graph edges (native dtype: see generate_edges_vectorized)
         fourmomenta_flat = None
         if self.knn_metric == "minkowski" and self.k is not None:
-            fourmomenta_flat = v.float()
+            fourmomenta_flat = v
 
         edges = generate_edges_vectorized(
-            mask_fp32,
-            points_fp32,
+            mask,
+            points,
             self.k,
             M,
             device,
@@ -1119,7 +1126,11 @@ class CGENNLGATrGraphTrans(nn.Module):
             fourmomenta=fourmomenta_flat,
         )
 
-        # Stage 4: Flatten for CGENN
+        # Stage 4: Flatten for CGENN over the dense B*P layout (padded slots
+        # included), matching official CGENN: its theta_h BatchNorm also runs over
+        # the padded nodes. Edges connect real nodes only, so padding never
+        # propagates through message passing -- it only enters the scalar BN stats,
+        # exactly as upstream.
         total_nodes = B * M
         h_flat = s.reshape(total_nodes, -1)
         x_flat_raw = mv.reshape(total_nodes, -1, 16)  # (B*P, 1+num_spurions, 16)
