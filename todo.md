@@ -41,17 +41,31 @@ same number of times as the baselines.
 
 ## 3. Open design decisions / discrepancies
 
-- [ ] **CGENN-LGATr GraphGPS local branch has no edge/node features** (`edge_attr_x=0, node_attr_*=0`)
-      while its GraphTrans cousin injects raw relative-momentum **edge features** + re-injected raw node
-      attributes (standard CGENN/EGNN), and the *other* GraphGPS members (Plain, ParticleNet-ParT) both
-      carry edge features in their local MPNN. **Recommend** adding **static** relative-momentum edge
-      features (computed once from the raw four-momenta, shared across layers, à la GraphGPS static edge
-      attrs) to the CGENN GraphGPS local branch, for a like-for-like local MPNN and a clean
-      GraphTrans-vs-GraphGPS ablation. Node-attr re-injection is optional (the hidden mv already carries
-      the geometry). *(Analysis in the chat; I can implement.)*
-- [ ] Check `LorentzNetLGATrSlimGraphGPS` for the same edge-feature gap vs its GraphTrans cousin.
+- [x] **CGENN-LGATr GraphGPS local branch had no edge features** — fixed: it now injects the same
+      static relative-momentum edge multivectors `[pᵢ−pⱼ, rawᵢ, rawⱼ]` as the GraphTrans cousin
+      (`use_explicit_edge_features`, default on). Equivariance 3/3.
 - [x] CLS readout frame: **jet frame** (covariant, boost into the jet rest frame). Decided.
 - [x] LLoCa transport made **strictly additive** (identity frames bit-identical to the plain backbone).
+- [x] Scheduler: shared **CosineAnnealingWarmup** available; **early termination off** (`es_patience=null`),
+      best-validation checkpoint still reported.
+
+### Audit findings (full GraphTrans-vs-GraphGPS sweep) — remaining, low priority
+- [ ] **Local-branch dropout is inconsistent across the GraphGPS family.** Plain + CGENN GPS apply an
+      external `Dropout` to the local-MPNN output (`Norm(Dropout(MPNN(X)) + X)`); LorentzNet + ParticleNet
+      GPS apply **none** (their GNN owns an internal residual, so the layer adds only the external Norm).
+      The residual difference is *deliberate* (avoids a double residual), but the dropout is dropped as a
+      side effect. No-op at the default `dropout_prob=0`, so it only matters if dropout is enabled — decide
+      whether the four local branches should match.
+- [ ] **LorentzNet GraphGPS never zeroes padded slots between its layers** (only at the final pool), so the
+      shared `LorentzNetKNNBlock`'s BatchNorms accumulate over nonzero padded state across the 10 layers
+      (GraphTrans zeroes after its GNN stack). Logits are unaffected (readout is masked) but BN running
+      stats drift — cosmetic; zero padded slots per layer if you want exact parity.
+- [ ] **(latent, both LorentzNet variants)** `phi_e` BatchNorm in `LorentzNetKNNBlock` normalises over
+      *invalid* edges too — the edge mask is applied only *after* `phi_e`. Pre-existing, shared by both
+      variants (not a Trans-vs-GPS divergence); mask before `phi_e` for cleanliness.
+- [x] **"LorentzNet mean"** (scalar message aggregation was mean, should be sum) — already fixed in the
+      shared block (`h_msg = m.sum(-1)`, commit `8a7b5fc`) and inherited by GraphGPS; both now match
+      official LorentzNet (sum scalars / mean vectors).
 
 ## 4. Paper release — branding / identity (only the maintainer has these)
 
