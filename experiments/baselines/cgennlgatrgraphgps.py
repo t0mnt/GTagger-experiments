@@ -10,7 +10,10 @@ by construction (symmetry broken only by the optional input spurions):
     GraphGPS primitive        equivariant replacement (this file)
     -----------------------   --------------------------------------------------
     local MPNN                CGENN message passing (CGLayer): geometric-product
-                              messages on mv + invariant-gated scalar messages
+                              messages on mv + invariant-gated scalar messages, with the
+                              same static relative-momentum edge multivectors
+                              [p_i-p_j, raw_i, raw_j] the GraphTrans cousin injects
+                              (use_explicit_edge_features, on by default)
     global attention          L-GATr SelfAttention (geometric multi-head attn)
     FFN (2-layer MLP)         GeoMLP -- starts with a GeometricBilinear (the
                               geometric product), then gated EquiLinear layers
@@ -69,15 +72,18 @@ class CGENNLGATrGPSLayer(nn.Module):
     def __init__(self, algebra, mv_channels, s_channels, num_heads,
                  cgenn_aggregation, cgenn_layer_type, cgenn_normalization_init,
                  increase_hidden_channels_attention, increase_hidden_channels_mlp,
-                 num_hidden_layers_mlp, head_scale, multi_query, activation, dropout_prob):
+                 num_hidden_layers_mlp, head_scale, multi_query, activation, dropout_prob,
+                 edge_attr_x_dim=0):
         super().__init__()
-        # ---- local branch: one CGENN message-passing layer (no extra node/edge attrs;
-        #      residual=False because the GPS layer owns the external residual) ----
+        # ---- local branch: one CGENN message-passing layer. residual=False because the GPS
+        #      layer owns the external residual. edge_attr_x_dim > 0 -> the layer consumes the
+        #      static relative-momentum edge multivectors (matching the GraphTrans CGENN
+        #      stage); the (static) edge features are passed in forward and shared across layers.
         self.cgenn = CGLayer(
             algebra,
             mv_channels, mv_channels, mv_channels,
             s_channels, s_channels, s_channels,
-            edge_attr_x=0, edge_attr_h=0, node_attr_x=0, node_attr_h=0,
+            edge_attr_x=edge_attr_x_dim, edge_attr_h=0, node_attr_x=0, node_attr_h=0,
             aggregation=cgenn_aggregation, use_invariants_to_update=True,
             residual=False, normalization_init=cgenn_normalization_init,
             layer_type=cgenn_layer_type,
@@ -105,8 +111,9 @@ class CGENNLGATrGPSLayer(nn.Module):
         self.norm = EquiLayerNorm()
         self.dropout = GradeDropout(dropout_prob if dropout_prob is not None else 0.0)
 
-    def forward(self, mv, s, edges, attn_mask):
-        # mv: (B, P, C_mv, 16); s: (B, P, C_s)
+    def forward(self, mv, s, edges, attn_mask, edge_attr_x=None):
+        # mv: (B, P, C_mv, 16); s: (B, P, C_s); edge_attr_x: (num_edges, E, 16) static
+        # relative-momentum edge multivectors (or None when explicit edge features are off).
         B, P = mv.shape[0], mv.shape[1]
 
         # ---- local branch (Eq. 9): CGENN message passing on the static kNN graph.
@@ -116,7 +123,7 @@ class CGENNLGATrGPSLayer(nn.Module):
         # through message passing -- only into the scalar BN statistics, as upstream.
         s_loc, mv_loc = self.cgenn(
             s.reshape(B * P, -1), mv.reshape(B * P, -1, 16), edges,
-            node_attr_h=None, node_attr_x=None, edge_attr_h=None, edge_attr_x=None,
+            node_attr_h=None, node_attr_x=None, edge_attr_h=None, edge_attr_x=edge_attr_x,
         )
         mv_loc = mv_loc.view(B, P, -1, 16)
         s_loc = s_loc.view(B, P, -1)
@@ -151,6 +158,11 @@ class CGENNLGATrGraphGPS(nn.Module):
                  cgenn_aggregation: str = "mean",
                  cgenn_layer_type: str = "fc",
                  cgenn_normalization_init: int = 0,
+                 # relative-momentum edge features for the local CGENN branch (as in the
+                 # GraphTrans cousin's CGENN stage). Computed once from the raw four-momenta
+                 # and shared across layers. True -> like-for-like local MPNN; False -> the
+                 # earlier bare message passing (hidden stream only).
+                 use_explicit_edge_features: bool = True,
                  # input spurions (break equivariance to the residual symmetry)
                  beam_spurion: str = "xyplane",
                  add_time_spurion: bool = True,
@@ -181,12 +193,19 @@ class CGENNLGATrGraphGPS(nn.Module):
             in_mv_channels=1 + self.num_spurions, out_mv_channels=hidden_mv_channels,
             in_s_channels=in_s_channels, out_s_channels=hidden_s_channels,
         )
+        # static relative-momentum edge features = [p_i - p_j, raw_i, raw_j] over the raw
+        # (1 + num_spurions) input multivector channels -> 1 + 2*(1+num_spurions) mv channels,
+        # matching the GraphTrans CGENN stage. 0 disables them (bare hidden-stream message passing).
+        self.use_explicit_edge_features = use_explicit_edge_features
+        raw_mv_channels = 1 + self.num_spurions
+        edge_attr_x_dim = (1 + 2 * raw_mv_channels) if use_explicit_edge_features else 0
         self.layers = nn.ModuleList([
             CGENNLGATrGPSLayer(
                 self.algebra, hidden_mv_channels, hidden_s_channels, num_heads,
                 cgenn_aggregation, cgenn_layer_type, cgenn_normalization_init,
                 increase_hidden_channels_attention, increase_hidden_channels_mlp,
                 num_hidden_layers_mlp, head_scale, multi_query, activation, dropout_prob,
+                edge_attr_x_dim=edge_attr_x_dim,
             )
             for _ in range(num_blocks)
         ])
@@ -224,13 +243,23 @@ class CGENNLGATrGraphGPS(nn.Module):
             metric=self.knn_metric, fourmomenta=fourmomenta_flat,
         )
 
+        # Stage 2b: static relative-momentum edge features from the RAW input multivectors
+        # (before linear_in), [p_i - p_j, raw_i, raw_j], shared across every layer's local
+        # CGENN branch -- the same geometric edge signal the GraphTrans CGENN stage injects.
+        edge_attr_x = None
+        if self.use_explicit_edge_features:
+            i, j = edges
+            mv_raw = mv.reshape(B * P, -1, 16)            # (B*P, 1+num_spurions, 16)
+            particle_diff = mv_raw[i, :1] - mv_raw[j, :1]  # (num_edges, 1, 16)
+            edge_attr_x = torch.cat([particle_diff, mv_raw[i], mv_raw[j]], dim=1)
+
         # Stage 3: equivariant input projection to hidden channels
         mv, s = self.linear_in(mv, scalars=s)            # (B, P, C_mv, 16), (B, P, C_s)
 
         # Stage 4: interleaved equivariant GPS layers
         attn_mask = mask[:, None, None, :]               # (B, 1, 1, P) bool, True = real
         for layer in self.layers:
-            mv, s = layer(mv, s, edges, attn_mask)
+            mv, s = layer(mv, s, edges, attn_mask, edge_attr_x=edge_attr_x)
 
         # Stage 5: final norm + masked mean pool + invariant head
         mv, s = self.final_norm(mv, scalars=s)
