@@ -434,6 +434,27 @@ class BaseExperiment:
                 T_max=int(self.cfg.training.iterations * self.cfg.training.scheduler_scale),
                 eta_min=self.cfg.training.cosanneal_eta_min,
             )
+        elif self.cfg.training.scheduler == "CosineAnnealingWarmup":
+            # linear warmup -> cosine decay. Warmup stabilises the early transformer steps;
+            # warmup_pct_start of the schedule ramps lr from warmup_start_factor*lr up to lr,
+            # then a cosine decays it to cosanneal_eta_min over the remainder.
+            total = int(self.cfg.training.iterations * self.cfg.training.scheduler_scale)
+            warmup = max(1, min(int(self.cfg.training.warmup_pct_start * total), total - 1))
+            warmup_sched = torch.optim.lr_scheduler.LinearLR(
+                self.optimizer,
+                start_factor=self.cfg.training.warmup_start_factor,
+                total_iters=warmup,
+            )
+            cosine_sched = torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer,
+                T_max=total - warmup,
+                eta_min=self.cfg.training.cosanneal_eta_min,
+            )
+            self.scheduler = torch.optim.lr_scheduler.SequentialLR(
+                self.optimizer,
+                schedulers=[warmup_sched, cosine_sched],
+                milestones=[warmup],
+            )
         elif self.cfg.training.scheduler == "CosineAnnealingWarmRestarts":
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 self.optimizer,
@@ -530,11 +551,17 @@ class BaseExperiment:
         patience = 0
 
         # main train loop
+        _es = self.cfg.training.es_patience
+        _es_msg = (
+            f"early stopping with patience {_es}"
+            if _es is not None
+            else "no early termination (best-validation checkpoint reported)"
+        )
         LOGGER.info(
             f"Starting to train for {self.cfg.training.iterations} iterations "
             f"= {self.cfg.training.iterations / len(self.train_loader):.1f} epochs "
             f"on a dataset with {len(self.train_loader)} batches "
-            f"using early stopping with patience {self.cfg.training.es_patience} "
+            f"using {_es_msg} "
             f"while validating every {self.cfg.training.validate_every_n_steps} iterations"
         )
         self.training_start_time = time.time()
@@ -579,7 +606,13 @@ class BaseExperiment:
                         )
                 else:
                     patience += 1
-                    if patience > self.cfg.training.es_patience:
+                    # es_patience=None disables *early termination* (train the full budget so a
+                    # late post-plateau improvement is not missed); es_load_best_model still
+                    # reports the best-validation checkpoint, so accuracy is never capped.
+                    if (
+                        self.cfg.training.es_patience is not None
+                        and patience > self.cfg.training.es_patience
+                    ):
                         LOGGER.info(
                             f"Early stopping in iteration {step} = epoch {step / len(self.train_loader):.1f}"
                         )
