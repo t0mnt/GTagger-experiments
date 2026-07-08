@@ -167,9 +167,9 @@ apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
 ```
 
 Fill each printed pair into that model's `config/training/top_<Model>.yaml`, replacing
-the two lines marked `UNSWEPT fallback` (everything else — epochs=20, AdamW,
-warmup-cosine — is pinned by the shared recipe; GUIDE §5–6). Careful: an unfilled
-recipe does NOT error — it silently trains at the fallback (batchsize 512, lr 1e-3).
+the two `???` keys (everything else — epochs=20, AdamW, warmup-cosine — is pinned by
+the shared recipe; GUIDE §5–6). Careful: `???` does NOT error if you forget — the
+recipe silently trains at the inherited fallback (batchsize 512, lr 1e-3).
 
 ## 5. Submit the real training
 
@@ -238,9 +238,9 @@ in the run dir carries everything else.) The run's table row consolidates to
 
 ## 7. The full campaign (which models, and which need the LR finder)
 
-The study's grid is the 8 hybrids. **All 8 need §4** (their recipes ship with
-`UNSWEPT fallback` batchsize/lr lines that must be replaced — they run without erroring
-if you forget); everything else in their shared recipe is already decided:
+The study's grid is the 8 hybrids. **All 8 need §4** (their recipes leave
+`batchsize`/`lr` as `???` — note an unfilled recipe runs without erroring, silently
+at the 512 / 1e-3 fallback); everything else in their shared recipe is already decided:
 
 ```bash
 MODELS="tag_PlainGraphTrans tag_PlainGraphGPS \

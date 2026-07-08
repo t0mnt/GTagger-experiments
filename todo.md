@@ -154,11 +154,14 @@ exposed above. If a reviewer wants the negative result demonstrated, a LapPE nod
       (inherit `jc_gts_and_friends_default`; fill batchsize/lr from `find_lr.py -cn jctagging` —
       JetClass inputs are wider (7+10) so don't copy the top values). Also fixed `jc_lgatr`
       pointing at `tag_lgatr` (upstream's recipe name; this fork renamed those to `top_*`).
-- [x] **the `???` batchsize/lr keys in the per-model recipes were silently inert**: OmegaConf
-      MISSING never overrides a value inherited via the defaults chain, so `training=top_<hybrid>`
-      with unfilled keys silently trained at tag_default's 512/1e-3 instead of erroring. All 16
-      recipes (8 top + 8 jc) now carry explicit `UNSWEPT fallback` lines + comments, and
-      GUIDE/OSCAR/SLURM no longer claim `???` enforces anything.
+- [x] **heads-up: the `???` batchsize/lr keys are human markers, not enforcement** — OmegaConf
+      MISSING never overrides a value inherited via the defaults chain, so an unfilled
+      `training=top_<hybrid>` / `jc_<hybrid>` silently trains at tag_default's 512/1e-3 instead
+      of erroring. The `???` markers stay (best available "not filled yet" signal); recipe
+      comments + GUIDE/OSCAR now warn about the silent fallback.
+- [ ] **JetClass: fill the 8 `jc_<Hybrid>.yaml` batchsize/lr** (currently `???`) from
+      `find_lr.py -cn jctagging model=tag_<hybrid> save=false +lr_find.find_batch_size=true`
+      before the JetClass campaign — unfilled they silently run at 512/1e-3, see above.
 - [ ] **(opinion / optional guardrail)** code-vs-user split for seeds & recipes is right as-is
       (seed=null → every fresh trial is an independent init; explicit `training=` beats magic), but
       two cheap code-side guardrails would close the remaining footguns: (a) log a WARNING when a

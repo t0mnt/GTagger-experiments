@@ -1,4 +1,4 @@
-# JetClass training recipe for tag_CGENNLGATrGraphGPS -- fill the UNSWEPT keys, then:
+# JetClass training recipe for tag_CGENNLGATrGraphGPS -- fill in the (???) keys, then:
 #   python run.py -cn jctagging model=tag_CGENNLGATrGraphGPS training=jc_CGENNLGATrGraphGPS gpus=1
 #
 #   lr         <- find_lr.py -cn jctagging model=tag_CGENNLGATrGraphGPS         (reported loss-min / 10)
@@ -11,9 +11,8 @@
 defaults:
   - jc_gts_and_friends_default
 
-# lr/batchsize below are the tag_default family fallback and count as UNSWEPT --
-# replace them with your find_lr results before a real campaign. (A '???' here is
-# silently inert: OmegaConf MISSING never overrides a value inherited from
-# tag_default, so the recipe would run at the fallback without complaint.)
-batchsize: 512   # UNSWEPT fallback -- replace with find_lr's find_batch_size result
-lr: 1.0e-3       # UNSWEPT fallback -- replace with find_lr's loss-min/10
+# fill from find_lr (batchsize <- find_batch_size, lr <- loss-min/10). NOTE: '???' is a
+# human-facing marker only -- hydra cannot enforce it here (MISSING never overrides the
+# inherited tag_default values), so left unfilled the recipe silently runs at 512 / 1e-3.
+batchsize: ???
+lr: ???
