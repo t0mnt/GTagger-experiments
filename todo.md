@@ -148,8 +148,23 @@ exposed above. If a reviewer wants the negative result demonstrated, a LapPE nod
 ### Audit findings (infrastructure sweep: JetClass path / plots / trials)
 - [x] **`jc_gts_and_friends_default` added** and `config/jctagging.yaml` now defaults to it (was
       `jc_ParT` — the same recipe-inheritance trap the top tree fixed). ParT-standard `epochs: 5`
-      (1M steps x 512 = ~5 passes of 100M), CosineAnnealingWarmup, wd 0.01, validate once per
-      nominal epoch; per-model batchsize/lr from `find_lr.py -cn jctagging` before a real campaign.
+      (1M steps x 512 = ~5 passes of 100M), CosineAnnealingWarmup, **wd 0** (JetClass convention,
+      matches jc_ParT), validate once per nominal epoch.
+- [x] **per-model `jc_<Hybrid>.yaml` recipes added (all 8)**, mirroring the `top_<Hybrid>` pattern
+      (inherit `jc_gts_and_friends_default`; fill batchsize/lr from `find_lr.py -cn jctagging` —
+      JetClass inputs are wider (7+10) so don't copy the top values). Also fixed `jc_lgatr`
+      pointing at `tag_lgatr` (upstream's recipe name; this fork renamed those to `top_*`).
+- [x] **the `???` batchsize/lr keys in the per-model recipes were silently inert**: OmegaConf
+      MISSING never overrides a value inherited via the defaults chain, so `training=top_<hybrid>`
+      with unfilled keys silently trained at tag_default's 512/1e-3 instead of erroring. All 16
+      recipes (8 top + 8 jc) now carry explicit `UNSWEPT fallback` lines + comments, and
+      GUIDE/OSCAR/SLURM no longer claim `???` enforces anything.
+- [ ] **(opinion / optional guardrail)** code-vs-user split for seeds & recipes is right as-is
+      (seed=null → every fresh trial is an independent init; explicit `training=` beats magic), but
+      two cheap code-side guardrails would close the remaining footguns: (a) log a WARNING when a
+      GT-hybrid recipe runs at exactly the UNSWEPT fallback (512, 1e-3) — likely a forgotten
+      find_lr; (b) log a WARNING when `seed` is set AND `warm_start_load=false` — fixed seed makes
+      "fresh trials" identical, defeating the mean±std table.
 - [ ] **Rejection-metric convention differs between experiments** (pre-existing): top-tagging uses the
       nearest-ROC-point (`argmin |tpr - epsS|`), JetClass uses `scipy.interp1d` interpolation. One
       methods sentence, or unify.

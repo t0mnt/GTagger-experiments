@@ -118,7 +118,12 @@ The 8 GT hybrids share one recipe: each `config/training/top_<hybrid>.yaml`
 `defaults: [tag_gts_and_friends_default]` (AdamW, **epochs=20**,
 CosineAnnealingWarmup, shared `weight_decay=0.01`, validate once/epoch) and only fills
 its own `batchsize` + `lr` from `find_lr.py` — that shared budget is what makes the
-hybrid-vs-hybrid table fair. The upstream baselines keep their own recipes as
+hybrid-vs-hybrid table fair. **Watch out:** the per-model `batchsize`/`lr` lines are
+marked `UNSWEPT fallback` until you fill them — an unfilled recipe does *not* error,
+it silently trains at the family fallback (512 / 1e-3), because an OmegaConf `???`
+can never override a value inherited from `tag_default`. (JetClass mirrors all of
+this: `jc_gts_and_friends_default` + per-model `jc_<hybrid>.yaml`, epochs=5, wd=0,
+sweep with `find_lr.py -cn jctagging`.) The upstream baselines keep their own recipes as
 reference rows — `top_ParT` (Ranger, lr=1e-3, 20 epochs), `top_lorentznet` (AdamW,
 lr=1e-3, 35 epochs), `top_lgatr` (Lion, lr=3e-4, wd=0.2), `top_particlenet` (lr=1e-2)
 — or point them at `tag_gts_and_friends_default` to put them on the same budget.

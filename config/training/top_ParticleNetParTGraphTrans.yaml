@@ -1,4 +1,4 @@
-# Training recipe for tag_ParticleNetParTGraphTrans -- fill in the REQUIRED (???) keys, then:
+# Training recipe for tag_ParticleNetParTGraphTrans -- fill the UNSWEPT keys, then:
 #   python run.py model=tag_ParticleNetParTGraphTrans training=top_ParticleNetParTGraphTrans data.dataset=full gpus=1
 #
 #   lr         <- find_lr.py                                   (reported loss-min / 10)
@@ -10,8 +10,12 @@
 defaults:
   - tag_gts_and_friends_default
 
-batchsize: ???
-lr: ???
+# lr/batchsize below are the tag_default family fallback and count as UNSWEPT --
+# replace them with your find_lr results before a real campaign. (A '???' here is
+# silently inert: OmegaConf MISSING never overrides a value inherited from
+# tag_default, so the recipe would run at the fallback without complaint.)
+batchsize: 512   # UNSWEPT fallback -- replace with find_lr's find_batch_size result
+lr: 1.0e-3       # UNSWEPT fallback -- replace with find_lr's loss-min/10
 
 # weight_decay: 0.01          # AdamW: tune on val {0, 0.01, 0.05, 0.1}
 # optimizer: AdamW            # AdamW | Ranger | Lion | ...

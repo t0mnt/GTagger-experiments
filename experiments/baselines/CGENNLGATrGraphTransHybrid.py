@@ -1197,12 +1197,13 @@ class CGENNLGATrGraphTrans(nn.Module):
         mv_out = self.mv_bridge(x_bridge).view(B, M, -1, 16)
         s_out = self.s_bridge(h_bridge).view(B, M, -1)
 
-        # Stage 7: Add learnable CLS token (does this break equivariance?)
+        # Stage 7: Add learnable CLS token. Equivariance-safe: the learnable part
+        # lives only in the scalar grade (mv component 0) and in plain scalars,
+        # both Lorentz-invariant -- the equivariance suite confirms no breaking.
         cls_mv = torch.zeros(B, 1, self.hidden_mv_channels, 16, device=device, dtype=s_out.dtype)
         cls_mv[..., 0] = self.cls_mv_scalar.expand(B, 1, -1)
         cls_s = self.cls_s.expand(B, -1, -1)
         cls_mask = torch.ones(B, 1, device=device, dtype=torch.bool)
-#tests say no
         mv_out = torch.cat([cls_mv, mv_out], dim=1)
         s_out = torch.cat([cls_s, s_out], dim=1)
         mask = torch.cat([cls_mask, mask], dim=1)

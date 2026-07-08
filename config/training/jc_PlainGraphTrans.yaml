@@ -1,0 +1,19 @@
+# JetClass training recipe for tag_PlainGraphTrans -- fill the UNSWEPT keys, then:
+#   python run.py -cn jctagging model=tag_PlainGraphTrans training=jc_PlainGraphTrans gpus=1
+#
+#   lr         <- find_lr.py -cn jctagging model=tag_PlainGraphTrans         (reported loss-min / 10)
+#   batchsize  <- find_lr.py -cn jctagging ... +lr_find.find_batch_size=true
+#   (epochs=5 + CosineAnnealingWarmup + weight_decay=0 are shared in jc_gts_and_friends_default)
+#
+# Re-sweep BOTH knobs on the jctagging task rather than copying top_PlainGraphTrans values:
+# JetClass inputs are wider (7+10 scalar channels) and jets denser, so the memory
+# ceiling and loss-vs-lr curve both move.
+defaults:
+  - jc_gts_and_friends_default
+
+# lr/batchsize below are the tag_default family fallback and count as UNSWEPT --
+# replace them with your find_lr results before a real campaign. (A '???' here is
+# silently inert: OmegaConf MISSING never overrides a value inherited from
+# tag_default, so the recipe would run at the fallback without complaint.)
+batchsize: 512   # UNSWEPT fallback -- replace with find_lr's find_batch_size result
+lr: 1.0e-3       # UNSWEPT fallback -- replace with find_lr's loss-min/10

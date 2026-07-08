@@ -379,6 +379,6 @@ class CGENN(nn.Module):
             n_nodes,
             self.hidden_features_h + self.hidden_features_x * self.algebra.n_subspaces,
         )
-        h = torch.mean(h, dim=1)  # average over point cloud
+        h = torch.mean(h, dim=1)  # official-CGENN quirk kept for faithfulness: masked slots are zeros, so this divides by the padded batch max n_nodes, not each jet's true multiplicity (readout scale depends on batch padding)
         pred = self.graph_dec(h)
         return pred
