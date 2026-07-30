@@ -115,7 +115,7 @@ Either way: **verification always runs in parity mode** (pins + compensations) f
 `tests/experiments/test_lgatr_migration_parity.py` (sketch: Appendix B), two modes (`LGATR_PARITY=record` / default check, which **skips cleanly when fixtures are absent**). Two fixture families, split to keep git small:
 
 1. **Production manifests** (KB-scale json, all six lgatr-touching tagging configs — `tag_lgatr`, `tag_slim`, `tag_CGENNLGATrGraphTrans`, `tag_CGENNLGATrGraphGPS`, `tag_LorentzNetLGATrSlimGraphTrans`, `tag_LorentzNetLGATrSlimGraphGPS` — plus one learned-frames composition with `equivectors=lgatr`): total param count + sorted multiset of parameter shapes. Keys are *not* compared (renames make them legitimately differ); shapes and counts must not.
-2. **Reduced-config transplant fixtures** (MB-scale, committed): the same model families at reduced size (`num_blocks=2`, hidden widths halved via overrides — every layer type, rename, and compensation is still exercised; parity logic is width-independent, and full-width state_dicts would be tens of MB of git). For each: fixed seed → instantiate (hydra compose + `init_physics`, same machinery as `test_jc_wiring.py`) → `.double().eval()` → **zero every bias under each qkv projection module (S5 normalization, per the S-table procedure)** → save full state_dict + forward outputs on a fixed seeded batch (B=4, multiplicities `[1, n<knn_k, mid, large]` from `tests/experiments/utils.py`).
+2. **Reduced-config transplant fixtures** (MB-scale, committed): the same model families at reduced size (`num_blocks=2`, hidden widths halved via overrides — every layer type, rename, and compensation is still exercised; parity logic is width-independent, and full-width state_dicts would be tens of MB of git). For each: fixed seed → instantiate (hydra compose + `init_physics`, same machinery as `test_jc_wiring.py`) → `.double().eval()` → **zero every bias under each qkv projection module (S5 normalization, per the S-table procedure)** → save, per model: full state_dict; final forward outputs; **per-block intermediate activations** (forward hooks at block boundaries); **a gradient pack** (input-gradient of `loss = out.square().sum()` plus the per-parameter grad-norm vector); and the **resolved-config snapshot** (`OmegaConf.to_yaml` of the composed config) — all on a fixed seeded batch (B=4, multiplicities `[1, n<knn_k, mid, large]` from `tests/experiments/utils.py`). Run record mode **twice** and assert the fixture files are byte-identical (determinism precondition, §4).
 
 The recorded state_dicts double as the v1 side of the **KEY_MAP**: do not hand-write the v1→v2 key mapping. Phase 1a dumps the v2 key lists for the same reduced configs; build the map by ordered shape-matching plus the known rename rules (module moves, `norm`→`norm1`/`norm2` adds nothing while norms are parameter-free), review it once, commit it next to the fixtures.
 
@@ -126,7 +126,7 @@ Commit script + fixtures to this branch.
 ### Phase 1 — environment swap + Phase 1a re-verification
 
 1. Fresh session/venv: `pip install "lloca[xformers-attention]==1.3.6" "lgatr[xformers-attention]==2.0.0"`.
-2. **Phase 1a (~15 min, non-negotiable):** re-verify §2 against the installed release — read `v1_to_v2.rst` **and** CHANGELOG `[2.0.0]`; run the import one-liners (`from lgatr.layers import SlimMLP, ...`; top-level symbols); confirm `SelfAttentionConfig(increase_hidden_channels=2)` raises `TypeError`; confirm M10 (`SelfAttention(cfg)` / `GeoMLP(cfg)` / `EquiLinear(i, o)` without `primitives` raise `TypeError`); confirm `import lloca.equivectors.lgatr` works; confirm `embed_vector` slots 1:4; diff `SlimMLP`/`SlimSelfAttention`/`SlimLinear` signatures against `lorentznetlgatrslimgraphgps.py` call sites; confirm block channel-last docstrings and the net-level channel-first interface; dump v2 state_dict key lists for the reduced fixture configs and build+commit KEY_MAP (Phase 0 note).
+2. **Phase 1a (~15 min, non-negotiable):** re-verify §2 against the installed release — read `v1_to_v2.rst` **and** CHANGELOG `[2.0.0]`; run the import one-liners (`from lgatr.layers import SlimMLP, ...`; top-level symbols); confirm `SelfAttentionConfig(increase_hidden_channels=2)` raises `TypeError`; confirm M10 (`SelfAttention(cfg)` / `GeoMLP(cfg)` / `EquiLinear(i, o)` without `primitives` raise `TypeError`); confirm `import lloca.equivectors.lgatr` works; confirm `embed_vector` slots 1:4; diff `SlimMLP`/`SlimSelfAttention`/`SlimLinear` signatures against `lorentznetlgatrslimgraphgps.py` call sites; confirm block channel-last docstrings and the net-level channel-first interface; run `torch.autograd.gradcheck` on `geometric_product` with `sparse_gp=True` in fp64 (custom-backward assurance, §4); dump v2 state_dict key lists for the reduced fixture configs and build+commit KEY_MAP (Phase 0 note).
 
 ### Phase 2 — mechanical port
 
@@ -141,13 +141,24 @@ Apply S1/S2 pins for verification. After Gates A–F pass, make the §2.4 postur
 | Gate | What | Pass criterion |
 |---|---|---|
 | A | Composition: `test_jc_wiring.py` + parity script instantiates all fixture configs on v2 | no exceptions; channel asserts hold |
-| B | Production manifests vs fixtures | identical **modulo the explicit waiver list**, each waiver citing an S-item (expected: qkv s-bias params absent per S5; gain params per S2 if Posture B). Anything unexplained = fail |
-| C | **Transplant parity** on reduced configs: map v1 state_dict keys → v2 (rename table), apply the S6 `sqrt(2)` gate-chunk rescale, load (`strict=False` only for waivered keys), compare forward outputs on the recorded batch | **Tier 1** (S1 pin; `sparse_gp=False` for full-LGATr models — slim has no geometric product): fp64 max-abs-diff < 1e-12. **Tier 2** (`sparse_gp=True`): < 1e-8. Failure semantics are clean: a wrong compensation or missed transpose shows up O(1), reassociation shows up <1e-8 |
+| B | Production manifests vs fixtures — each manifest records `(shape, requires_grad)` per parameter, not shapes alone | identical with waivers **derived by rule, never typed by hand**: the expected-missing set is computed from the v1 keys themselves (every bias under a qkv projection module → S5), and the expected `requires_grad` flips from v2's dead-tail/zero-size freezing. Set equality asserted in **both** directions — an unexpectedly missing, present, or re-frozen parameter fails. With the Phase 3 pins there are no other legal diffs during verification; the Posture-B re-baseline is its own later, equally rule-checked step |
+| C | **Transplant parity** on reduced configs: map v1 state_dict keys → v2 (KEY_MAP), apply the S6 `sqrt(2)` gate-chunk rescale, load (`strict=False` only for rule-waived keys), then compare against the recorded batch: final outputs, **per-block intermediate activations**, and **gradients** (input-gradient of a fixed scalar loss + the per-parameter grad-norm vector) | **Tier 1** (S1 pin; `sparse_gp=False` for full-LGATr models — slim has no geometric product): relative deviation < 1e-10 in fp64 (bit-exactness is deliberately not claimed — v2 dropped `opt_einsum` and reordered contractions). **Tier 2** (`sparse_gp=True`): < 1e-8 forward/activations, < 1e-6 for gradients through sparse_gp's custom backward. First diverging *block* is reported, not just pass/fail |
 | D | Full existing suite | 64/64 |
 | E | Identity-frames bit-exactness spot check | hybrid with identity frames ≡ plain backbone, bit-identical on v2 (internal-consistency proof) |
 | F | Blade-table equivalence | audit script vs v2 `lgatr.primitives.bilinear._load_geometric_product_tensor`: agreement ≤ 2e-6 fp32, as on 1.4.4 |
 | G | Training sanity (cluster) | fixed-seed 1k-iter quick runs (`tag_slim`, `tag_lgatr`) on both versions: final train loss within seed-noise band (2–3 seeds). Point-wise curve equality is **out of scope by design** (S3/S5/S6/S7); this catches gross regressions only |
 | H | Throughput report (cluster) | not pass/fail: it/s for `tag_lgatr` v2 `compile=True/False` vs 1.4.4, and `tag_slim` (already compiled on 1.4.4, so expect little). Quantifies the carrot; publish the number in the decision log either way |
+
+### Why these gates discriminate, and their blind spots (closed)
+
+Both param counts and forward outputs *legitimately* differ across versions, so the gates are built to separate "expected delta" from "mistake" **structurally**, not by eyeballing tolerances:
+
+- **Separation argument (Gate C).** Every neutralization is *exact*: S5 is removed from the reference at record time, S6 cancels algebraically (√2·√2·0.5 = 1), S1/S2 are pinned, tier 1 forces the dense product. A perfect port therefore lands at fp64 reassociation level (≲1e-12 relative), while every plausible mistake — one missed M8 transpose, one un-rescaled GLU of twelve, a crossed KEY_MAP pair, an un-zeroed bias at record, a wrong ratio — perturbs pre-activations at O(1e-2)–O(1). That is **6+ orders of magnitude of margin**; the exact epsilon is not load-bearing, which is what makes the gate trustworthy rather than tuned-to-pass.
+- **Waivers are rules, not lists (Gate B).** The "params may differ" problem is closed by *deriving* the allowed diff from the v1 state_dict plus the S-items, and asserting set equality both ways. There is no free-text allowance a tired porter can widen.
+- **Blind spot 1 — the backward pass.** Forward parity cannot see a broken custom backward (v2's sparse_gp ships one that saves only its inputs) or wrongly frozen parameters (`_freeze_dead_tail`, zero-size gain freezing): a model can match forward to 1e-12 and still train wrong. Closed three ways: gradients are part of the fixtures (Gate C), `requires_grad` is part of the manifests (Gate B), and Phase 1a runs `torch.autograd.gradcheck` on `geometric_product` with `sparse_gp=True` in fp64.
+- **Blind spot 2 — train-only config values.** Eval-mode fixtures are blind to `dropout`/`attn_dropout`/schedule slips introduced while renaming yaml keys (a stray `attn_dropout: 0.5` changes no parameter and no eval output). Closed by **resolved-config snapshots**: Phase 0 records `OmegaConf.to_yaml` of every composed fixture config; post-port the snapshots are diffed and the only allowed changes are exactly the renamed keys (rule-checked like Gate B).
+- **Blind spot 3 — localization.** A final-output mismatch alone says "somewhere in 24 sublayers". Per-block activation fixtures turn any Gate C failure into "first divergence at block k, sublayer s".
+- **Determinism precondition.** Record mode runs twice; fixture files must be byte-identical before anything is compared across versions — otherwise the comparison would chase RNG, not the port.
 
 ### Phase 5 — cleanup, decision log, rollback
 
@@ -178,7 +189,7 @@ No hybrids, no direct block construction ⇒ no M8 surface except their `finetun
 
 ## 7. Task split (Claude Code web)
 
-1. **Task A (environment still on 1.4.4):** implement + run Phase 0; commit script + fixtures to `dev`. *Blocking precondition for everything else; do not install v2 in that session.*
+1. **Task A (environment must be on 1.4.4):** implement + run Phase 0; commit script + fixtures to `dev`. *Blocking precondition for everything else; do not install v2 in that session.* NB: `dev`'s own `requirements.txt` already demands `>=2.0.0`, so a session whose setup auto-installed it must first `pip install "lgatr[xformers-attention]==1.4.4"` and verify `lgatr.__version__` before recording — record-mode must hard-assert the version.
 2. **Task B (fresh session):** install `lgatr==2.0.0` → Phase 1a → 2 → 3 (parity mode) → Gates A–F. Push; PR only when green.
 3. **Task C (cluster/user):** Gates G–H, posture decision + possible manifest re-baseline, `.sif` rebuild, Phase 5, merge.
 
@@ -232,16 +243,21 @@ def rescale_glu_gates(sd):              # S6 compensation, on the mapped v1 stat
 def test_transplant_parity(name):
     model = build_reduced(name)         # hydra compose + init_physics, seed 0, .double().eval()
     if RECORD:
+        assert lgatr_version() == "1.4.4"          # hard precondition, never record on v2
         zero_qkv_scalar_bias(model)
-        out = forward_fixed_batch(model)
-        torch.save({"sd": model.state_dict(), "out": out}, FIX / f"{name}.pt")
-        return
+        pack = run_fixed_batch(model)   # {out, block_acts, in_grad, grad_norms, cfg_yaml}
+        torch.save({"sd": model.state_dict(), **pack}, FIX / f"{name}.pt")
+        return                          # record mode is run TWICE; files must be byte-identical
     if not (FIX / f"{name}.pt").exists():
         pytest.skip("no 1.4.4 fixtures recorded")
     ref = torch.load(FIX / f"{name}.pt")
     sd = rescale_glu_gates(remap_keys(ref["sd"], KEY_MAP))
     missing, unexpected = model.load_state_dict(sd, strict=False)
-    assert set(missing) | set(unexpected) <= set(WAIVED_MISSING)   # Gate B spirit, zero surprises
-    out = forward_fixed_batch(model)    # tier 1: sparse_gp=False for full-LGATr builds
-    assert (out - ref["out"]).abs().max() < (1e-12 if TIER1 else 1e-8)
+    assert set(missing) | set(unexpected) == waived_set(ref["sd"])   # rule-derived, both directions
+    pack = run_fixed_batch(model)       # tier 1: sparse_gp=False for full-LGATr builds
+    assert_config_diff_is_only_renames(ref["cfg_yaml"], pack["cfg_yaml"])   # blind spot 2
+    tol = 1e-10 if TIER1 else 1e-8
+    report_first_divergence(ref, pack, tol)        # outputs + per-block acts (blind spot 3)
+    assert rel_dev(pack["out"], ref["out"]) < tol
+    assert rel_dev(pack["in_grad"], ref["in_grad"]) < (tol if TIER1 else 1e-6)  # blind spot 1
 ```

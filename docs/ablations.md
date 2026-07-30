@@ -34,13 +34,8 @@ ParT pairwise-bias features, PE/SE, depth) live in `todo.md` §3 and are not rep
   residuals; the toggle exists).
 - `cgenn_normalization_init` null vs 0 (NormalizationLayer off/on inside the geometric-product
   layers; toggle exists, reference runs without).
-- **Soft attention gating (`use_phi_m`) for the LorentzNet family.** LorentzNet's per-edge
-  sigmoid gate `m_ij * phi_m(m_ij)` — the paper's "soft attention". Both hybrids expose the
-  toggle (default ON = official parity); OFF leaves soft attention entirely to the transformer
-  branch, the "GraphGPS division of labour". The `tag_lorentznet` baseline hardcodes the gate
-  ON (`lorentznet.py:45`) — give it the same kwarg (one line) if the ablation should include a
-  baseline row. Corroborating that this gating family matters: lgatr 2.0 switched its slim GLU
-  vector gate to sigmoid by default "because more stable" (CHANGELOG [2.0.0]).
+- `use_phi_m` off (LorentzNet per-edge sigmoid gate; toggle exists — off leaves soft attention
+  entirely to the transformer, the "GraphGPS division of labour").
 - `use_node_attr` off (LorentzNet hybrids; toggle exists — off is the pre-audit underfed variant,
   useful to quantify what the per-layer raw-scalar re-injection buys).
 - A `drop_local` hook on the internal-residual GPS local branches (LorentzNet, ParticleNet) so all

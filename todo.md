@@ -199,10 +199,6 @@ Minor (stale strings / metadata):
       `data.tagging_features=…` (the workflow one would otherwise have failed the tagging CI job).
 - [ ] **Defork** the GitHub repo when publishing (a fork is hidden from search / awkward to Zenodo-archive);
       keep the upstream attribution in README + LICENSE.
-- [ ] **LICENSE authors** — the MIT notice still names only the upstream authors
-      (Spinner/Favaro/Lippmann/Pitz/Gerhartz, 2025); on publication add this repo's author+year
-      copyright line while KEEPING theirs (MIT requires retaining their notice; adding a second
-      line for the derived work is the standard pattern). Pairs with the defork step above.
 
 ## 6. Done (for reference)
 
