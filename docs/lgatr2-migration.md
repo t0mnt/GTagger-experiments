@@ -202,6 +202,31 @@ Not migration work — a separate task after gates pass; recorded here so the th
 - **FC baseline only**: the all-pairs padded graph admits a dense `(B, N, N, ·)` masked-mean reformulation — no scatter, fixed shapes, compiles cleanly, better locality even eager. **The kNN hybrids keep the scatter** — sparsity is the design there; `index_add_` compiles fine with `dynamic=True`.
 - Compile knobs: `dynamic=True` over batch/N; `activation_memory_budget` (torch≥2.4) if N² intermediates pinch; AMP split (multivector fp32 / scalar bf16) after the parity dust settles.
 
+### LorentzNet: torch.compile readiness (same follow-up task)
+
+- **Standalone `tag_lorentznet` (LGEB stack) is essentially compile-ready as-is**: the forward is
+  pure tensor ops — `x[i]-x[j]` gathers, `normsq4`/`dotsq4`, `psi = sign·log(1+|·|)`, small MLPs
+  (BatchNorm1d included), and `index_add_`-based `unsorted_segment_{sum,mean}`. No numpy, no
+  `.item()`, no data-dependent Python branching in the hot path. Changes needed are placement,
+  not rewrites:
+  1. `dynamic=True` — the per-jet fully-connected edge count `E = Σ nᵢ(nᵢ−1)` and node count vary
+     per batch; without it every new shape recompiles.
+  2. Compile the **net**, not the wrapper: keep `get_edge_index_from_ptr` (cheap, shape-producing,
+     a graph-break magnet) outside the compiled region and compile the LGEB stack it feeds.
+  3. The in-place `index_add_` on `new_zeros` functionalizes fine under Inductor; if an older
+     torch complains, the out-of-place `index_add` is a one-line swap.
+  4. Compile+DDP: LorentzNet has none of v2's problem shapes (no zero-size gains, no unused
+     params) — nothing to mirror.
+- **No sparse_gp analogue exists**: LorentzNet is vector-only (Minkowski dots/norms — no Cayley
+  contraction), so there is no 16× arithmetic cut to harvest. Its compile win is pure kernel
+  fusion over many tiny ops (hidden width 72, per-edge MLPs over the fully-connected
+  E ≈ N(N−1) edges — the dominant cost). Tiny-op models are overhead-bound, so the *relative*
+  fusion win may exceed CGENN's — but it is bounded by launch overhead, not FLOPs; measure
+  (Gate-H style) before claiming anything.
+- **The hybrid `LorentzNetKNNBlock` (GPS/Trans local branch) is the easiest local branch to
+  compile**: dense padded `(B, P, K)` gather + Conv2d MLPs + masked sum/mean — static-shaped,
+  no scatter at all. `dynamic=True` over B/P and it should compile without a single break.
+
 ## Appendix A — evidence log
 
 2026-07-29 (rev 1): diffed installed 1.4.4 against `dev@e8ba34d` for `__init__`, `nets/*`, `layers/*` (incl. attention + mlp configs), `interface/*`, `primitives/*` (incl. attention backends), `utils/*`; PyPI then topped at 1.4.4; lloca 1.3.6 imports checked; repo greps as cited.
