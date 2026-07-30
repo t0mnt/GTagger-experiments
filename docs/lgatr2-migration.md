@@ -1,225 +1,223 @@
-# lgatr 1.4.4 → 2.0 migration runbook
+# lgatr 1.4.4 → 2.0.0 migration runbook
 
 **Status: PLANNED — no migration work has been done. This document is the plan.**
 
-- Prepared 2026-07-29 against installed `lgatr==1.4.4` (PyPI latest) and `heidelberg-hepml/lgatr@dev` at commit `e8ba34d` ("Fix release date", 2026-07-29).
-- The 2.0 release is imminent: dev carries "Fix release date" (`e8ba34d`) and a new v1→v2 differences docs section (`35f052c`). **Read that upstream doc at execution time** — it did not exist when the inventory below was compiled from source diffs.
-- `requirements.txt` currently pins `lgatr[xformers-attention]>=1.4.2, <2.0.0`. That upper bound is the fence that makes this migration deliberate; it is lifted in Phase 1, not before.
+- **lgatr 2.0.0 was released on PyPI on 2026-07-29.** This runbook (rev 2, same day) is pinned to that release: its CHANGELOG `[2.0.0]`, its `docs/source/v1_to_v2.rst`, and source diffs against installed 1.4.4.
+- `requirements.txt` on this branch already declares `lgatr[xformers-attention]>=2.0.0`. **The environment has NOT been migrated** — installed lgatr is still 1.4.4, and Phase 0 (fixture capture) *requires* 1.4.4. Do not `pip install -r requirements.txt` into the fixture-capture environment.
 - lloca stays frozen at `1.3.6` for the whole migration (one variable at a time).
 
-⚠ **The inventory in §2 has a shelf life.** Between two source fetches *on the same day* this plan was written, dev moved `slim_layers.py` from `lgatr/nets/` to `lgatr/layers/` (`b3615fa`). Every path below was re-verified against `e8ba34d`, but the executing session MUST re-run the Phase 1a re-verification checklist rather than trusting this table blindly.
+**Rev 2 changes vs rev 1 of this runbook** (after reading the official v1→v2 doc + CHANGELOG):
+1. The official migration doc is **accurate but incomplete — it documents renames only**. Every behavior-changing default lives only in the CHANGELOG (§2.3). Porting by the doc alone yields code that runs and silently instantiates a slightly different model.
+2. Rev 1's Gate C (same-seed fresh-init forward comparison) is **invalid and retired**: v2 changes initialization (`linear_s` bias zeroing, Slim init/scaling refinements) and adds/removes parameters, so identical seeds cannot produce comparable models across versions. Parity is now proven by **weight transplant** (§3).
+3. **Exact parity of the shipped model is impossible on v2** — two changes are baked in with no flag: the Slim GLU vector-gate `0.5 = 1/sqrt(4)` scale and the removed qkv scalar bias. What remains fully achievable is exact parity of the *verification*: transplanted weights + two documented compensations reproduce 1.4.4 outputs to fp64 precision, proving the port introduced nothing *unintended*. §4 Phase 3 then makes the shipped-model posture an explicit decision.
+4. New break items: channel-last Slim **blocks** (M8), `compile_kwargs` dynamic default (M9), qkv bias (S5), GLU gate scale (S6), init refinements (S7), AMP strategy (S8).
 
 ---
 
 ## 0. TL;DR
 
-- Effort: ~2 focused days for this fork (+1 for surprises), ~1 day for upstream `lloca-experiments`.
-- Approach: **record → port → prove.** Golden parity fixtures are captured on 1.4.4 *before anything is installed or edited*; the migration is complete only when every gate in Phase 4 passes. "Port it carefully" is not a gate.
-- Timing rule: migrate at the first official 2.0 PyPI release, **before** a training campaign starts, never mid-campaign. Two non-bit-identical lgatr kernels must never sit behind one results table.
-- Default posture: pin v2 to 1.4.4-equivalent behavior via three parity flags (§4 Phase 3); adopt v2's behavioral changes later as separate, documented decisions.
+- Effort: ~2.5 focused days for this fork (+1 for surprises), ~1 day for upstream `lloca-experiments`.
+- Approach: **record → port → prove.** Golden fixtures captured on 1.4.4 *before the environment changes*; migration complete only when every Phase 4 gate passes. "Port it carefully" is not a gate.
+- Verification is **transplant-based**: v1 state_dicts loaded into v2 models through an explicit key map, two compensations, and a waiver list. Fresh-init comparisons across versions prove nothing.
+- Timing rule: migrate before a training campaign, never mid-campaign. All campaign results on exactly one lgatr version.
 
 ## 1. Scope and execution environment
 
-In scope: everything that imports lgatr in this fork —
-
 | Surface | Files |
 |---|---|
-| Slim building blocks (direct construction) | `experiments/baselines/lorentznetlgatrslimgraphgps.py` |
-| Slim net (hydra `_target_`) | `config/model/tag_slim.yaml`, `amp_slim.yaml`, `eg_slim.yaml`; `experiments/baselines/lorentznetlgatrslimgraphtrans.py` |
+| Slim building blocks (direct construction — **channel-last hit, M8**) | `experiments/baselines/lorentznetlgatrslimgraphgps.py`; `experiments/tagging/finetuneexperiment.py:115` (replaces `net.linear_out` with a raw slim `Linear`) |
+| Slim net (hydra `_target_`; net-level tensor interface **unchanged**, verified) | `config/model/tag_slim.yaml`, `amp_slim.yaml`, `eg_slim.yaml`; `experiments/baselines/lorentznetlgatrslimgraphtrans.py`; `experiments/tagging/wrappers.py` (`LGATrSlimWrapper`) |
 | Full LGATr net (hydra `_target_`) | `config/model/tag_lgatr.yaml`, `amp_lgatr.yaml`, `eg_lgatr.yaml`; `experiments/baselines/CGENNLGATrGraphTransHybrid.py` |
 | LGATr layers (direct construction) | `experiments/baselines/cgennlgatrgraphgps.py` |
 | Frames equivectors (via lloca) | `config/model/framesnet/equivectors/lgatr.yaml` |
-| Interface + attention plumbing | `experiments/tagging/wrappers.py`, `experiments/misc.py`, `experiments/{eventgen,amplitudes}/wrappers.py`, `experiments/tagging/finetuneexperiment.py` |
+| Interface + attention plumbing | `experiments/tagging/wrappers.py`, `experiments/misc.py`, `experiments/{eventgen,amplitudes}/wrappers.py` |
 
-Execution split (matters because Claude Code web containers are **CPU-only**):
+Execution split (Claude Code web containers are **CPU-only**):
+- **CPU/web:** fixture record/check, manifests, transplant checks, the 64-test suite, all porting.
+- **Cluster (OSCAR):** training-parity run (Gate G), throughput (Gate H), `.sif` rebuild — now standard PyPI installs; v2 also *dropped* the `einops`/`opt_einsum`/`numpy` requirements (torch-only), slightly simplifying the image.
 
-- **CPU-runnable (web sessions):** fixture record/check, param manifests, the full 64-test suite, all mechanical porting. The existing suite already runs on CPU (xformers `BlockDiagonalMask` CPU path works; the container's xformers is `--no-deps`-installed and ABI-mismatched with its torch, so nothing in the gates may require CUDA kernels).
-- **Cluster-only (OSCAR, user-run or GPU session):** short training-parity run (Gate G), throughput benchmark (Gate H), `.sif` rebuild.
-
-## 2. Verified inventory (evidence, as of dev@`e8ba34d`)
+## 2. Verified inventory (v2.0.0 release + CHANGELOG + source diffs)
 
 ### 2.1 Confirmed NON-breaks — do not "fix" these
 
-- **Blade layout unchanged.** Dev `embed_vector` = `F.pad(vectors, (1, 11))`, still slots 1:5; `extract_vector` still reads 1:5. The hybrid's local `CliffordAlgebra` blade-order match with lgatr survives (re-prove anyway: Gate F).
-- **Symmetry class unchanged.** Dev `PrimitivesConfig.subgroup=True` (10-element SO⁺(1,3) linear basis) ≡ 1.4.4 `use_fully_connected_subgroup=True` default. Same model class, relocated flag.
-- **lloca 1.3.6 survives.** Its three lgatr imports — `embed_vector`, `layers.EquiLayerNorm`, and the *private* `primitives.invariants._load_inner_product_factors(device=, dtype=)` — all exist on dev with compatible signatures. `Requires-Dist: lgatr` has no version cap.
-- Top-level exports stable: `LGATr`, `LGATrSlim`, `embed_vector`, `extract_scalar`, `extract_vector`, `get_num_spurions`, `get_spurions`, `SelfAttentionConfig`, `MLPConfig`.
-- `lgatr.layers.{EquiLinear, EquiLayerNorm, GradeDropout, GeoMLP}` paths stable (`cgennlgatrgraphgps.py:55-62` imports survive except the config-field renames below).
-- `wrappers.py:1444` flex monkeypatch survives: dev `primitives/attention_backends/flex.py:10` still has module-level `attention = flex_attention`.
-- `experiments/misc.py` backend kwargs match dev's dispatch registry exactly (`attn_bias` → xformers, `cu_seqlens_*` → flash, `block_mask` → flex); dev adds a new `varlen` backend (`cu_seq_q`/`cu_seq_k`/`max_q`/`max_k`).
-- The `[xformers-attention]` extra name survives (new extras: `varlen-attention`, `flex-attention`, `flash-attention`).
-- Repo uses no `compile_mode`/`compile_dynamic` (removed on dev in favor of `compile_kwargs`) — verified by grep.
-- Slim block constructor args (`SelfAttention`/`MLP`/`Linear`/`Dropout`) are **identical** between 1.4.4 and dev — only names/module change. Sole exception: `RMSNorm` (below).
+- **Blade layout unchanged**: `embed_vector` still writes slots 1:5 (now via `F.pad`); hybrid's local `CliffordAlgebra` blade-order match survives (re-proven in Gate F, not assumed).
+- **Symmetry class unchanged**: `PrimitivesConfig.subgroup=True` ≡ 1.4.4 `use_fully_connected_subgroup=True` (10-element SO⁺(1,3) basis both).
+- **Net-level `LGATrSlim.forward` interface unchanged**: `(..., items, v_channels, 4)` in/out (verified against v2 source). The channel-last change is *internal/hidden-layer* — it surfaces only where this repo constructs blocks directly (M8).
+- **lloca 1.3.6 survives**: `embed_vector`, `layers.EquiLayerNorm`, private `primitives.invariants._load_inner_product_factors(device=, dtype=)` all present and compatible.
+- Top-level exports, `lgatr.layers.{EquiLinear, EquiLayerNorm, GradeDropout, GeoMLP}`, the `wrappers.py:1444` flex monkeypatch target (`flex.attention`), and `experiments/misc.py` backend kwargs (`attn_bias`/`cu_seqlens_*`/`block_mask`) all survive; new `varlen` backend added.
+- Conditional-network renames (`condition_*` → `*_cond`): repo uses no conditional nets (grep-verified) — n/a.
+- Repo passes no `compile_mode`/`compile_dynamic`/`num_hidden_layers`/`increase_hidden_channels` outside the sites listed in M3/M4 (grep-verified).
 
 ### 2.2 Mechanical breaks — port checklist
 
 | # | Break | Exact sites | Fix |
 |---|---|---|---|
-| M1 | `lgatr.nets.lgatr_slim` module gone; classes renamed `MLP/Dropout/Linear/RMSNorm/SelfAttention/GatedLinearUnit/LGATrSlimBlock` → `SlimMLP/SlimDropout/SlimLinear/SlimRMSNorm/SlimSelfAttention/SlimGLU/SlimBlock`, now in `lgatr.layers.slim_layers` (moved there from `lgatr.nets` mid-flight — **import from `lgatr.layers`**, the shallow re-export, not the deep path) | `lorentznetlgatrslimgraphgps.py:50-54` (already aliased to the exact new names — the aliases become plain imports), `finetuneexperiment.py:6` | ~7 import lines |
-| M2 | `LGATrSlim` moved `lgatr.nets.lgatr_slim` → `lgatr.nets.slim`; top-level `from lgatr import LGATrSlim` unchanged | `_target_` in `tag_slim.yaml`, `amp_slim.yaml`, `eg_slim.yaml` → `lgatr.LGATrSlim`; `lorentznetlgatrslimgraphtrans.py:46` needs nothing | 3 yaml lines |
-| M3 | `SelfAttentionConfig.increase_hidden_channels` → `attn_ratio` | `cgennlgatrgraphgps.py:98-99` (and the second constructor block ~:187), `CGENNLGATrGraphTransHybrid.py:1068`, `attention:` blocks in `tag_lgatr.yaml`, `amp_lgatr.yaml`, `eg_lgatr.yaml` | rename |
-| M4 | `MLPConfig.activation` → `nonlinearity`; `increase_hidden_channels` → `mlp_ratio`; `num_hidden_layers` → `num_layers_mlp` | `cgennlgatrgraphgps.py:108-109`, `CGENNLGATrGraphTransHybrid.py:1073`, `mlp:` blocks in `tag/amp/eg_lgatr.yaml` **and** `config/model/framesnet/equivectors/lgatr.yaml` (`mlp.activation: gelu`) | rename |
-| M5 | `SlimRMSNorm` now requires `(v_channels, s_channels)` (for new affine gains); bare `RMSNorm()` call breaks | `lorentznetlgatrslimgraphgps.py:91` | `SlimRMSNorm(v_channels, s_channels, elementwise_affine=False)` — affine **must** stay off here regardless of parity policy: this instance is shared across call sites, which is only valid stateless |
-| M6 | `in_s_channels`/`out_s_channels` type `int \| None` → `int = 0` on dev configs/nets | yaml `null` placeholders are overwritten with real ints by `init_physics` — confirm no call path delivers a literal `None` (Gate A exercises this) | grep + Gate A |
-| M7 | requirements: lift `<2.0.0`, pin the release (`lgatr[xformers-attention]>=2.0.0,<3`) or a git SHA pre-release | `requirements.txt:23` | 1 line + `.sif` note (§5-H10) |
+| M1 | Slim blocks renamed with `Slim` prefix, moved to `lgatr.layers.slim_layers` (re-exported from `lgatr.layers` — **use the shallow path**; the deep path moved once already during dev) | `lorentznetlgatrslimgraphgps.py:50-54` (aliases become plain imports), `finetuneexperiment.py:6` | ~7 import lines |
+| M2 | `LGATrSlim` module moved; top-level `from lgatr import LGATrSlim` unchanged | `_target_` in `tag/amp/eg_slim.yaml` → `lgatr.LGATrSlim` | 3 yaml lines |
+| M3 | `SelfAttentionConfig.increase_hidden_channels` → `attn_ratio` | `cgennlgatrgraphgps.py:98-99` (+ second block ~:187), `CGENNLGATrGraphTransHybrid.py:1068`, `attention:` in `tag/amp/eg_lgatr.yaml` | rename |
+| M4 | `MLPConfig.activation`→`nonlinearity`, `increase_hidden_channels`→`mlp_ratio`, `num_hidden_layers`→`num_layers_mlp` (**semantics confirmed**: v2 counts all layers, `mlp.py` builds `[in] + hidden×(n−1) + [out]`, so a v1 `num_hidden_layers` value ports as `+1`; repo passes neither → defaults `1`↔`2` are equivalent) | `cgennlgatrgraphgps.py:108-109`, `CGENNLGATrGraphTransHybrid.py:1073`, `mlp:` in `tag/amp/eg_lgatr.yaml` + `framesnet/equivectors/lgatr.yaml` | rename |
+| M5 | `SlimRMSNorm` requires `(v_channels, s_channels)`; bare call breaks | `lorentznetlgatrslimgraphgps.py:91` | `SlimRMSNorm(v_channels, s_channels, elementwise_affine=False)` — affine must stay off here regardless of posture: the instance is shared across call sites, only valid stateless |
+| M6 | s-channel types `int \| None` → `int = 0` | yaml `null`s are overwritten by `init_physics`; confirm no literal `None` reaches v2 (Gate A) | grep + Gate A |
+| M7 | requirements | done on this branch: `lgatr[xformers-attention]>=2.0.0` | — |
+| **M8** | **Slim blocks are channel-last**: `SlimLinear`/`SlimSelfAttention`/`SlimMLP`/`SlimRMSNorm` take `(..., 4, channels)`; this repo's GPS hybrid feeds `(B, P, V, 4)` | `lorentznetlgatrslimgraphgps.py` — every block call (`linear_in` :175, attention :81, mlp :86, norm/dropout :91-92) plus the spurion `cat` at dim 2; `finetuneexperiment.py:115` must match v2's *internal* layout at the `linear_out` splice point | First pass: `transpose(-1, -2)` at block boundaries (mechanical, provable). Optional later: flip the file's internal convention to channel-last as a perf follow-up (§8), separately gated |
+| M9 | v1.4.4 slim `compile_dynamic=True` default replaced by `compile_kwargs` (dynamic **no longer defaulted**) | `tag_slim.yaml` (`compile: true`) | add `compile_kwargs: {dynamic: true}` to preserve behavior — variable-length flattened batches otherwise recompile per shape |
 
-### 2.3 Silent numerics deltas — the reason this runbook exists
+All current v-channel widths are ≠ 4, so a missed M8 transpose **crashes loudly** (channel-dim mismatch). Keep it that way: never write fixtures or tests with `v_channels == 4`, the one width where a layout error becomes a silent transpose-alias (H13).
 
-These change model behavior with **zero errors raised and all 64 current tests passing**:
+### 2.3 Silent numerics deltas (CHANGELOG-only; absent from the migration doc)
 
-| # | Delta | Effect | Parity pin |
+| # | Delta | Effect | Handling |
 |---|---|---|---|
-| S1 | Slim GLU vector gate: 1.4.4 applies one `nonlinearity` (gelu) to both gate paths; dev adds `nonlinearity_v` defaulting to **"sigmoid"** | Every slim model (tag_slim + both LN-slim hybrids) computes different activations | Pass `nonlinearity_v=None` (falls back to `nonlinearity`) in `LGATrSlim` yamls and at the `SlimMLP` construction in `lorentznetlgatrslimgraphgps.py:86` |
-| S2 | `SlimRMSNorm` gains learnable per-channel `weight_v`/`weight_s`; net kwarg `norm_elementwise_affine=True` default (1.4.4 norm is parameter-free) | Param counts shift (~3k for tag_slim); fairness tables and params column change | `norm_elementwise_affine: false` in slim yamls; `elementwise_affine=False` at M5 |
-| S3 | `PrimitivesConfig.sparse_gp=True` default routes the geometric product through a gather-reduce kernel — explicitly **not bit-identical** to the dense path (their docstring) | Full-LGATr models (tag_lgatr, CGENN hybrids' global branch, LGATrVectors framesnet) reproduce 1.4.4 only to tolerance | Keep `sparse_gp=True` for training (it is the speed carrot); use `primitives={'sparse_gp': False}` **only inside tier-1 parity checks** (Gate C) |
-| S4 | `MLPConfig` default depth: 1.4.4 `num_hidden_layers=1` vs dev `num_layers_mlp=2` — repo passes neither, so defaults apply. Semantics *probably* map 1-hidden ≙ 2-layers, but this is unverified | If semantics differ, GeoMLP depth changes silently | Gate B (param manifest) is the arbiter; verify the mapping in Phase 1a |
+| S1 | Slim GLU gate nonlinearity: v2 `nonlinearity_v="sigmoid"` default (v1: one `nonlinearity`, gelu, for both gate paths) | Different activations in every slim model | Flag exists: `nonlinearity_v=None` restores v1 routing. Verification runs with the pin; shipped posture decided in Phase 3 |
+| S2 | `norm_elementwise_affine=True` default: slim RMSNorm gains `weight_v`/`weight_s` (v1: parameter-free) | Param counts shift (~3k for tag_slim); fairness/params tables change | Flag exists: `false` for parity. Note: gains init to 1.0 ⇒ identity at transplant time either way |
+| S3 | `sparse_gp=True` default: geometric product via gather-reduce — reordered, **not bit-identical** (upstream's own docstring) | Full-LGATr models reproduce dense results only to tolerance | Keep `True` for runtime (the speed carrot); `primitives={'sparse_gp': False}` **only inside tier-1 verification** |
+| **S5** | **qkv scalar bias removed** from q/k/v linears in *all* models ("because redundant"). v1 did **not** zero-init that bias (v2's bias-zeroing is listed as new) ⇒ removal changes fresh-model outputs | v1 state_dicts contain qkv s-bias values with no v2 slot | **Normalize-at-record**: zero all qkv scalar biases in the v1 model *before* recording fixtures (a zero-bias v1 model is still a valid v1 model — this moves the reference into the intersection of both architectures). Gate B: waiver for the missing params |
+| **S6** | **Slim GLU vector-gate scale**: v2 multiplies the gate inner product by `0.5 = 1/sqrt(4)` (`slim_layers.py:368-369`). **No flag.** | Every slim model's forward differs even with identical weights and S1 pinned | **Exact compensation in transplant**: scale the two vector-gate chunks (`v_gates_1`, `v_gates_2` rows of each GLU's fused linear `weight_v`) by `sqrt(2)` each ⇒ inner product ×2 ⇒ cancels the 0.5 exactly. Scalar-gate path is unscaled in v2 — do not touch it. Vector path has no bias — nothing else to compensate |
+| S7 | Slim init/scaling refinements (`linear_s` bias→0 at init, plus "micro speed/memory optimizations") | Same-seed fresh-init models are not comparable across versions — at all | This is *why* verification is transplant-based. Init-distribution changes are an accepted training-dynamics delta of v2 (no eval-parity impact once weights are transplanted) |
+| S8 | AMP strategy changed (vector/multivector path fp32, scalar path in autocast; `naive_amp` bypass added) | Inert today: every wrapper runs `use_amp: false` | Note in decision log; re-read this row before ever enabling amp |
 
-### 2.4 Ecosystem constraints
+(S4 from rev 1 — MLP depth semantics — is resolved and folded into M4.)
 
-- PyPI latest is 1.4.4; dev is unreleased. Until 2.0 ships, installing v2 means `lgatr[xformers-attention] @ git+https://github.com/heidelberg-hepml/lgatr@<sha>` — which propagates into the OSCAR `.sif` build recipe (needs git+network at build time). Prefer waiting for the PyPI release.
-- lloca couples to lgatr through a private symbol (§2.1). Freeze `lloca==1.3.6` during migration; re-verify the private import if lloca is ever bumped. Worth an upstream issue asking for a public accessor.
-- Old checkpoints: state_dict keys change wherever renamed classes are involved. This fork has no campaign checkpoints worth preserving — migrate before the campaign and this problem never exists. (If it ever does: key-remap script, out of scope here.)
+### 2.4 The two postures (decide in Phase 3, after gates pass)
 
-## 3. Why the existing tests are not enough (the workflow's core principle)
+Because S5 + S6 are baked in, **"identical to the v1 campaign model" is not on the menu.** The coherent choices:
 
-The 64-test suite (32 equivariance + 24 invariance + 8 jc_wiring) is the *regression floor*, not the parity proof:
+- **Posture A — closest-to-v1**: pin S1 (`nonlinearity_v: null`) and S2 (`norm_elementwise_affine: false`). Minimizes gratuitous deltas; params tables keep their v1 meaning. Still differs from v1 by S5/S6.
+- **Posture B — v2-native** (recommended for a fresh campaign): accept upstream defaults (sigmoid gate "more stable", affine norms) as the new baseline. Since full v1 equivalence is impossible anyway, taking v2 as-shipped is the more reproducible citation ("lgatr 2.0.0 defaults"); re-baseline the param manifests once, in the same commit.
 
-- **Equivariance tests can't see S1.** A gelu→sigmoid gate swap produces a different — but still perfectly Lorentz-equivariant — model. Tolerance-based SO⁺(1,3) checks pass before and after.
-- **Wiring tests can't see S2/S4.** They assert channel counts, not parameter counts or output values.
-- **A silently-dropped config key is worse than a crash.** If dev's `SelfAttentionConfig.cast` were to ignore an unknown `increase_hidden_channels: 2` from a stale yaml, hidden width silently reverts to the default (`attn_ratio=1`) — a *narrower model* with no error. (Dataclass `__init__` should raise `TypeError`; Phase 1a verifies it actually does. Gate B is the backstop either way.)
+Either way: **verification always runs in parity mode** (pins + compensations) first — it certifies the port; the posture flip afterwards is a one-commit, documented model change, not a migration step.
 
-Therefore the migration is anchored on **golden fixtures recorded on 1.4.4**: fixed inputs → recorded outputs + parameter manifests, committed to the repo *before* the environment changes. Both lgatr versions can never coexist in one env (same package name), so the fixtures are the only bridge across the swap.
+## 3. Why neither the test suite nor the official doc is enough
+
+- The 64-test suite is the regression floor, not a parity proof: a gelu→sigmoid gate swap, a 0.5 gate rescale, or dropped qkv biases all produce different-but-perfectly-equivariant models. Wiring tests check channels, not values.
+- The official `v1_to_v2.rst` covers **renames and config moves only** (verified against its source). S1–S8 live exclusively in the CHANGELOG. Port by both documents; trust neither alone.
+- A silently-dropped stale key would *narrow* a model with no error if config casting ever ignored unknown fields; Phase 1a proves `SelfAttentionConfig(increase_hidden_channels=2)` raises `TypeError`, Gate B backstops regardless.
+- Both lgatr versions can never coexist in one environment (same package name) — recorded fixtures are the only bridge across the swap, which is why Phase 0 is unskippable and first.
 
 ## 4. The workflow
 
-### Phase 0 — capture baselines on 1.4.4 (BEFORE any install or edit)
+### Phase 0 — capture on 1.4.4 (BEFORE any install or edit)
 
-Create `tests/experiments/test_lgatr_migration_parity.py` with two modes (sketch in Appendix B):
+`tests/experiments/test_lgatr_migration_parity.py` (sketch: Appendix B), two modes (`LGATR_PARITY=record` / default check, which **skips cleanly when fixtures are absent**). Two fixture families, split to keep git small:
 
-- `LGATR_PARITY=record pytest tests/experiments/test_lgatr_migration_parity.py` → writes `tests/fixtures/lgatr144/<model>.pt`
-- default (check) mode → compares against fixtures; **skips cleanly if fixtures are absent** so CI never breaks on fresh clones.
+1. **Production manifests** (KB-scale json, all six lgatr-touching tagging configs — `tag_lgatr`, `tag_slim`, `tag_CGENNLGATrGraphTrans`, `tag_CGENNLGATrGraphGPS`, `tag_LorentzNetLGATrSlimGraphTrans`, `tag_LorentzNetLGATrSlimGraphGPS` — plus one learned-frames composition with `equivectors=lgatr`): total param count + sorted multiset of parameter shapes. Keys are *not* compared (renames make them legitimately differ); shapes and counts must not.
+2. **Reduced-config transplant fixtures** (MB-scale, committed): the same model families at reduced size (`num_blocks=2`, hidden widths halved via overrides — every layer type, rename, and compensation is still exercised; parity logic is width-independent, and full-width state_dicts would be tens of MB of git). For each: fixed seed → instantiate (hydra compose + `init_physics`, same machinery as `test_jc_wiring.py`) → `.double().eval()` → **zero all qkv scalar biases (S5 normalization)** → save full state_dict + forward outputs on a fixed seeded batch (B=4, multiplicities `[1, n<knn_k, mid, large]` from `tests/experiments/utils.py`).
 
-For each of the six lgatr-touching tagging configs — `tag_lgatr`, `tag_slim`, `tag_CGENNLGATrGraphTrans`, `tag_CGENNLGATrGraphGPS`, `tag_LorentzNetLGATrSlimGraphTrans`, `tag_LorentzNetLGATrSlimGraphGPS` — plus one learned-frames composition with `equivectors=lgatr` (`LGATrVectors`; reuse the composition machinery from `test_tag_equivariance.py`), record:
-
-1. **Param manifest**: total parameter count + the sorted multiset of parameter *shapes*. Compare shapes-and-counts, **not** state_dict keys — keys legitimately change with the class renames; shapes must not.
-2. **Forward outputs**: `float64`, `.eval()` mode (BN frozen at init stats, dropout off), fixed seed for init, fixed synthetic batch from the `tests/experiments/utils.py` generator — B=4 jets with mixed multiplicities, deliberately including one jet with `n_real < knn_k` and one 1-particle jet (the historical edge cases).
-3. Instantiate through hydra compose + `init_physics`, exactly like `test_jc_wiring.py`, so the *config path* is under test too — a stale yaml key that survives porting must surface here, not in a training run.
-
-`finetuneexperiment.py` and the eventgen/amplitudes wrappers get import-smoke coverage only (their lgatr surface is top-level stable symbols).
-
-Commit the script + fixtures to this branch. Fixtures are small (fp64 outputs for 4 jets ≈ KBs).
+Commit script + fixtures to this branch.
 
 ### Phase 1 — environment swap + Phase 1a re-verification
 
-1. Fresh session/venv. `pip install "lloca[xformers-attention]==1.3.6"` then `pip install "lgatr[xformers-attention] @ git+https://github.com/heidelberg-hepml/lgatr@<2.0-tag-or-sha>"` (or the PyPI release if it exists — preferred). Record the exact version/sha in the decision log (§5).
-2. **Phase 1a — re-verify the §2 inventory (~15 min, non-negotiable):**
-   - Read lgatr's own v1→v2 migration/differences doc (added in `35f052c`).
-   - `python -c "from lgatr.layers import SlimMLP, SlimDropout, SlimLinear, SlimRMSNorm, SlimSelfAttention"` and `python -c "from lgatr import LGATr, LGATrSlim, embed_vector, extract_scalar, get_num_spurions, get_spurions"`.
-   - Confirm `SelfAttentionConfig(increase_hidden_channels=2)` raises `TypeError` (the stale-key trap, §3).
-   - Confirm `import lloca.equivectors.lgatr` still imports (private-symbol coupling).
-   - Confirm `embed_vector(torch.tensor([1.,2,3,4])).nonzero()` is slots 1–4 (layout).
-   - Diff `SlimMLP`/`SlimSelfAttention`/`SlimLinear` signatures against the calls in `lorentznetlgatrslimgraphgps.py`.
-   - Verify the S4 depth mapping: instantiate a `GeoMLP` both ways and compare layer counts.
-3. Only now lift the `<2.0.0` pin in `requirements.txt` (M7).
+1. Fresh session/venv: `pip install "lloca[xformers-attention]==1.3.6" "lgatr[xformers-attention]==2.0.0"`.
+2. **Phase 1a (~15 min, non-negotiable):** re-verify §2 against the installed release — read `v1_to_v2.rst` **and** CHANGELOG `[2.0.0]`; run the import one-liners (`from lgatr.layers import SlimMLP, ...`; top-level symbols); confirm `SelfAttentionConfig(increase_hidden_channels=2)` raises `TypeError`; confirm `import lloca.equivectors.lgatr` works; confirm `embed_vector` slots 1:4; diff `SlimMLP`/`SlimSelfAttention`/`SlimLinear` signatures against `lorentznetlgatrslimgraphgps.py` call sites; confirm block channel-last docstrings and the net-level channel-first interface.
 
 ### Phase 2 — mechanical port
 
-Work through M1–M7 as a literal checklist; one commit per row (or one for code, one for yamls) so any gate failure bisects instantly.
+M1–M9 as a literal checklist, one commit per row (or code/yaml pairs) for instant bisection. M8 first pass = boundary transposes only.
 
-### Phase 3 — parity pins
+### Phase 3 — parity pins, then posture
 
-Apply S1/S2 pins (`nonlinearity_v`, `norm_elementwise_affine`/`elementwise_affine=False`); leave S3 at `sparse_gp=True` for runtime. Every pin gets a config comment naming this document and the 1.4.4 behavior it preserves.
+Apply S1/S2 pins for verification. After Gates A–F pass, make the §2.4 posture decision in its own commit with a decision-log entry; if Posture B, re-record production manifests as the new baseline in that commit.
 
-### Phase 4 — gates (all must pass; A–F on CPU, G–H on cluster)
+### Phase 4 — gates (A–F on CPU, G–H on cluster)
 
 | Gate | What | Pass criterion |
 |---|---|---|
-| A | Composition/instantiation: `test_jc_wiring.py` (8/8) + parity script instantiates all fixture configs | no exceptions; channel asserts hold |
-| B | Param manifests vs fixtures | total counts and shape multisets **identical** — zero tolerance |
-| C | Forward parity vs fixtures, two tiers | **Tier 1** (parity pins + `sparse_gp=False` for full-LGATr models; slim has no geometric product, so no flag needed): fp64 max-abs-diff < 1e-12. **Tier 2** (dev defaults, `sparse_gp=True`): fp64 max-abs-diff < 1e-8 — failures beyond that are real deltas, not reassociation roundoff |
-| D | Full existing suite | 64/64 (32 equivariance + 24 invariance + 8 jc_wiring) |
-| E | Identity-frames bit-exactness spot check | hybrid with identity frames ≡ plain backbone, bit-identical (both sides share one lgatr, so this proves internal consistency survived) |
-| F | Blade-table equivalence | audit script comparing the hybrid's local `CliffordAlgebra` against dev's `lgatr.primitives.bilinear._load_geometric_product_tensor` — agreement at 1.4.4 levels (≤2e-6 fp32). Expected pass (§2.1) but proven, not assumed |
-| G | Training parity (cluster) | fixed-seed short runs (e.g. 1k iters, toptagging quick) for `tag_slim` + `tag_lgatr` on both versions; final train loss within seed-to-seed noise band (2–3 seeds). Curves diverge point-wise after enough steps under S3 — that is expected; this gate catches *gross* regressions only |
-| H | Throughput report (cluster) | not pass/fail: measure it/s for `tag_lgatr` with dev `compile=True/False` and `tag_slim` (which already compiles on 1.4.4). This quantifies the carrot; if the number is small, record it and stop advertising the upgrade as a speedup |
+| A | Composition: `test_jc_wiring.py` + parity script instantiates all fixture configs on v2 | no exceptions; channel asserts hold |
+| B | Production manifests vs fixtures | identical **modulo the explicit waiver list**, each waiver citing an S-item (expected: qkv s-bias params absent per S5; gain params per S2 if Posture B). Anything unexplained = fail |
+| C | **Transplant parity** on reduced configs: map v1 state_dict keys → v2 (rename table), apply the S6 `sqrt(2)` gate-chunk rescale, load (`strict=False` only for waivered keys), compare forward outputs on the recorded batch | **Tier 1** (S1 pin; `sparse_gp=False` for full-LGATr models — slim has no geometric product): fp64 max-abs-diff < 1e-12. **Tier 2** (`sparse_gp=True`): < 1e-8. Failure semantics are clean: a wrong compensation or missed transpose shows up O(1), reassociation shows up <1e-8 |
+| D | Full existing suite | 64/64 |
+| E | Identity-frames bit-exactness spot check | hybrid with identity frames ≡ plain backbone, bit-identical on v2 (internal-consistency proof) |
+| F | Blade-table equivalence | audit script vs v2 `lgatr.primitives.bilinear._load_geometric_product_tensor`: agreement ≤ 2e-6 fp32, as on 1.4.4 |
+| G | Training sanity (cluster) | fixed-seed 1k-iter quick runs (`tag_slim`, `tag_lgatr`) on both versions: final train loss within seed-noise band (2–3 seeds). Point-wise curve equality is **out of scope by design** (S3/S5/S6/S7); this catches gross regressions only |
+| H | Throughput report (cluster) | not pass/fail: it/s for `tag_lgatr` v2 `compile=True/False` vs 1.4.4, and `tag_slim` (already compiled on 1.4.4, so expect little). Quantifies the carrot; publish the number in the decision log either way |
 
 ### Phase 5 — cleanup, decision log, rollback
 
-- Sweep stale comments that reference 1.4.4 internals (e.g. `tag_LorentzNetLGATrSlimGraphGPS.yaml` "lgatr lib default is 2" mlp_ratio note; the attn_dropout comments describing lgatr's sdpa path — re-verify wording against dev).
-- Append a **decision log** section to this file: lgatr version installed, date, gates run with numbers, and an explicit entry per S-item: *pinned to 1.4.4 behavior* or *adopted v2 behavior because…*.
-- Upstream PR opportunity: the private `_load_inner_product_factors` accessor issue for lloca.
-- **Rollback:** revert the port commits, reinstall `lgatr==1.4.4` (restore the `<2.0.0` pin) — the fixtures remain valid either way. Rollback triggers: any Gate B/C tier-1 failure that can't be attributed to a documented S-item within a day.
+- Sweep stale comments referencing 1.4.4 internals (`tag_LorentzNetLGATrSlimGraphGPS.yaml` "lgatr lib default is 2" mlp_ratio note; the attn_dropout comments describing lgatr's sdpa path — re-verify wording against v2).
+- Append the **decision log** here: installed version, gate numbers, posture chosen, one entry per S-item.
+- Upstream issue: public accessor for `_load_inner_product_factors` (lloca coupling).
+- **Rollback:** revert port commits, restore `>=1.4.2, <2.0.0`, reinstall 1.4.4. Fixtures stay valid. Trigger: any unexplained Gate B/C failure standing for more than a day.
 
-## 5. Hitches and catches (consolidated)
+## 5. Hitches and catches
 
-- **H1 — dev is moving daily.** The slim module changed location *between two fetches on the day this plan was written*, and the release date is being finalized. Never port from §2.2 without running Phase 1a. Prefer shallow public imports (`lgatr.layers`, top-level `lgatr`) — they survived today's churn; deep paths didn't.
-- **H2 — the dangerous deltas are silent (S1–S4).** All 64 existing tests pass through every one of them. Only Gates B/C catch them. This is why fixtures are recorded *first*.
-- **H3 — shared `SlimRMSNorm` instance** (`lorentznetlgatrslimgraphgps.py:91`): with dev's affine default it would either crash (missing channel args) or, if naively given channels, silently tie learnable gains across call sites. `elementwise_affine=False` is structurally required, not a style choice.
-- **H4 — stale-key silence.** If config casting ever drops unknown keys instead of raising, a missed rename silently *narrows* the model. Phase 1a proves it raises; Gate B backstops.
-- **H5 — sparse_gp is not bit-identical** (upstream says so). Tier-2 tolerances, never mix lgatr versions within one results table, and all bit-exactness claims in the repo (identity-frames ≡ plain) remain valid because both sides of each claim run the same lgatr.
-- **H6 — lloca's private-API import.** Survives at `1.3.6` + dev@`e8ba34d`; any lloca or lgatr bump re-triggers the check in Phase 1a.
-- **H7 — checkpoint keys change.** Migrate before the campaign; then there is nothing to migrate.
-- **H8 — s-channel `None` → `0`** (M6): yaml `null`s are placeholders filled by `init_physics`, but any code path handing a literal `None` to a dev net/config is a break. Grep + Gate A.
-- **H9 — CPU-only web containers.** All parity gates are deliberately CPU-runnable in fp64; do not add CUDA-dependent assertions. The container's xformers is ABI-mismatched (`--no-deps` install) — only its CPU-safe pieces (`BlockDiagonalMask`) may be exercised, exactly as the existing suite already does.
-- **H10 — reproducibility/install.** Git-pinned installs leak into the `.sif` build recipe (network + git at build time). Strongly prefer executing this runbook after the PyPI 2.0 release; the `<2.0.0` pin guards until then.
-- **H11 — compile expectations.** `tag_slim.yaml` already sets `compile: true` on 1.4.4, so slim gains little from v2's compile work; the new capability is compile + `warmup_caches` + `sparse_gp` for **full-LGATr** models and the framesnet equivectors. If enabling those, call `warmup_caches(device, dtype)` before compiling with `mode="reduce-overhead"` (their documented graph-partition catch), and treat it as a *post-migration* enhancement, gated by Gate H numbers — not part of the parity port.
+- **H1 — verify against the release, not this table.** During dev, `slim_layers.py` changed directories *within one day*; the release freezes that churn, but Phase 1a re-verification stays mandatory. Prefer shallow imports (`lgatr.layers`, top-level `lgatr`).
+- **H2 — the dangerous deltas are silent** (S1–S8): all 64 tests pass through every one. Only Gates B/C see them — which is why fixtures precede everything.
+- **H3 — shared `SlimRMSNorm`** (`lorentznetlgatrslimgraphgps.py:91`): with v2's affine default it would crash (missing args) or silently tie gains across call sites. `elementwise_affine=False` is structural.
+- **H4 — stale-key silence**: proven loud in Phase 1a; Gate B backstops.
+- **H5 — sparse_gp reorders sums**: tier-2 tolerance; never mix lgatr versions inside one results table; identity-frames ≡ plain claims stay valid (both sides share one lgatr).
+- **H6 — lloca's private-API import**: fine at `1.3.6` + `2.0.0`; any bump of either re-triggers the check.
+- **H7 — checkpoints**: state_dict keys and (S2/S5) shapes change; migrate before the campaign so no checkpoint survives the boundary.
+- **H8 — literal `None` s-channels**: v1 accepted `None`, v2 wants ints; yaml `null`s are placeholders filled by `init_physics` — Gate A confirms no live `None` path.
+- **H9 — CPU-only web containers**: every parity gate is fp64-CPU by design; the container's xformers is ABI-mismatched (`--no-deps`), so gates must not touch CUDA kernels (CPU `BlockDiagonalMask` only, as the suite already does).
+- **H10 — installs are now standard PyPI** (2.0.0 released); v2 even drops `einops`/`opt_einsum`/`numpy` deps. The `.sif` rebuild is routine — but rebuild it *once, before* the campaign, not between runs.
+- **H11 — compile expectations**: slim already compiled on 1.4.4 (keep `dynamic: true` via M9); the genuinely new capability is compile for **full-LGATr** + `warmup_caches` + compiled-xformers custom ops (attention no longer graph-breaks). Enabling it is a *post-migration* enhancement gated by Gate H numbers. For compile+DDP, note v2's own fixes here (unused-param `requires_grad_(False)`, tensor-ized norm eps/gains) — mirror that pattern in any local module you compile under DDP.
+- **H12 — the official migration doc is renames-only** (verified). The CHANGELOG is the behavioral source of truth. Port by both.
+- **H13 — `v_channels == 4` is the silent-alias width** for the M8 layout flip (transpose becomes shape-legal). All current widths differ from 4; keep fixtures and tests that way so layout mistakes stay loud.
 
 ## 6. Upstream (`heidelberg-hepml/lloca-experiments`) variant
 
-No hybrids, no direct slim-block construction. Surface = M2/M3/M4 yaml renames across the three experiment families + `finetuneexperiment` import + the flex monkeypatch check + their own test suite. Same record→port→prove shape with their tests as Gate D. ≈1 day. Offer the fixture-script pattern upstream with the port PR.
+No hybrids, no direct block construction ⇒ no M8 surface except their `finetuneexperiment` equivalent. Surface = M2/M3/M4/M9 renames + `finetuneexperiment` + flex monkeypatch + their suite as Gate D, same record→port→prove shape (S5/S6 still apply to their slim models — transplant needs the same compensations). ≈1 day. Offer the fixture-script pattern with the port PR.
 
-## 7. Suggested task split (Claude Code web)
+## 7. Task split (Claude Code web)
 
-1. **Task A (this environment, 1.4.4 still installed):** implement + run Phase 0; commit script + fixtures to `dev`.
-2. **Task B (fresh session, after 2.0 exists on PyPI):** Phase 1 → 1a → 2 → 3, then Gates A–F. Push; open PR only when A–F are green.
-3. **Task C (cluster/user):** Gates G–H, `.sif` rebuild, Phase 5 decision log, merge.
+1. **Task A (environment still on 1.4.4):** implement + run Phase 0; commit script + fixtures to `dev`. *Blocking precondition for everything else; do not install v2 in that session.*
+2. **Task B (fresh session):** install `lgatr==2.0.0` → Phase 1a → 2 → 3 (parity mode) → Gates A–F. Push; PR only when green.
+3. **Task C (cluster/user):** Gates G–H, posture decision + possible manifest re-baseline, `.sif` rebuild, Phase 5, merge.
 
-## Appendix A — evidence log (2026-07-29)
+## 8. Out of scope, captured for the follow-up task: performance transfers to CGENN
 
-Diffed installed `lgatr==1.4.4` against dev@`e8ba34d` raw sources for: `__init__`, `nets/{__init__,slim,slim → layers/slim_layers,lgatr}`, `layers/{__init__,linear,dropout,layer_norm,attention/config,attention/self_attention,mlp/config,mlp/mlp}`, `interface/{vector,spurions}`, `primitives/{invariants,linear,bilinear,config,compile,attention_backends/__init__,attention_backends/flex}`, `utils/{misc,autocast,compile}`. Key confirmations: embed slots 1:5 unchanged; subgroup default equivalent (10-element basis both); slim constructor args identical except RMSNorm; `attention = flex_attention` present; backend kwarg registry matches `experiments/misc.py`; PyPI latest 1.4.4; lloca 1.3.6 imports compatible; repo greps for `compile_mode|compile_dynamic|nonlinearity_v|increase_hidden_channels|minimum_autocast_precision` as cited in §2.
+Not migration work — a separate task after gates pass; recorded here so the thinking isn't lost:
 
-## Appendix B — fixture script sketch
+- **Profile first**: the FLOPs tests already emit per-jet FLOPs per model — compare CGENN-hybrid rows against `tag_slim` before optimizing anything. Post-migration, the compiled attention half of every CGENN-hybrid block gets faster, making the un-optimized CGENN branch the *relative* bottleneck almost by construction (~N·k dense-Cayley contractions per jet per layer).
+- **Sparse-indexed GP transfers almost verbatim** (same Cl(1,3) 16-blade algebra; 256/4096 nonzero Cayley entries, one output blade per pair): rewrite the `fcgp.py`/`gp.py` einsums as precomputed (indices, signs) gathers with an input-saving backward — upstream made it default "because always faster", eager included. One rewrite serves the FC baseline *and* the GPS hybrid (shared modules); the GraphTrans hybrid's private `CliffordAlgebra` copy needs the same treatment separately. Mathematically identical, reorder-only — a documented performance change, no modeling change.
+- **FC baseline only**: the all-pairs padded graph admits a dense `(B, N, N, ·)` masked-mean reformulation — no scatter, fixed shapes, compiles cleanly, better locality even eager. **The kNN hybrids keep the scatter** — sparsity is the design there; `index_add_` compiles fine with `dynamic=True`.
+- Compile knobs: `dynamic=True` over batch/N; `activation_memory_budget` (torch≥2.4) if N² intermediates pinch; AMP split (multivector fp32 / scalar bf16) after the parity dust settles.
+
+## Appendix A — evidence log
+
+2026-07-29 (rev 1): diffed installed 1.4.4 against `dev@e8ba34d` for `__init__`, `nets/*`, `layers/*` (incl. attention + mlp configs), `interface/*`, `primitives/*` (incl. attention backends), `utils/*`; PyPI then topped at 1.4.4; lloca 1.3.6 imports checked; repo greps as cited.
+2026-07-29 (rev 2): lgatr **2.0.0 on PyPI**; read CHANGELOG `[2.0.0]` in full and the `v1_to_v2.rst` summary (renames-only confirmed); verified at source: v2 net-level `LGATrSlim.forward` keeps `(..., items, v_channels, 4)` while blocks take `(..., 4, channels)`; GLU `0.5 = 1/sqrt(4)` at `layers/slim_layers.py:368-369` (vector gate only, no flag); v2 zero-inits `linear_s` bias (new ⇒ v1 didn't); `SlimLinear` scalar bias still exists (`bias=True`) — only **qkv** linears dropped it; repo has no Conditional-net usage; M4 depth semantics confirmed (`[in] + hidden×(n−1) + [out]`).
+
+## Appendix B — fixture/transplant sketch
 
 ```python
 # tests/experiments/test_lgatr_migration_parity.py  (sketch — implement in Task A)
-import os, json, pathlib, pytest, torch
+import os, pathlib, pytest, torch
 
-FIXTURE_DIR = pathlib.Path(__file__).parent.parent / "fixtures" / "lgatr144"
-MODELS = [
-    "tag_lgatr", "tag_slim",
-    "tag_CGENNLGATrGraphTrans", "tag_CGENNLGATrGraphGPS",
-    "tag_LorentzNetLGATrSlimGraphTrans", "tag_LorentzNetLGATrSlimGraphGPS",
-    # + one learned-frames composition with equivectors=lgatr (LGATrVectors)
-]
-RECORD = os.environ.get("LGATR_PARITY") == "record"
+FIX = pathlib.Path(__file__).parent.parent / "fixtures" / "lgatr144"
+RECORD = os.environ.get("LGATR_PARITY") == "record"   # only valid on lgatr 1.4.4
+TIER1 = os.environ.get("LGATR_PARITY_TIER", "1") == "1"
 
-def build(model_name):
-    # hydra compose + init_physics, same machinery as test_jc_wiring.py;
-    # torch.manual_seed(0) before instantiation; .double().eval()
-    ...
+# rename table applied to v1 state_dict keys; waivers cite S-items
+KEY_MAP = {...}          # e.g. "blocks.0.mlp." prefixes etc. — fill at implementation
+WAIVED_MISSING = [...]   # qkv scalar biases (S5); affine gains absent v1-side (S2)
 
-def fixed_batch():
-    # tests/experiments/utils.py generator, seeded; B=4, multiplicities
-    # [1, n<knn_k, mid, large]; float64
-    ...
+def zero_qkv_scalar_bias(model):        # S5 normalization, BEFORE recording
+    for name, p in model.named_parameters():
+        if is_qkv_scalar_bias(name):    # pattern match: slim linear_in / LGATr qkv EquiLinear
+            torch.nn.init.zeros_(p)
 
-@pytest.mark.parametrize("name", MODELS)
-def test_parity(name):
-    model = build(name)
-    manifest = {
-        "total": sum(p.numel() for p in model.parameters()),
-        "shapes": sorted(str(tuple(p.shape)) for p in model.parameters()),
-    }
-    with torch.no_grad():
-        out = model(fixed_batch())
-    path = FIXTURE_DIR / f"{name}.pt"
+def rescale_glu_gates(sd):              # S6 compensation, on the mapped v1 state_dict
+    for key in glu_fused_linear_weight_v_keys(sd):
+        w = sd[key]                     # rows = [v_pre | v_gates_1 | v_gates_2] chunks
+        n = w.shape[0] // 3
+        w[n:] = w[n:] * (2 ** 0.5)      # x sqrt(2) on both gate chunks -> cancels v2's 0.5
+    return sd
+
+@pytest.mark.parametrize("name", REDUCED_MODELS)
+def test_transplant_parity(name):
+    model = build_reduced(name)         # hydra compose + init_physics, seed 0, .double().eval()
     if RECORD:
-        torch.save({"manifest": manifest, "out": out}, path)
+        zero_qkv_scalar_bias(model)
+        out = forward_fixed_batch(model)
+        torch.save({"sd": model.state_dict(), "out": out}, FIX / f"{name}.pt")
         return
-    if not path.exists():
-        pytest.skip("no 1.4.4 fixtures recorded")          # fresh clones / CI
-    ref = torch.load(path)
-    assert manifest == ref["manifest"]                     # Gate B: zero tolerance
-    tol = 1e-12 if os.environ.get("LGATR_PARITY_TIER") == "1" else 1e-8
-    assert (out - ref["out"]).abs().max() < tol            # Gate C
+    if not (FIX / f"{name}.pt").exists():
+        pytest.skip("no 1.4.4 fixtures recorded")
+    ref = torch.load(FIX / f"{name}.pt")
+    sd = rescale_glu_gates(remap_keys(ref["sd"], KEY_MAP))
+    missing, unexpected = model.load_state_dict(sd, strict=False)
+    assert set(missing) | set(unexpected) <= set(WAIVED_MISSING)   # Gate B spirit, zero surprises
+    out = forward_fixed_batch(model)    # tier 1: sparse_gp=False for full-LGATr builds
+    assert (out - ref["out"]).abs().max() < (1e-12 if TIER1 else 1e-8)
 ```
