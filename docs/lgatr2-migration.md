@@ -12,6 +12,13 @@
 3. **Exact parity of the shipped model is impossible on v2** — two changes are baked in with no flag: the Slim GLU vector-gate `0.5 = 1/sqrt(4)` scale and the removed qkv scalar bias. What remains fully achievable is exact parity of the *verification*: transplanted weights + two documented compensations reproduce 1.4.4 outputs to fp64 precision, proving the port introduced nothing *unintended*. §4 Phase 3 then makes the shipped-model posture an explicit decision.
 4. New break items: channel-last Slim **blocks** (M8), `compile_kwargs` dynamic default (M9), qkv bias (S5), GLU gate scale (S6), init refinements (S7), AMP strategy (S8).
 
+**Rev 3 changes vs rev 2** (same day; full-source re-sieve of the v2.0.0 tag against installed 1.4.4 — every layer, primitive, net, backend, and interface file):
+1. One new hard break found: **M10** — `primitives: PrimitivesConfig` is now a *required* constructor argument on directly-constructed layers (`SelfAttention`, `GeoMLP`, and `EquiLinear`, where it is the **third positional**).
+2. **S2 broadened**: `norm_elementwise_affine=True` is the new default on **all** v2 nets (full LGATr included, with per-grade `(mv_channels, 5)` gains), not just slim. Conversely, the *layer-level* `EquiLayerNorm` default is `False`, so the GPS hybrid's bare constructions are safe.
+3. **S5 sharpened** to the exact tensors: v2 sets `bias=False` at all four qkv construction sites; v1's qkv scalar biases live in `linear_in.linear_s` (slim) and EquiLinear's internal `s2mvs`/`mvs2s` Linears (full) with **nonzero** uniform init.
+4. Several feared breaks verified as **non-breaks**, most importantly the CPU attention path (the suite survives v2's CUDA gate because `experiments/misc.py` already falls back to dense masks on CPU).
+5. Scope statement: **weight transplant is a parity-verification instrument only.** Porting trained checkpoints between lgatr versions is a non-goal of this migration — no checkpoint crosses the boundary (H7).
+
 ---
 
 ## 0. TL;DR
@@ -47,6 +54,12 @@ Execution split (Claude Code web containers are **CPU-only**):
 - Top-level exports, `lgatr.layers.{EquiLinear, EquiLayerNorm, GradeDropout, GeoMLP}`, the `wrappers.py:1444` flex monkeypatch target (`flex.attention`), and `experiments/misc.py` backend kwargs (`attn_bias`/`cu_seqlens_*`/`block_mask`) all survive; new `varlen` backend added.
 - Conditional-network renames (`condition_*` → `*_cond`): repo uses no conditional nets (grep-verified) — n/a.
 - Repo passes no `compile_mode`/`compile_dynamic`/`num_hidden_layers`/`increase_hidden_channels` outside the sites listed in M3/M4 (grep-verified).
+- **Bare `EquiLayerNorm()` constructions stay valid and parameter-free** (`cgennlgatrgraphgps.py` per-layer norms): the *layer* default is `elementwise_affine=False`; the changed default is the **net-level** `norm_elementwise_affine` kwarg (S2). v2's epsilon/gain became non-persistent fp32 *buffers* (the compile+DDP fix) — state_dict untouched, math identical at `gain=1.0`.
+- **Block structures identical in both families** (pre-norm → attention → residual → pre-norm → MLP → residual; verified line-level, slim `SlimBlock` vs v1 `LGATrSlimBlock` and full `LGATrBlock` both). v2 splits the v1 *shared stateless* norm into `norm1`/`norm2` (necessary once gains exist) — zero state_dict/transplant impact while affine is off, since v1 norms were parameter-free. Slim attention still concatenates the vector+scalar streams into **one** joint sdpa call (the repo's `attn_dropout` semantics survive).
+- **GeoMLP recipe identical**: GeometricBilinear first, then ScalarGatedNonlinearity + EquiLinear per extra layer, GradeDropout after each; the channel-list arithmetic independently re-confirms the M4 `+1` depth mapping. `get_nonlinearity` unification: no effect at the defaults (gelu both).
+- **qkv head-width formulas identical under the rename**: `max(mv_channels·ratio // num_heads, 1)` and `max(s_channels·ratio // num_heads, 4)` verbatim on both sides — M3 is a pure rename, no width drift.
+- **CPU attention verified safe** — the sieve's biggest scare, resolved: v2 hard-gates `xformers`/`flash` off-CUDA and *raises* if their kwargs (`attn_bias`, `cu_seqlens_*`) are passed on CPU. But `experiments/misc.py` **already** materializes a dense `attn_mask` on CPU ("fallback to default attention") instead of backend-specific kwargs, so both 1.4.4 and v2 dispatch to native sdpa there — the CPU test suite passes on both for the same reason. The GPS hybrids always pass a dense `attn_mask` (+ optional `dropout_p`), i.e. native on every device, both versions. (New in v2, unused by the repo: explicit `backend="..."` selection kwarg.)
+- **Spurion definitions byte-identical** (lightlike `[√2,0,0,1]`, spacelike, xyplane bivector, time reference; same kwarg names/defaults). `GradeDropout` semantics unchanged. `embed_scalar`/`extract_scalar` slots unchanged (component 0). `reinsert_mv/s_channels` machinery intact on the full net.
 
 ### 2.2 Mechanical breaks — port checklist
 
@@ -61,6 +74,7 @@ Execution split (Claude Code web containers are **CPU-only**):
 | M7 | requirements | done on this branch: `lgatr[xformers-attention]>=2.0.0` | — |
 | **M8** | **Slim blocks are channel-last**: `SlimLinear`/`SlimSelfAttention`/`SlimMLP`/`SlimRMSNorm` take `(..., 4, channels)`; this repo's GPS hybrid feeds `(B, P, V, 4)` | `lorentznetlgatrslimgraphgps.py` — every block call (`linear_in` :175, attention :81, mlp :86, norm/dropout :91-92) plus the spurion `cat` at dim 2; `finetuneexperiment.py:115` must match v2's *internal* layout at the `linear_out` splice point | First pass: `transpose(-1, -2)` at block boundaries (mechanical, provable). Optional later: flip the file's internal convention to channel-last as a perf follow-up (§8), separately gated |
 | M9 | v1.4.4 slim `compile_dynamic=True` default replaced by `compile_kwargs` (dynamic **no longer defaulted**) | `tag_slim.yaml` (`compile: true`) | add `compile_kwargs: {dynamic: true}` to preserve behavior — variable-length flattened batches otherwise recompile per shape |
+| **M10** | **`primitives: PrimitivesConfig` is a REQUIRED constructor arg** on directly-constructed layers: `SelfAttention(cfg, primitives)`, `GeoMLP(cfg, primitives)`, and `EquiLinear(in_mv, out_mv, primitives, ...)` — third **positional**, so it also shifts any positional args after it. (`geometric_product(x, y, *, config=...)` likewise; repo has no direct primitive callers.) | `cgennlgatrgraphgps.py` (SelfAttention/GeoMLP constructions ~:98/:108 and the second block ~:187, EquiLinear), `finetuneexperiment.py:108` (`EquiLinear` linear_out splice) | build one `PrimitivesConfig()` per model and thread it, mirroring v2's own nets; a missed site is a loud `TypeError` |
 
 All current v-channel widths are ≠ 4, so a missed M8 transpose **crashes loudly** (channel-dim mismatch). Keep it that way: never write fixtures or tests with `v_channels == 4`, the one width where a layout error becomes a silent transpose-alias (H13).
 
@@ -69,9 +83,9 @@ All current v-channel widths are ≠ 4, so a missed M8 transpose **crashes loudl
 | # | Delta | Effect | Handling |
 |---|---|---|---|
 | S1 | Slim GLU gate nonlinearity: v2 `nonlinearity_v="sigmoid"` default (v1: one `nonlinearity`, gelu, for both gate paths) | Different activations in every slim model | Flag exists: `nonlinearity_v=None` restores v1 routing. Verification runs with the pin; shipped posture decided in Phase 3 |
-| S2 | `norm_elementwise_affine=True` default: slim RMSNorm gains `weight_v`/`weight_s` (v1: parameter-free) | Param counts shift (~3k for tag_slim); fairness/params tables change | Flag exists: `false` for parity. Note: gains init to 1.0 ⇒ identity at transplant time either way |
+| S2 | `norm_elementwise_affine=True` default **on every v2 net** (full LGATr, LGATrSlim, conditionals — "all networks" per CHANGELOG): slim RMSNorm gains per-channel `weight_v`/`weight_s`; full-LGATr EquiLayerNorm gains **per-grade** `(mv_channels, 5)` + per-channel scalar (grade-wise scaling stays Pin-equivariant). 1.4.4 norms are parameter-free | Param counts shift on every *net-using* surface: `tag/amp/eg_lgatr`, `tag/amp/eg_slim`, both GraphTrans hybrids' global stacks, the equivectors LGATr. Direct-layer constructions (GPS hybrid) are **unaffected** — the layer default is `False` (§2.1), and the M5 shared-norm site must stay `False` structurally | Flag exists on all nets: `norm_elementwise_affine: false` for parity. Gains init to 1.0 ⇒ identity at transplant time either way |
 | S3 | `sparse_gp=True` default: geometric product via gather-reduce — reordered, **not bit-identical** (upstream's own docstring) | Full-LGATr models reproduce dense results only to tolerance | Keep `True` for runtime (the speed carrot); `primitives={'sparse_gp': False}` **only inside tier-1 verification** |
-| **S5** | **qkv scalar bias removed** from q/k/v linears in *all* models ("because redundant"). v1 did **not** zero-init that bias (v2's bias-zeroing is listed as new) ⇒ removal changes fresh-model outputs | v1 state_dicts contain qkv s-bias values with no v2 slot | **Normalize-at-record**: zero all qkv scalar biases in the v1 model *before* recording fixtures (a zero-bias v1 model is still a valid v1 model — this moves the reference into the intersection of both architectures). Gate B: waiver for the missing params |
+| **S5** | **qkv scalar bias removed** from q/k/v linears in *all* models ("because redundant") — v2 `qkv.py` passes `bias=False` at all four construction sites. v1 defaulted `bias=True` with **nonzero** uniform init: slim's `linear_in.linear_s.bias` (plain `nn.Linear` default; v2's zero-init of it is listed as *new*), full model's biases inside EquiLinear's internal `s2mvs`/`mvs2s` Linears (+ the standalone scalar-slot bias when a layer has no s-inputs) | v1 state_dicts contain qkv bias values with no v2 slot, and they contribute nonzero terms to v1 outputs | **Normalize-at-record**: walk `named_modules()`, locate each attention layer's qkv projection module (slim `linear_in`; full-model qkv EquiLinear), and zero **every** `*.bias` tensor beneath it, *before* recording (a zero-bias v1 model is still a valid v1 model — the reference moves into the intersection of both architectures). Gate B: waiver for the missing params |
 | **S6** | **Slim GLU vector-gate scale**: v2 multiplies the gate inner product by `0.5 = 1/sqrt(4)` (`slim_layers.py:368-369`). **No flag.** | Every slim model's forward differs even with identical weights and S1 pinned | **Exact compensation in transplant**: scale the two vector-gate chunks (`v_gates_1`, `v_gates_2` rows of each GLU's fused linear `weight_v`) by `sqrt(2)` each ⇒ inner product ×2 ⇒ cancels the 0.5 exactly. Scalar-gate path is unscaled in v2 — do not touch it. Vector path has no bias — nothing else to compensate |
 | S7 | Slim init/scaling refinements (`linear_s` bias→0 at init, plus "micro speed/memory optimizations") | Same-seed fresh-init models are not comparable across versions — at all | This is *why* verification is transplant-based. Init-distribution changes are an accepted training-dynamics delta of v2 (no eval-parity impact once weights are transplanted) |
 | S8 | AMP strategy changed (vector/multivector path fp32, scalar path in autocast; `naive_amp` bypass added) | Inert today: every wrapper runs `use_amp: false` | Note in decision log; re-read this row before ever enabling amp |
@@ -101,18 +115,22 @@ Either way: **verification always runs in parity mode** (pins + compensations) f
 `tests/experiments/test_lgatr_migration_parity.py` (sketch: Appendix B), two modes (`LGATR_PARITY=record` / default check, which **skips cleanly when fixtures are absent**). Two fixture families, split to keep git small:
 
 1. **Production manifests** (KB-scale json, all six lgatr-touching tagging configs — `tag_lgatr`, `tag_slim`, `tag_CGENNLGATrGraphTrans`, `tag_CGENNLGATrGraphGPS`, `tag_LorentzNetLGATrSlimGraphTrans`, `tag_LorentzNetLGATrSlimGraphGPS` — plus one learned-frames composition with `equivectors=lgatr`): total param count + sorted multiset of parameter shapes. Keys are *not* compared (renames make them legitimately differ); shapes and counts must not.
-2. **Reduced-config transplant fixtures** (MB-scale, committed): the same model families at reduced size (`num_blocks=2`, hidden widths halved via overrides — every layer type, rename, and compensation is still exercised; parity logic is width-independent, and full-width state_dicts would be tens of MB of git). For each: fixed seed → instantiate (hydra compose + `init_physics`, same machinery as `test_jc_wiring.py`) → `.double().eval()` → **zero all qkv scalar biases (S5 normalization)** → save full state_dict + forward outputs on a fixed seeded batch (B=4, multiplicities `[1, n<knn_k, mid, large]` from `tests/experiments/utils.py`).
+2. **Reduced-config transplant fixtures** (MB-scale, committed): the same model families at reduced size (`num_blocks=2`, hidden widths halved via overrides — every layer type, rename, and compensation is still exercised; parity logic is width-independent, and full-width state_dicts would be tens of MB of git). For each: fixed seed → instantiate (hydra compose + `init_physics`, same machinery as `test_jc_wiring.py`) → `.double().eval()` → **zero every bias under each qkv projection module (S5 normalization, per the S-table procedure)** → save full state_dict + forward outputs on a fixed seeded batch (B=4, multiplicities `[1, n<knn_k, mid, large]` from `tests/experiments/utils.py`).
+
+The recorded state_dicts double as the v1 side of the **KEY_MAP**: do not hand-write the v1→v2 key mapping. Phase 1a dumps the v2 key lists for the same reduced configs; build the map by ordered shape-matching plus the known rename rules (module moves, `norm`→`norm1`/`norm2` adds nothing while norms are parameter-free), review it once, commit it next to the fixtures.
+
+Scope note: the transplant exists to *verify the port*, nothing else — migrating trained checkpoints across lgatr versions is a non-goal (H7), so KEY_MAP never needs to handle production-width models.
 
 Commit script + fixtures to this branch.
 
 ### Phase 1 — environment swap + Phase 1a re-verification
 
 1. Fresh session/venv: `pip install "lloca[xformers-attention]==1.3.6" "lgatr[xformers-attention]==2.0.0"`.
-2. **Phase 1a (~15 min, non-negotiable):** re-verify §2 against the installed release — read `v1_to_v2.rst` **and** CHANGELOG `[2.0.0]`; run the import one-liners (`from lgatr.layers import SlimMLP, ...`; top-level symbols); confirm `SelfAttentionConfig(increase_hidden_channels=2)` raises `TypeError`; confirm `import lloca.equivectors.lgatr` works; confirm `embed_vector` slots 1:4; diff `SlimMLP`/`SlimSelfAttention`/`SlimLinear` signatures against `lorentznetlgatrslimgraphgps.py` call sites; confirm block channel-last docstrings and the net-level channel-first interface.
+2. **Phase 1a (~15 min, non-negotiable):** re-verify §2 against the installed release — read `v1_to_v2.rst` **and** CHANGELOG `[2.0.0]`; run the import one-liners (`from lgatr.layers import SlimMLP, ...`; top-level symbols); confirm `SelfAttentionConfig(increase_hidden_channels=2)` raises `TypeError`; confirm M10 (`SelfAttention(cfg)` / `GeoMLP(cfg)` / `EquiLinear(i, o)` without `primitives` raise `TypeError`); confirm `import lloca.equivectors.lgatr` works; confirm `embed_vector` slots 1:4; diff `SlimMLP`/`SlimSelfAttention`/`SlimLinear` signatures against `lorentznetlgatrslimgraphgps.py` call sites; confirm block channel-last docstrings and the net-level channel-first interface; dump v2 state_dict key lists for the reduced fixture configs and build+commit KEY_MAP (Phase 0 note).
 
 ### Phase 2 — mechanical port
 
-M1–M9 as a literal checklist, one commit per row (or code/yaml pairs) for instant bisection. M8 first pass = boundary transposes only.
+M1–M10 as a literal checklist, one commit per row (or code/yaml pairs) for instant bisection. M8 first pass = boundary transposes only.
 
 ### Phase 3 — parity pins, then posture
 
@@ -146,9 +164,9 @@ Apply S1/S2 pins for verification. After Gates A–F pass, make the §2.4 postur
 - **H4 — stale-key silence**: proven loud in Phase 1a; Gate B backstops.
 - **H5 — sparse_gp reorders sums**: tier-2 tolerance; never mix lgatr versions inside one results table; identity-frames ≡ plain claims stay valid (both sides share one lgatr).
 - **H6 — lloca's private-API import**: fine at `1.3.6` + `2.0.0`; any bump of either re-triggers the check.
-- **H7 — checkpoints**: state_dict keys and (S2/S5) shapes change; migrate before the campaign so no checkpoint survives the boundary.
+- **H7 — checkpoints**: state_dict keys and (S2/S5) shapes change; migrate before the campaign so no checkpoint survives the boundary. Cross-version checkpoint porting is explicitly a **non-goal** — the transplant machinery is a verification instrument, never a model-delivery path.
 - **H8 — literal `None` s-channels**: v1 accepted `None`, v2 wants ints; yaml `null`s are placeholders filled by `init_physics` — Gate A confirms no live `None` path.
-- **H9 — CPU-only web containers**: every parity gate is fp64-CPU by design; the container's xformers is ABI-mismatched (`--no-deps`), so gates must not touch CUDA kernels (CPU `BlockDiagonalMask` only, as the suite already does).
+- **H9 — CPU-only web containers**: every parity gate is fp64-CPU by design; the container's xformers is ABI-mismatched (`--no-deps`), so gates must not touch CUDA kernels. The attention path is verified safe (§2.1): on CPU, `misc.py` materializes a dense `attn_mask` instead of passing xformers/flash kwargs, so both versions dispatch native sdpa and v2's off-CUDA backend gate is never hit.
 - **H10 — installs are now standard PyPI** (2.0.0 released); v2 even drops `einops`/`opt_einsum`/`numpy` deps. The `.sif` rebuild is routine — but rebuild it *once, before* the campaign, not between runs.
 - **H11 — compile expectations**: slim already compiled on 1.4.4 (keep `dynamic: true` via M9); the genuinely new capability is compile for **full-LGATr** + `warmup_caches` + compiled-xformers custom ops (attention no longer graph-breaks). Enabling it is a *post-migration* enhancement gated by Gate H numbers. For compile+DDP, note v2's own fixes here (unused-param `requires_grad_(False)`, tensor-ized norm eps/gains) — mirror that pattern in any local module you compile under DDP.
 - **H12 — the official migration doc is renames-only** (verified). The CHANGELOG is the behavioral source of truth. Port by both.
@@ -156,7 +174,7 @@ Apply S1/S2 pins for verification. After Gates A–F pass, make the §2.4 postur
 
 ## 6. Upstream (`heidelberg-hepml/lloca-experiments`) variant
 
-No hybrids, no direct block construction ⇒ no M8 surface except their `finetuneexperiment` equivalent. Surface = M2/M3/M4/M9 renames + `finetuneexperiment` + flex monkeypatch + their suite as Gate D, same record→port→prove shape (S5/S6 still apply to their slim models — transplant needs the same compensations). ≈1 day. Offer the fixture-script pattern with the port PR.
+No hybrids, no direct block construction ⇒ no M8 surface except their `finetuneexperiment` equivalent. Surface = M2/M3/M4/M9 renames + M10 at their `finetuneexperiment` `EquiLinear`/slim-`Linear` splices + flex monkeypatch + their suite as Gate D, same record→port→prove shape (S2/S5/S6 still apply to their nets — transplant needs the same compensations). ≈1 day. Offer the fixture-script pattern with the port PR.
 
 ## 7. Task split (Claude Code web)
 
@@ -177,6 +195,7 @@ Not migration work — a separate task after gates pass; recorded here so the th
 
 2026-07-29 (rev 1): diffed installed 1.4.4 against `dev@e8ba34d` for `__init__`, `nets/*`, `layers/*` (incl. attention + mlp configs), `interface/*`, `primitives/*` (incl. attention backends), `utils/*`; PyPI then topped at 1.4.4; lloca 1.3.6 imports checked; repo greps as cited.
 2026-07-29 (rev 2): lgatr **2.0.0 on PyPI**; read CHANGELOG `[2.0.0]` in full and the `v1_to_v2.rst` summary (renames-only confirmed); verified at source: v2 net-level `LGATrSlim.forward` keeps `(..., items, v_channels, 4)` while blocks take `(..., 4, channels)`; GLU `0.5 = 1/sqrt(4)` at `layers/slim_layers.py:368-369` (vector gate only, no flag); v2 zero-inits `linear_s` bias (new ⇒ v1 didn't); `SlimLinear` scalar bias still exists (`bias=True`) — only **qkv** linears dropped it; repo has no Conditional-net usage; M4 depth semantics confirmed (`[in] + hidden×(n−1) + [out]`).
+2026-07-29 (rev 3): full-source re-sieve of the **v2.0.0 tag** vs installed 1.4.4 — `layer_norm.py`, `lgatr_block.py`, `dropout.py`, `linear.py`, `attention/{self_attention,qkv}.py`, `mlp/{mlp,geometric_bilinears,nonlinearities}.py`, `primitives/{attention,attention_backends/*,bilinear,normalization,linear}.py`, `interface/spurions.py`, `nets/{lgatr,slim}.py`, `layers/slim_layers.py`. Key findings: `primitives` required on directly-constructed layers (M10; `EquiLinear`'s third positional); layer-level `EquiLayerNorm` default `elementwise_affine=False` (net-level default `True` — S2, all nets, per-grade `(mv,5)` gains on the full model); v2 `qkv.py` all `bias=False` vs v1 nonzero-uniform biases in `linear_s`/`s2mvs`/`mvs2s` (S5 exact tensors); block structures line-identical both families (`norm`→`norm1/norm2` split, stateless when affine off); GeoMLP recipe identical; qkv width formulas verbatim under rename; CPU attention safe via `misc.py` dense-mask fallback (v2 raises on xformers/flash kwargs off-CUDA, path never taken); spurion values byte-identical; `GradeDropout`/scalar-interface/`reinsert_*` unchanged; slim single-joint-sdpa call preserved (attn_dropout semantics intact); `SlimBlock` used by the repo only indirectly via `LGATrSlim` (no direct imports, grep-verified).
 
 ## Appendix B — fixture/transplant sketch
 
@@ -189,13 +208,18 @@ RECORD = os.environ.get("LGATR_PARITY") == "record"   # only valid on lgatr 1.4.
 TIER1 = os.environ.get("LGATR_PARITY_TIER", "1") == "1"
 
 # rename table applied to v1 state_dict keys; waivers cite S-items
-KEY_MAP = {...}          # e.g. "blocks.0.mlp." prefixes etc. — fill at implementation
-WAIVED_MISSING = [...]   # qkv scalar biases (S5); affine gains absent v1-side (S2)
+KEY_MAP = {...}          # built EMPIRICALLY: v1 keys from fixtures + v2 keys from Phase 1a,
+                         # ordered shape-matching + rename rules; reviewed and committed
+WAIVED_MISSING = [...]   # qkv biases (S5); affine gains absent v1-side (S2)
 
 def zero_qkv_scalar_bias(model):        # S5 normalization, BEFORE recording
-    for name, p in model.named_parameters():
-        if is_qkv_scalar_bias(name):    # pattern match: slim linear_in / LGATr qkv EquiLinear
-            torch.nn.init.zeros_(p)
+    # walk named_modules, find each attention's qkv projection (slim linear_in /
+    # full-model qkv EquiLinear), zero EVERY bias tensor beneath it -- the biases
+    # live inside internal Linears (linear_s / s2mvs / mvs2s), not at the top level
+    for mod in qkv_projection_modules(model):
+        for name, p in mod.named_parameters():
+            if name.endswith("bias"):
+                torch.nn.init.zeros_(p)
 
 def rescale_glu_gates(sd):              # S6 compensation, on the mapped v1 state_dict
     for key in glu_fused_linear_weight_v_keys(sd):
