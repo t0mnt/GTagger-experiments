@@ -210,6 +210,7 @@ Not migration work — a separate task after gates pass; recorded here so the th
 - **Sparse-indexed GP transfers almost verbatim** (same Cl(1,3) 16-blade algebra; 256/4096 nonzero Cayley entries, one output blade per pair): rewrite the `fcgp.py`/`gp.py` einsums as precomputed (indices, signs) gathers with an input-saving backward — upstream made it default "because always faster", eager included. One rewrite serves the FC baseline *and* the GPS hybrid (shared modules); the GraphTrans hybrid's private `CliffordAlgebra` copy needs the same treatment separately. Mathematically identical, reorder-only — a documented performance change, no modeling change.
 - **FC baseline only**: the all-pairs padded graph admits a dense `(B, N, N, ·)` masked-mean reformulation — no scatter, fixed shapes, compiles cleanly, better locality even eager. **The kNN hybrids keep the scatter** — sparsity is the design there; `index_add_` compiles fine with `dynamic=True`.
 - Compile knobs: `dynamic=True` over batch/N; `activation_memory_budget` (torch≥2.4) if N² intermediates pinch; AMP split (multivector fp32 / scalar bf16) after the parity dust settles.
+- Fullgraph pattern: `fullgraph=False` at the model root always; flip `fullgraph=True` per-module only on proven break-free leaf blocks (`LorentzNetKNNBlock` now; the CGENN block once the sparse-GP rewrite lands) as a regression guard against reintroduced graph breaks.
 
 ### LorentzNet: torch.compile readiness (same follow-up task)
 
