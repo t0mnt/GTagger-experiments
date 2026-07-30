@@ -191,6 +191,7 @@ Both param counts and forward outputs *legitimately* differ across versions, so 
 - **H11 — compile expectations**: slim already compiled on 1.4.4 (keep `dynamic: true` via M9); the genuinely new capability is compile for **full-LGATr** + `warmup_caches` + compiled-xformers custom ops (attention no longer graph-breaks). Enabling it is a *post-migration* enhancement gated by Gate H numbers. For compile+DDP, note v2's own fixes here (unused-param `requires_grad_(False)`, tensor-ized norm eps/gains) — mirror that pattern in any local module you compile under DDP.
 - **H12 — the official migration doc is renames-only** (verified). The CHANGELOG is the behavioral source of truth. Port by both.
 - **H13 — `v_channels == 4` is the silent-alias width** for the M8 layout flip (transpose becomes shape-legal). All current widths differ from 4; keep fixtures and tests that way so layout mistakes stay loud.
+- **H14 — do NOT block on the tagging-training-environment release.** The migration's *correctness* is certified by the gates, which depend only on the lgatr 2.0.0 source — not on seeing upstream's worked examples. What IS provisional until that repo lands: API-*style* choices (how they configure `compile_kwargs`, backend selection, spurion handling in production configs). Mark those as provisional in the port and diff against the new repo's usage in a cheap Phase-5 addendum when it releases; expect renames, not rework.
 
 ## 6. Upstream (`heidelberg-hepml/lloca-experiments`) variant
 
