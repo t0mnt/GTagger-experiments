@@ -144,7 +144,7 @@ def gather_neighbors(x, idx):
     return gathered.view(B, P, K, *feat_shape)
 
 
-# LorentzNet-style edge conv on a static kNN graph (NO soft-attention gate)
+# LorentzNet-style edge conv on a static kNN graph (with toggle-able soft-attention gate)
 
 
 class LorentzNetKNNBlock(nn.Module):
