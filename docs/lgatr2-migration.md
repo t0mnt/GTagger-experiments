@@ -92,7 +92,7 @@ All current v-channel widths are ≠ 4, so a missed M8 transpose **crashes loudl
 
 (S4 from rev 1 — MLP depth semantics — is resolved and folded into M4.)
 
-### 2.4 The two postures (decide in Phase 3, after gates pass)
+### 2.4 The two postures — DECIDED: Posture B (v2-native)
 
 Because S5 + S6 are baked in, **"identical to the v1 campaign model" is not on the menu.** The coherent choices:
 
@@ -100,6 +100,15 @@ Because S5 + S6 are baked in, **"identical to the v1 campaign model" is not on t
 - **Posture B — v2-native** (recommended for a fresh campaign): accept upstream defaults (sigmoid gate "more stable", affine norms) as the new baseline. Since full v1 equivalence is impossible anyway, taking v2 as-shipped is the more reproducible citation ("lgatr 2.0.0 defaults"); re-baseline the param manifests once, in the same commit.
 
 Either way: **verification always runs in parity mode** (pins + compensations) first — it certifies the port; the posture flip afterwards is a one-commit, documented model change, not a migration step.
+
+**Decision (2026-07-27, maintainer + review): Posture B — adopt v2 defaults wholesale for every
+row.** Rationale: the campaign has not been trained yet, so there are no v1 numbers to protect;
+full v1 equivalence is impossible anyway (S5/S6 baked in); one lgatr version + one settings-set
+per table (H5); "lgatr 2.0.0 defaults" is the cleanest citation. Obligations this creates:
+a methods sentence that the `tag_lgatr`/`tag_slim` reference rows are re-trained under 2.0
+(published-paper comparisons indicative, not exact), and a one-time re-baseline of the param
+manifests in the posture-flip commit. Parity-mode verification (pins + compensations) still
+runs first, unchanged — the posture applies from the first campaign run onward.
 
 ## 3. Why neither the test suite nor the official doc is enough
 
