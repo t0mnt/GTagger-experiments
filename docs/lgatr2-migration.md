@@ -191,7 +191,24 @@ Both param counts and forward outputs *legitimately* differ across versions, so 
 - **H11 — compile expectations**: slim already compiled on 1.4.4 (keep `dynamic: true` via M9); the genuinely new capability is compile for **full-LGATr** + `warmup_caches` + compiled-xformers custom ops (attention no longer graph-breaks). Enabling it is a *post-migration* enhancement gated by Gate H numbers. For compile+DDP, note v2's own fixes here (unused-param `requires_grad_(False)`, tensor-ized norm eps/gains) — mirror that pattern in any local module you compile under DDP.
 - **H12 — the official migration doc is renames-only** (verified). The CHANGELOG is the behavioral source of truth. Port by both.
 - **H13 — `v_channels == 4` is the silent-alias width** for the M8 layout flip (transpose becomes shape-legal). All current widths differ from 4; keep fixtures and tests that way so layout mistakes stay loud.
-- **H14 — do NOT block on the tagging-training-environment release.** The migration's *correctness* is certified by the gates, which depend only on the lgatr 2.0.0 source — not on seeing upstream's worked examples. What IS provisional until that repo lands: API-*style* choices (how they configure `compile_kwargs`, backend selection, spurion handling in production configs). Mark those as provisional in the port and diff against the new repo's usage in a cheap Phase-5 addendum when it releases; expect renames, not rework.
+- **H14 — the gates' residual blind spots, stated so nobody re-derives them.** Three holes the
+  Phase-4 scheme deliberately or accidentally leaves open, with their closures:
+  (1) **The amp path is ungated.** Every gate runs fp64/fp32 *eager*, and S8 changed exactly the
+  autocast machinery (`minimum_autocast_precision` now returns tuples + downcasts;
+  vector/multivector path pinned fp32, scalars amp'd; new `naive_amp` bypass) — a regression
+  living only under autocast is invisible to A–H, since even Gate G's quick runs inherit
+  `use_amp: false`. Acceptable *because* every campaign config runs amp-off; the closure is a
+  tripwire, not a fixture: if any config ever flips `use_amp: true`, add one loose-tolerance
+  amp smoke fixture FIRST.
+  (2) **Per-block activation fixtures cross the M8 layout boundary.** v1 records channel-first
+  block activations; v2 slim blocks carry vectors channel-last internally — the fixture
+  comparator must transpose at block boundaries, and H13's `v_channels==4` silent-alias warning
+  applies *inside the comparator* too (a fixture width of 4 would make a missed transpose
+  compare clean).
+  (3) **`>=2.0.0` is not a verification target — pin `==2.0.0`.** With a floor pin, a 2.0.x
+  patch release landing mid-migration silently moves the code under the recorded fixtures and
+  Phase-1a source re-verification (requirements.txt now pins exact); relax to `>=` only in the
+  Phase-5 cleanup commit, after the gates have passed against a named version.
 
 ## 6. Upstream (`heidelberg-hepml/lloca-experiments`) variant
 
