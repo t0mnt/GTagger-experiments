@@ -209,6 +209,18 @@ Both param counts and forward outputs *legitimately* differ across versions, so 
   patch release landing mid-migration silently moves the code under the recorded fixtures and
   Phase-1a source re-verification (requirements.txt now pins exact); relax to `>=` only in the
   Phase-5 cleanup commit, after the gates have passed against a named version.
+- **H15 — Posture B's affine norm gains escape BOTH weight-decay exemptions (campaign-affecting).**
+  v2's `norm_elementwise_affine=True` (the Posture-B default for every net) registers
+  `weight_mv = Parameter(ones(mv_channels, 5))` — **2-d**, so it fails the base grouping's
+  `param.ndim <= 1` rule (`base_experiment._init_optimizer`) AND the ParT-path rule
+  (`len(shape)==1 or endswith(".bias") or in no_weight_decay()`). Every lgatr-touching row
+  would silently weight-decay its norm gains toward zero — worst on `top_lgatr` (Lion,
+  wd=0.2). Same disease as the CGENN `MVLayerNorm` `(1, C)` gain, one library up. Port fix:
+  exempt EquiLayerNorm parameters explicitly in *both* grouping paths (name rule
+  `endswith(".weight_mv")`, or isinstance-collection over `EquiLayerNorm` modules — the
+  robust form), and extend Gate B to assert every `*.weight_mv` / `*.weight_s` parameter
+  sits in a `weight_decay=0` group. (`weight_s` is 1-d and already exempt; asserting both
+  keeps the rule self-documenting.)
 
 ## 6. Upstream (`heidelberg-hepml/lloca-experiments`) variant
 
