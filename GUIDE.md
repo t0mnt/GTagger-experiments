@@ -301,7 +301,18 @@ one working point (0.5) the paper doesn't report, with a coarser ruler.
 
 The built-in Transformer / L-GATr taggers and the `lgatr` frame predictor use
 xformers' memory-efficient attention (saves ~2× RAM on variable-length jets); on
-an H100 you normally just `pip install xformers` and it's the recommended backend.
+an H100 you normally just `pip install xformers` and it's the upstream-default
+backend. Note "default" ≠ "fastest": for ragged jets **flash** (flash-attn v2
+kernels, fp16/bf16) is typically the fastest backend — and the only one besides
+native that honors attention-weight dropout — so `model.attention_backend=flash`
+is a legitimate first choice, not just a fallback. The gap is small, though:
+xformers' `memory_efficient_attention` is itself a *dispatcher* that usually
+selects the same flash kernels internally when dtype/head-dim allow, so when it
+does the two are near-equal — the practical differences are the dropout arg name
+(`p` vs `dropout_p`), kernel-version lag (new flash releases land in flash-attn
+first), and a fp32 fallback path only xformers has. (lgatr 2.0
+changes this calculus: its compiled-xformers custom ops become the flagship fast
+path under torch.compile — see `docs/lgatr2-migration.md`.)
 The new **GraphGPS non-equivariant** models use plain `torch.nn.MultiheadAttention`,
 so they need no xformers at all. If you do want a learned framesnet without
 xformers, use the **MLP frame predictor**:
