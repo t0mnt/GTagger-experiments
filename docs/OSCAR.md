@@ -181,24 +181,31 @@ Notes:
 
   If `xformers.info` STILL crashes — with the traceback ending in the **container's**
   `/usr/local/.../flash_attn_2_cuda...so: undefined symbol` — that is the broken image
-  flash-attn poisoning xformers' import (xformers guards `ModuleNotFoundError`, not a
-  present-but-broken module). Shadow it with a stub in the venv (venv site-packages
-  precede the container's, so every `import flash_attn` becomes a clean
-  `ModuleNotFoundError` that xformers and lgatr both handle gracefully):
+  flash-attn poisoning xformers' import. **Verified from the v0.0.35 source**: the import
+  is gated by `importlib.util.find_spec("flash_attn")` — an *existence* check followed by
+  an *unguarded* `import flash_attn` (no try/except anywhere; a raising stub crashes it
+  just the same, tried). But the very next `elif` is the way out: xformers has a
+  **PyTorch-native flash path** (`_TRY_PT_FLASH_ATTN` → torch's built-in flash kernels,
+  present on H100 + torch 2.11) that needs no flash_attn package at all. Neutralize the
+  broken branch so the good one engages — a one-line patch of the venv-installed file,
+  applied AFTER the build (rebuilding overwrites it):
 
   ```bash
   apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc '
     source venv/bin/activate
-    D=$(python -c "import sysconfig; print(sysconfig.get_paths()[\"purelib\"])")/flash_attn
-    mkdir -p "$D"
-    printf "raise ModuleNotFoundError(\"flash_attn stub: 25.08 image copy is ABI-broken vs its own torch\")\n" > "$D/__init__.py"
-    python -c "import flash_attn" 2>&1 | tail -1   # want: the stub message
-    python -m xformers.info | head -25
+    rm -rf "$(python -c "import sysconfig; print(sysconfig.get_paths()[\"purelib\"])")/flash_attn"  # drop any stub
+    sed -i "s/^if importlib.util.find_spec(\"flash_attn\"):/if False:  # Oscar: image flash_attn ABI-broken; use the PT-flash elif/" \
+        venv/lib/python3.12/site-packages/xformers/ops/fmha/flash.py
+    python -m xformers.info | head -30
   '
   ```
 
-  Either way,
-  finish with one §3-style quick run of `tag_slim` before a real job.
+  Expected: the torch line matches the container build, `flashF/B` **available** (backed
+  by torch's kernels — `FLASH_VERSION` reports torch's), `cutlassF/B` available. No stub
+  is needed anywhere: with the patch xformers never imports flash_attn, and lgatr's flash
+  backend catches the broken import's `ImportError` in its registry and simply skips
+  registration. Re-apply the sed after any xformers rebuild/upgrade. Finish with one
+  §3-style quick run of `tag_slim` before a real job.
 
 Now wire the directories per §1 — dataset into `data`, run output into `scratch`:
 
