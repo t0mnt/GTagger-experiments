@@ -293,22 +293,21 @@ only `???` keys — the shared recipe pins epochs=20, AdamW, warmup-cosine; GUID
 
 ## 5. Submit the real training
 
-Two files: the sbatch header wraps a payload script that runs inside the container
-(the `apptainer run --nv "$NGC_PYTORCH_CONTAINER" script.sh` pattern).
-
-`train.sh` (the payload — one per model, or parametrize `$MODEL`; `chmod +x train.sh`):
+One parametrized sbatch file covers every model and task — the model is the argument,
+extra hydra overrides pass straight through, so no per-model payload scripts:
 
 ```bash
-#!/bin/bash
-source ~/GTagger-experiments/venv/bin/activate
-cd ~/GTagger-experiments
+sbatch train.sbatch tag_PlainGraphGPS                      # top-tagging, that model's recipe
+sbatch train.sbatch tag_CGENNLGATrGraphGPS save=false      # throwaway (no weights, no table row)
+sbatch train.sbatch tag_PlainGraphGPS warm_start_idx=0 warm_start_load=false   # fresh-trial seed (§6)
+```
 
-python run.py -cp config -cn toptagging \
-    model=tag_LorentzNetLGATrSlimGraphGPS \
-    training=top_LorentzNetLGATrSlimGraphGPS \
-    data.dataset=full gpus=1
-# -cp config is REQUIRED: run.py defaults to the tiny config_quick tree,
-# which has no top_<Model> training recipes.
+One-time before the first submission (SLURM opens the `-o` log file BEFORE your script
+runs — a missing `logs/` dir kills the job with no output at all, so no `mkdir` inside
+the script can save you):
+
+```bash
+mkdir -p ~/GTagger-experiments/logs
 ```
 
 `train.sbatch`:
@@ -319,25 +318,79 @@ python run.py -cp config -cn toptagging \
 #SBATCH -p gpu                    # partition; `allq gpu` shows load. gpu-he needs High-End priority
 #SBATCH --gres=gpu:1
 #SBATCH -n 8
-#SBATCH --mem=48G
+#SBATCH --mem=48G                 # top-tagging: full npz in RAM + fp64 momenta -> 48G safe.
+                                  # JetClass/TopTagXL (streaming, per-worker fetch buffers): 64G.
+                                  # After the first run, `myjobinfo` shows MaxRSS -- trim to fit.
 #SBATCH -t 24:00:00               # raise for the heavy CGENN-GPS (~a day/trial on a top GPU)
-#SBATCH -o slurm-%j.out
+#SBATCH -o logs/%x-%j.out         # logs/ must exist BEFORE sbatch (see above)
+#SBATCH --export=NONE             # do NOT inherit the login env (post-9.6 it carries a stale
+                                  # lmod `module` function that errors on compute nodes)
 # #SBATCH -a <account>            # only if you belong to a condo/priority account (see `condos`)
 # #SBATCH -f ampere               # optionally pin a GPU architecture/feature
 
-module load ngc-pytorch-container/25.08-py3-ayk4
+# Do NOT `module load ngc-pytorch-container/...` here: that module setenv's the MISLABELED
+# 24.03 sif over your resolved path (the §2 container-guard story) — a batch job would
+# silently train on the wrong torch. Use the resolved sif and apptainer binary directly
+# (get the latter once on the login node: `readlink -f $(command -v apptainer)`).
+IMG=/oscar/rt/sw/external/ngc-pytorch-container/25.08-py3/pytorch-25.08-py3.sif
+APPTAINER=<paste absolute apptainer path>
 export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"
+export PYTHONUNBUFFERED=1         # live logs (batch jobs have no tty -> python buffers)
 
-apptainer run --nv "$NGC_PYTORCH_CONTAINER" ~/GTagger-experiments/train.sh
+MODEL=${1:?usage: sbatch train.sbatch tag_<Model> [task] [extra hydra overrides...]}
+TASK=${2:-toptagging}             # toptagging | jctagging | toptagxl
+case "$TASK" in
+  toptagging) P=top ;; jctagging) P=jc ;; toptagxl) P=xl ;;
+  *) echo "unknown task $TASK"; exit 1 ;;
+esac
+shift; [ $# -gt 0 ] && shift      # remaining args = hydra overrides, passed through
+cd "$HOME/GTagger-experiments"
+"$APPTAINER" exec --nv "$IMG" bash -c "
+  source venv/bin/activate
+  python run.py -cp config -cn $TASK \
+      model=$MODEL training=${P}_${MODEL#tag_} gpus=1 $*
+"
+# (no data.dataset override needed: config/toptagging.yaml already defaults to the
+#  full dataset, and the jc/xl configs have no such key -- it would crash there)
+# -cp config is REQUIRED: run.py defaults to the tiny config_quick tree, which has
+# no top_<Model> recipes. Recipe names are derived (tag_X + task -> top_X/jc_X/xl_X).
+#   sbatch train.sbatch tag_PlainGraphGPS                          # top-tagging
+#   sbatch train.sbatch tag_PlainGraphGPS jctagging                # JetClass
+#   sbatch train.sbatch tag_PlainGraphGPS toptagging save=false    # throwaway run
 ```
 
 ```bash
+squeue -u $USER           # ALWAYS check before sbatch: a "failed" job may still be alive
+                          # (three concurrent downloads once raced this way), and startup
+                          # noise in the .out is not proof of death -- sacct is
 sbatch train.sbatch
 myq                       # your queue; `squeue -u $USER -t PENDING --start` estimates start time
 tail -f slurm-<jobid>.out # or runs/<exp>/<run>/out_0.log once it starts
 myjobinfo                 # time/memory actually used after it finishes
 scancel <jobid>           # if needed
 ```
+
+> **Condo partition facts** (`-p lgouskos-h100-gcondo`; read live via `scontrol show
+> partition lgouskos-h100-gcondo` + `scontrol show node gpu2703`):
+> - **`-t` is MANDATORY here: `DefaultTime=00:05:00`** — an untimed submission is killed
+>   after five minutes. `MaxTime=UNLIMITED`, so be generous (`-t 48:00:00`).
+> - One node, `Gres=gpu:nvidia_h100_nvl:4`, `OverSubscribe=NO`: **four whole 94 GB H100
+>   NVLs, exclusively allocated** — up to 4 concurrent group jobs, never sharing a GPU,
+>   so max-VRAM batch sizes cannot collide with a groupmate's job.
+> - 1.54 TB RAM / 128 CPUs on the node (≈385 G / 32 CPUs per-GPU fair share): 48–64G
+>   `--mem` stays polite; raising `--cpus-per-task` toward 16 helps the streaming
+>   JetClass/XL loaders (more workers).
+> - `State=IDLE+POWERED_DOWN`: the node powers off when idle — the first job after a
+>   quiet spell sits in `CF` (configuring) for a few minutes while it boots. Normal,
+>   not stuck.
+>
+> **Ignorable post-9.6 noise:** lines like `environment: line 17:
+> /oscar/rt/9.6/.../lmod/libexec/lmod: No such file or directory` in job output are a
+> cluster-side profile-init inconsistency from the RHEL 9.6 rollout — cosmetic as long
+> as your job uses the absolute `IMG`/`APPTAINER` paths above (verified: downloads and
+> runs proceed normally right past them). Worth a CCV ticket, not worth debugging.
+> The same `--export=NONE` + absolute-paths header applies to ANY batch job here,
+> dataset downloads included.
 
 Each finished run prints its `table test: … \\` row into the log (GUIDE §4).
 
