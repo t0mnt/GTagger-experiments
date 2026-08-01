@@ -200,8 +200,12 @@ Notes:
   '
   ```
 
-  Expected: the torch line matches the container build, `flashF/B` **available** (backed
-  by torch's kernels — `FLASH_VERSION` reports torch's), `cutlassF/B` available. No stub
+  Expected (verified output): a commit-stamped version (`0.0.35+<sha>` — a bare `0.0.35`
+  from a seconds-long build is the crippled sdist), `fa2F/B@…-pt` **available** (the `-pt`
+  suffix IS the patch working: flash backed by torch's built-in kernels),
+  `cutlassF/B-pt` available, `build.cuda_version` matching the container. `ck*`
+  (ROCm), `fa3` (needs real flash-attn-3), and `*-blackwell` stay unavailable — benign.
+  Run once WITH `--nv` on a GPU node to see `pytorch.cuda: available` too. No stub
   is needed anywhere: with the patch xformers never imports flash_attn, and lgatr's flash
   backend catches the broken import's `ImportError` in its registry and simply skips
   registration. Re-apply the sed after any xformers rebuild/upgrade. Finish with one
