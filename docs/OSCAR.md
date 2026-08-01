@@ -341,6 +341,25 @@ binary task on JetClass-wide inputs, shared epochs=5, wd=0; shrink
 `data.val_files_range` before training, the shipped default is a 10M-jet
 validation pass).
 
+## 2.9 Environment certification (run after ANY environment change)
+
+One command certifies the whole stack — interpreter provenance, user-site leak sentinels,
+container-torch identity, CUDA, science-stack versions, lgatr provenance, xformers build
+quality, and (with `--gpu`) real GPU kernels including a `memory_efficient_attention`
+forward. It encodes every failure class this doc's warnings came from, with per-check
+hints. Run it after: fresh setup, `git pull`, an xformers rebuild, a cluster upgrade —
+and always once before a campaign:
+
+```bash
+# CPU context (login node):
+apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
+  'source venv/bin/activate && python scripts/env_check.py'
+# GPU context (interact -g 1, --nv) — the full certification:
+apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc \
+  'source venv/bin/activate && python scripts/env_check.py --gpu'
+# exit 0 + "CERTIFIED" = proceed; any FAIL names the fix section
+```
+
 ## 3. Smoke-test on a compute node
 
 Never on the login node — grab a short interactive CPU session for the tests, then a
