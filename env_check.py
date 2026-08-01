@@ -15,6 +15,7 @@ wheel/ABI mismatches, crippled no-kernel xformers builds, GPU-less allocations.
 
 Exit code 0 = certified. Any FAIL prints what broke and how it usually got that way.
 """
+#needed because OSCAR is so irritating maybe im not used to env work but holy
 
 import argparse
 import glob
