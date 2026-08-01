@@ -352,6 +352,9 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
 exit
 
 # GPU: one tiny training end-to-end (gpu-debug = short wait, short cap)
+# The `-g 1` is NOT optional: without it SLURM allocates zero GPUs and its cgroup HIDES
+# the node's cards -- torch.cuda.is_available() is False even on a GPU node, with no
+# error anywhere. "cuda False on a GPU node" = check your allocation before anything else.
 interact -q gpu-debug -g 1 -n 4 -m 20g -t 00:30:00
 cd ~/GTagger-experiments
 nvidia-smi                                   # confirm you see a GPU (host side)
