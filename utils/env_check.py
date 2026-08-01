@@ -39,6 +39,11 @@ def main():
     ap.add_argument("--gpu", action="store_true", help="assert CUDA + run real GPU kernels")
     args = ap.parse_args()
 
+    import socket
+    host = socket.gethostname()
+    print(f"context: {host}" + ("  (login node -- a --gpu run here is EXPECTED to fail "
+                                "the CUDA check; use interact -g 1)" if host.startswith("login") else ""))
+
     # ---- 1. interpreter provenance ------------------------------------------------
     in_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
     check("venv interpreter", in_venv, sys.executable,

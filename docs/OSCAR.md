@@ -353,10 +353,10 @@ and always once before a campaign:
 ```bash
 # CPU context (login node):
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
-  'source venv/bin/activate && python env_check.py'
+  'source venv/bin/activate && python utils/env_check.py'
 # GPU context (interact -g 1, --nv) — the full certification:
 apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc \
-  'source venv/bin/activate && python env_check.py --gpu'
+  'source venv/bin/activate && python utils/env_check.py --gpu'
 # exit 0 + "CERTIFIED" = proceed; any FAIL names the fix section
 ```
 
