@@ -330,10 +330,11 @@ The only models that don't are the four baselines whose configs pin
 `attention_backend: xformers` (`tag_transformer`, `tag_top_transformer`,
 `tag_lgatr`, `tag_slim`); on an xformers-free install, run those with
 `model.attention_backend=flash` (needs a WORKING flash-attn — always test
-`python -c "import flash_attn"` first: NGC containers ship it, but the 25.08
-image's copy is ABI-broken against its own torch, see docs/OSCAR.md) or `=flex`
-(pure-torch FlexAttention — slower, and its torch.compile path is
-version-sensitive, so smoke-test it on your GPU first).
+`python -c "import flash_attn"` first *in a clean environment*: an earlier
+"image copy is ABI-broken" verdict turned out to be a leaked user-site torch
+shadowing the container's, see the ~/.local note in docs/OSCAR.md) or `=flex`
+(pure-torch FlexAttention, needs torch≥2.7 — slower, and its torch.compile
+path is version-sensitive, so smoke-test it on your GPU first).
 
 ---
 

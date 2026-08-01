@@ -112,7 +112,9 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc '
 '
 
 # sanity: torch must still be the CONTAINER's own build -- a local +cuXXX / nvXX.XX string
-# (e.g. 2.11.0+cu130 on the 25.08 image, or 2.3.0a0...nv24.3 on 24.03), NOT a plain pip wheel;
+# (e.g. 2.8.0a0+...nv25.08 on the 25.08 image, or 2.3.0a0...nv24.3 on 24.03), NOT a plain
+# pip wheel (a bare "2.11.0+cu130"-style version here means a LEAKED pip torch is answering
+# -- the ~/.local note below; NGC images ship nv-tagged pre-release builds, not pip wheels);
 # torch-geometric should now be >= 2.6. Print torch.__file__ too: it must NOT live under
 # ~/.local (see the leak note below).
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc '
@@ -163,15 +165,16 @@ Notes:
   `equivectors: equimlp`, already the default; GUIDE §7). Only the four attention
   baselines whose configs pin `attention_backend: xformers` — `tag_transformer`,
   `tag_top_transformer`, `tag_lgatr`, `tag_slim` — would crash on a GPU without it.
-  For those, override the backend. **Test flash first — the 25.08 image's own flash-attn
-  is ABI-BROKEN** (verified: `import flash_attn` dies with an undefined `c10::cuda`
-  symbol against the image's *own* torch — an NVIDIA packaging bug, flash-attn built
-  for a 2.10-era ABI shipped next to torch 2.11):
-  `apptainer exec "$NGC_PYTORCH_CONTAINER" python -c "import flash_attn"`.
-  If broken (it is, on this image), `model.attention_backend=flex` is the no-build
-  fallback (pure torch, slower); the real fix for the pure rows is the xformers source
-  build below. Either way, validate the override with one §3-style quick run on
-  gpu-debug before a real job.
+  For those, override the backend. **Test flash first, in a CLEAN environment**:
+  `apptainer exec "$NGC_PYTORCH_CONTAINER" python -c "import flash_attn; print(flash_attn.__version__)"`.
+  (An earlier "image flash-attn is ABI-broken" verdict here turned out to be a
+  **leak artifact**: a `~/.local` pip torch 2.11 was shadowing the container's real
+  torch 2.8.0a0, and the image's flash-attn — built for 2.8 — naturally failed
+  against the impostor. With the leak removed it is expected to import fine.)
+  If it genuinely fails clean, `model.attention_backend=flex` is the no-build
+  fallback (pure torch, slower; needs torch≥2.7 — the 25.08 image qualifies);
+  `varlen` does NOT register on this image (needs torch≥2.10). Either way,
+  validate the override with one §3-style quick run on gpu-debug before a real job.
 - **Opting back into xformers** (to run `tag_lgatr`/`tag_slim` on their default backend
   instead of the override above). This is a **venv-only change** — no re-clone, no wipe,
   nothing outside the venv is touched; worst case `rm -rf venv` and redo this step.
@@ -180,17 +183,23 @@ Notes:
   pin by dragging a second torch into the venv over the container build. The extra is
   right on machines where pip owns torch; in the container, `--no-deps` below is the way.)
 
-  **The PyPI wheel does NOT work on this image** (verified: the wheel is built for stable
-  torch — 2.10.0+cu128 at the time of writing — and warns then fails against the NGC
-  preview 2.11.0+cu130). The working path is a **source build against the container's own
-  torch** (the container has the full CUDA toolchain; ~20–40 min, use an `interact -n 8`
-  session, not the login node):
+  **No PyPI wheel can work on this image**: wheels are built for stable pip-torch
+  releases, while NGC images ship nv-tagged *pre-release* builds (25.08 = torch
+  `2.8.0a0+…nv25.08` — NOT 2.11; if you ever saw 2.11 here, that was the `~/.local`
+  leak answering). The working path is a **source build against the container's own
+  torch, at the torch-matched TAG** (the container has the full CUDA toolchain;
+  ~20–40 min, use an `interact -n 8` session, not the login node):
 
-  Build from **git, not the PyPI sdist**: the sdist does not vendor the CUTLASS /
-  flash-attention submodules, so `pip install --no-binary xformers xformers` "succeeds"
-  in seconds with a tiny (~3.6 MB, `py39-none`-tagged) wheel containing **no compiled
-  kernels at all** (verified). A real build takes ~20–40 min and produces a 100+ MB
-  arch-tagged wheel. pip fetches git submodules for VCS requirements, so:
+  - **Pick the tag by the container's torch**: for torch 2.8 → `v0.0.32.post2`
+    (`requirements: torch >= 2.8`, verified). Do NOT use `v0.0.35` on this image —
+    its *Python* code needs torch ≥2.10 APIs (`GroupName` import) and crashes at
+    import regardless of how well the extensions built.
+  - Build from **git, not the PyPI sdist**: the sdist does not vendor the CUTLASS /
+    flash-attention submodules, so `pip install --no-binary xformers xformers`
+    "succeeds" in seconds with a tiny (~3.6 MB, `py39-none`-tagged) wheel containing
+    **no compiled kernels at all** (verified). A real build takes ~20–40 min and
+    produces a 100+ MB arch-tagged wheel. pip fetches git submodules for VCS
+    requirements, so:
 
   ```bash
   apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
@@ -202,7 +211,7 @@ Notes:
     # --no-build-isolation: build against the CONTAINER torch headers (the whole point).
     # git URL: the only source that includes the CUTLASS/flash submodules (see above).
     pip install -v --no-deps --no-build-isolation \
-        "xformers @ git+https://github.com/facebookresearch/xformers.git@v0.0.35"
+        "xformers @ git+https://github.com/facebookresearch/xformers.git@v0.0.32.post2"
     python -m xformers.info | head -25   # want: memory_efficient_attention cutlass ops
                                          # available, torch line = container build
   '
@@ -211,37 +220,37 @@ Notes:
   Sanity: if the "build" finishes in under a minute, it did not compile anything —
   check the wheel it reports (tiny + `py39-none` = crippled; big + `cp312`-arch = real).
 
-  If `xformers.info` STILL crashes — with the traceback ending in the **container's**
-  `/usr/local/.../flash_attn_2_cuda...so: undefined symbol` — that is the broken image
-  flash-attn poisoning xformers' import. **Verified from the v0.0.35 source**: the import
-  is gated by `importlib.util.find_spec("flash_attn")` — an *existence* check followed by
-  an *unguarded* `import flash_attn` (no try/except anywhere; a raising stub crashes it
-  just the same, tried). But the very next `elif` is the way out: xformers has a
-  **PyTorch-native flash path** (`_TRY_PT_FLASH_ATTN` → torch's built-in flash kernels,
-  present on H100 + torch 2.11) that needs no flash_attn package at all. Neutralize the
-  broken branch so the good one engages — a one-line patch of the venv-installed file,
-  applied AFTER the build (rebuilding overwrites it):
+  **The flash question, post-build** (source-verified against v0.0.32.post2, which shares
+  v0.0.35's gate structure): xformers checks for a flash implementation in order —
+  (1) its **own bundled `_C_flashattention`** (compiled from the git submodule during the
+  build above; if present, the container's flash_attn is never touched), then
+  (2) `importlib.util.find_spec("flash_attn")` followed by an **unguarded**
+  `import flash_attn` + a version-bounds check (2.7.1–2.8.2 at this tag; a
+  present-but-unimportable or out-of-bounds flash_attn crashes ALL of xformers at
+  import — no try/except; stubs don't help, tried), then (3) the PyTorch-native flash
+  path (torch's built-in kernels, torch≥2.6ish). Decision tree after the build:
+  - `xformers.info` prints cleanly → done, whichever branch engaged.
+  - It crashes in `import flash_attn` (branch 2) → neutralize that one branch so the
+    next one engages, and re-run info:
 
-  ```bash
-  apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc '
-    source venv/bin/activate
-    rm -rf "$(python -c "import sysconfig; print(sysconfig.get_paths()[\"purelib\"])")/flash_attn"  # drop any stub
-    sed -i "s/^if importlib.util.find_spec(\"flash_attn\"):/if False:  # Oscar: image flash_attn ABI-broken; use the PT-flash elif/" \
-        venv/lib/python3.12/site-packages/xformers/ops/fmha/flash.py
-    python -m xformers.info | head -30
-  '
-  ```
+    ```bash
+    apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc '
+      source venv/bin/activate
+      sed -i "s/^elif importlib.util.find_spec(\"flash_attn\"):/elif False:  # Oscar: skip package flash_attn; bundled or PT-flash path instead/" \
+          venv/lib/python3.12/site-packages/xformers/ops/fmha/flash.py
+      python -m xformers.info | head -30
+    '
+    ```
+  - It raises the version-bounds ImportError instead → `export
+    XFORMERS_IGNORE_FLASH_VERSION_CHECK=1` is the sanctioned escape hatch (or the same sed).
 
-  Expected (verified output): a commit-stamped version (`0.0.35+<sha>` — a bare `0.0.35`
-  from a seconds-long build is the crippled sdist), `fa2F/B@…-pt` **available** (the `-pt`
-  suffix IS the patch working: flash backed by torch's built-in kernels),
-  `cutlassF/B-pt` available, `build.cuda_version` matching the container. `ck*`
-  (ROCm), `fa3` (needs real flash-attn-3), and `*-blackwell` stay unavailable — benign.
-  Run once WITH `--nv` on a GPU node to see `pytorch.cuda: available` too. No stub
-  is needed anywhere: with the patch xformers never imports flash_attn, and lgatr's flash
-  backend catches the broken import's `ImportError` in its registry and simply skips
-  registration. Re-apply the sed after any xformers rebuild/upgrade. Finish with one
-  §3-style quick run of `tag_slim` before a real job.
+  Expected good output: a commit-stamped version (`0.0.32.post2+<sha>`), `fa2F/B`
+  **available** (suffix `-pt` = torch-kernel path; no suffix = bundled/package flash),
+  `cutlassF/B` available, `build.cuda_version` matching the container, and — **only on a
+  GPU node with `--nv`** — `pytorch.cuda: available` (a CPU node prints `not available`
+  no matter how healthy the install is; don't diagnose there). `ck*` (ROCm), `fa3`, and
+  `*-blackwell` unavailable are benign. Re-apply any sed after a rebuild. Finish with one
+  §3-style quick run of `tag_slim` on the GPU before a real job.
 
 Now wire the directories per §1 — dataset into `data`, run output into `scratch`:
 
