@@ -88,6 +88,9 @@ export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"
 echo 'module load ngc-pytorch-container/25.08-py3-ayk4' >> ~/.bashrc
 echo "export NGC_PYTORCH_CONTAINER=\"$NGC_PYTORCH_CONTAINER\"" >> ~/.bashrc
 echo 'export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"' >> ~/.bashrc
+# kill the ~/.local user-site class of bugs forever: no python (container, venv, or system)
+# may ever import from ~/.local again (see the leak note below for why this matters)
+echo 'export PYTHONNOUSERSITE=1' >> ~/.bashrc
 
 # a venv that INHERITS the container's stack (torch, torch-geometric, numpy, ...),
 # created from INSIDE the container; pip adds only what the image lacks.
@@ -132,6 +135,20 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc '
 > block above (want a non-`.local` `torch.__file__` and `cuda.is_available() True` with
 > `--nv`). If a source-built xformers was compiled while the leak was live, re-verify
 > `python -m xformers.info` on a GPU and rebuild it once if it reports undefined symbols.
+>
+> Three follow-ups that make the fix COMPLETE rather than symptomatic:
+> **(1) `export PYTHONNOUSERSITE=1`** everywhere (persisted in `.bashrc` above and set in
+> the sbatch templates) — it hard-disables user-site for every python regardless of *how*
+> it was being injected, so the class of bug dies even if the mechanism was never found
+> and even if a stray `pip --user` happens again.
+> **(2) Re-run the §2 venv install block after sidelining.** While the leak was live, pip
+> inside the venv saw the `.local` packages as "already installed" and may have SKIPPED
+> them — the venv can have holes (requests, awkward, even lgatr pinned-but-old) that only
+> surface once `.local` is gone. Re-running `pip install -e .` + the filtered requirements
+> is idempotent and fills exactly the gaps.
+> **(3) Verify lgatr provenance explicitly**: `python -c "import lgatr;
+> print(lgatr.__version__, lgatr.__file__)"` — the leak carried an OLDER lgatr that could
+> shadow the venv's pinned one; the printed path must be the venv.
 
 Notes:
 - **torch-geometric**: the image ships 2.3.1 but the repo needs ≥ 2.6.0 (its ptr-only
@@ -398,6 +415,8 @@ IMG=/oscar/rt/sw/external/ngc-pytorch-container/25.08-py3/pytorch-25.08-py3.sif
 APPTAINER=<paste absolute apptainer path>
 export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"
 export PYTHONUNBUFFERED=1         # live logs (batch jobs have no tty -> python buffers)
+export PYTHONNOUSERSITE=1         # never import from ~/.local (the §2 leak class);
+                                  # --export=NONE strips the .bashrc copy, so set it here too
 
 MODEL=${1:?usage: sbatch train.sbatch tag_<Model> [task] [extra hydra overrides...]}
 TASK=${2:-toptagging}             # toptagging | jctagging | toptagxl
