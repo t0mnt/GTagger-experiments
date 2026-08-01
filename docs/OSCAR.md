@@ -207,10 +207,16 @@ Notes:
     pip uninstall -y xformers 2>/dev/null   # clear any mismatched/crippled install first
     export TORCH_CUDA_ARCH_LIST="9.0+PTX"   # H100 (NVL) = sm_90; A100 would be 8.0
     export MAX_JOBS=8
+    # DO set this: at this tag the bundled fa2 build is off by default anyway, but fa3
+    # defaults ON and, with TORCH_CUDA_ARCH_LIST=9.0 set, would attempt an HOURS-long
+    # compile (setup.py, source-verified). Runtime flash comes from the container
+    # flash_attn or torch built-in kernels instead (both APIs present since torch 2.7).
+    export XFORMERS_DISABLE_FLASH_ATTN=1
     # --no-deps: never let xformers pull its own torch over the container build.
     # --no-build-isolation: build against the CONTAINER torch headers (the whole point).
-    # git URL: the only source that includes the CUTLASS/flash submodules (see above).
-    pip install -v --no-deps --no-build-isolation \
+    # --no-cache-dir: pip cached wheels from earlier builds against the LEAKED torch.
+    # git URL: the only source that includes the CUTLASS submodules (see above).
+    pip install -v --no-deps --no-build-isolation --no-cache-dir \
         "xformers @ git+https://github.com/facebookresearch/xformers.git@v0.0.32.post2"
     python -m xformers.info | head -25   # want: memory_efficient_attention cutlass ops
                                          # available, torch line = container build
