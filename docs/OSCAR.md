@@ -154,20 +154,30 @@ Notes:
   torch** (the container has the full CUDA toolchain; ~20–40 min, use an `interact -n 8`
   session, not the login node):
 
+  Build from **git, not the PyPI sdist**: the sdist does not vendor the CUTLASS /
+  flash-attention submodules, so `pip install --no-binary xformers xformers` "succeeds"
+  in seconds with a tiny (~3.6 MB, `py39-none`-tagged) wheel containing **no compiled
+  kernels at all** (verified). A real build takes ~20–40 min and produces a 100+ MB
+  arch-tagged wheel. pip fetches git submodules for VCS requirements, so:
+
   ```bash
   apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
     source venv/bin/activate
-    pip uninstall -y xformers 2>/dev/null   # clear any mismatched wheel first
+    pip uninstall -y xformers 2>/dev/null   # clear any mismatched/crippled install first
     export TORCH_CUDA_ARCH_LIST="9.0+PTX"   # H100 (NVL) = sm_90; A100 would be 8.0
     export MAX_JOBS=8
     # --no-deps: never let xformers pull its own torch over the container build.
     # --no-build-isolation: build against the CONTAINER torch headers (the whole point).
-    # --no-binary: force the sdist -- the prebuilt wheel is the thing that does not work.
-    pip install --no-deps --no-build-isolation --no-binary xformers xformers
-    python -m xformers.info | head -25   # want: memory_efficient_attention available,
-                                         # torch line matching the container build
+    # git URL: the only source that includes the CUTLASS/flash submodules (see above).
+    pip install -v --no-deps --no-build-isolation \
+        "xformers @ git+https://github.com/facebookresearch/xformers.git@v0.0.35"
+    python -m xformers.info | head -25   # want: memory_efficient_attention cutlass ops
+                                         # available, torch line = container build
   '
   ```
+
+  Sanity: if the "build" finishes in under a minute, it did not compile anything —
+  check the wheel it reports (tiny + `py39-none` = crippled; big + `cp312`-arch = real).
 
   If `xformers.info` STILL crashes — with the traceback ending in the **container's**
   `/usr/local/.../flash_attn_2_cuda...so: undefined symbol` — that is the broken image
