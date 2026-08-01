@@ -154,7 +154,7 @@ Notes:
     # failure class as the ~/.local leak). --no-deps installs only xformers itself.
     pip install --no-deps -U xformers
     python -m xformers.info | head -20   # want: memory_efficient_attention available,
-                                         # and the torch line matching the container build
+                                         # and the torch line matching the container build (goldilocks type library)
   '
   ```
 
