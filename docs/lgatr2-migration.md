@@ -267,6 +267,21 @@ Not migration work — a separate task after gates pass; recorded here so the th
   compile**: dense padded `(B, P, K)` gather + Conv2d MLPs + masked sum/mean — static-shaped,
   no scatter at all. `dynamic=True` over B/P and it should compile without a single break.
 
+### Non-equivariant family: deliberately OUT of this task's scope
+
+Plain / ParticleNet-ParT (both variants) and the plain-transformer baselines get no compile
+work here, for three reasons: (1) no forcing event — the lgatr migration is what makes the
+*equivariant* GNN branches the relative bottleneck (their attention halves speed up for free;
+nothing analogous happens to the non-equivariant models); (2) smaller headroom — they are
+built from already-fused standard kernels (`nn.MultiheadAttention`, cuDNN Conv1d/2d, BatchNorm),
+not the many-tiny-op profile where Inductor fusion pays big; the PN-ParT dynamic per-layer kNN
+is graph-*rebuilding* cost, which compile does not remove; (3) accuracy is unaffected either
+way — compile only moves the table's train-time column. Which is the one obligation this
+scoping creates: **if any model family trains compiled and another doesn't, say so wherever
+walltime/efficiency numbers are compared** (uniform-or-disclosed). Revisit only if a profiler
+shows the non-equivariant rows dominated by launch overhead, which their kernel profile makes
+unlikely.
+
 ## Appendix A — evidence log
 
 2026-07-29 (rev 1): diffed installed 1.4.4 against `dev@e8ba34d` for `__init__`, `nets/*`, `layers/*` (incl. attention + mlp configs), `interface/*`, `primitives/*` (incl. attention backends), `utils/*`; PyPI then topped at 1.4.4; lloca 1.3.6 imports checked; repo greps as cited.
