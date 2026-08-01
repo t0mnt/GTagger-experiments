@@ -3,7 +3,7 @@
 **Status: PLANNED — no migration work has been done. This document is the plan.**
 
 - **lgatr 2.0.0 was released on PyPI on 2026-07-29.** This runbook (rev 2, same day) is pinned to that release: its CHANGELOG `[2.0.0]`, its `docs/source/v1_to_v2.rst`, and source diffs against installed 1.4.4.
-- `requirements.txt` on this branch already declares `lgatr[xformers-attention]>=2.0.0`. **The environment has NOT been migrated** — installed lgatr is still 1.4.4, and Phase 0 (fixture capture) *requires* 1.4.4. Do not `pip install -r requirements.txt` into the fixture-capture environment.
+- `requirements.txt` on this branch pins `lgatr[xformers-attention]==2.0.0` **exact** (H14(3); relaxed to a range only in Phase 5). **The environment has NOT been migrated** — installed lgatr is still 1.4.4, and Phase 0 (fixture capture) *requires* 1.4.4. Do not `pip install -r requirements.txt` into the fixture-capture environment.
 - lloca stays frozen at `1.3.6` for the whole migration (one variable at a time).
 
 **Rev 2 changes vs rev 1 of this runbook** (after reading the official v1→v2 doc + CHANGELOG):
@@ -141,9 +141,11 @@ Commit script + fixtures to this branch.
 
 M1–M10 as a literal checklist, one commit per row (or code/yaml pairs) for instant bisection. M8 first pass = boundary transposes only.
 
-### Phase 3 — parity pins, then posture
+### Phase 3 — parity pins (verification-only), then the posture-flip commit
 
-Apply S1/S2 pins for verification. After Gates A–F pass, make the §2.4 posture decision in its own commit with a decision-log entry; if Posture B, re-record production manifests as the new baseline in that commit.
+The posture is already decided (§2.4: **B**, v2-native), so the S1/S2 parity pins go **only into the parity script's model-building overrides** — shipped yamls take v2 defaults untouched, and the config-snapshot comparator therefore expects *only* the M-row renames in shipped configs.
+
+After Gates A–F pass, one **posture-flip commit** (first thing in Task C, before any training run) does three things: (1) re-records the production manifests at v2 defaults (affine gains included) as the new baseline; (2) applies the **H15 optimizer exemption** — EquiLayerNorm/SlimRMSNorm gain parameters into the `weight_decay=0` groups in BOTH grouping paths, plus the Gate-B assertion that every `*.weight_mv`/`*.weight_s` sits in a no-decay group; (3) adds the §2.4 methods-sentence TODO to `todo.md`.
 
 ### Phase 4 — gates (A–F on CPU, G–H on cluster)
 
@@ -221,23 +223,97 @@ Both param counts and forward outputs *legitimately* differ across versions, so 
   robust form), and extend Gate B to assert every `*.weight_mv` / `*.weight_s` parameter
   sits in a `weight_decay=0` group. (`weight_s` is 1-d and already exempt; asserting both
   keeps the rule self-documenting.)
+- **H16 — do NOT block on the tagging-training-environment release.** The migration's *correctness* is certified by the gates, which depend only on the lgatr 2.0.0 source — not on seeing upstream's worked examples. What IS provisional until that repo lands: API-*style* choices (how they configure `compile_kwargs`, backend selection, spurion handling in production configs). Mark those as provisional in the port and diff against the new repo's usage in a cheap Phase-5 addendum when it releases; expect renames, not rework. *(Restored: this bullet was added as a second "H14" and then silently clobbered by the H14 rewrite in c6d3a9b.)*
 
 ## 6. Upstream (`heidelberg-hepml/lloca-experiments`) variant
 
 No hybrids, no direct block construction ⇒ no M8 surface except their `finetuneexperiment` equivalent. Surface = M2/M3/M4/M9 renames + M10 at their `finetuneexperiment` `EquiLinear`/slim-`Linear` splices + flex monkeypatch + their suite as Gate D, same record→port→prove shape (S2/S5/S6 still apply to their nets — transplant needs the same compensations). ≈1 day. Offer the fixture-script pattern with the port PR.
 
-## 7. Task split (Claude Code web)
+## 7. Task split and operator protocol (Claude Code web)
 
-1. **Task A (environment must be on 1.4.4):** implement + run Phase 0; commit script + fixtures to `dev`. *Blocking precondition for everything else; do not install v2 in that session.* NB: `dev`'s own `requirements.txt` already demands `>=2.0.0`, so a session whose setup auto-installed it must first `pip install "lgatr[xformers-attention]==1.4.4"` and verify `lgatr.__version__` before recording — record-mode must hard-assert the version.
-2. **Task B (fresh session):** install `lgatr==2.0.0` → Phase 1a → 2 → 3 (parity mode) → Gates A–F. Push; PR only when green.
-3. **Task C (cluster/user):** Gates G–H, posture decision + possible manifest re-baseline, `.sif` rebuild, Phase 5, merge.
+Three sessions. The gates catch math mistakes; **the operator's job between sessions is to catch what no gate can self-police: gate tampering and scope creep.** Each task below has a copy-pasteable prompt and the operator checklist that gates the *next* task.
+
+### Task A — fixtures on 1.4.4
+
+```text
+On branch dev, execute Phase 0 of docs/lgatr2-migration.md exactly.
+Precondition: `python -c "import lgatr; print(lgatr.__version__)"` must print 1.4.4. If the
+session auto-installed dev's requirements (lgatr==2.0.0), first run
+`pip install "lgatr[xformers-attention]==1.4.4" "lloca[xformers-attention]==1.3.6"` and re-verify.
+Deliverables, committed to dev:
+1. tests/experiments/test_lgatr_migration_parity.py per Appendix B + Phase 0: record/check
+   modes; record hard-asserts lgatr==1.4.4; check skips cleanly when fixtures are absent.
+2. tests/fixtures/lgatr144/: production manifests (shape + requires_grad) for the six
+   lgatr-touching tagging configs + the equivectors composition; reduced-config transplant
+   packs (qkv-bias-normalized state_dict, outputs, per-block activations, gradient pack,
+   resolved-config snapshot).
+3. Record mode run TWICE; show the byte-identical hash comparison in your report.
+4. Existing test suite still 64/64 with the new file present.
+Constraints: do NOT install lgatr 2.0. Do NOT modify anything under experiments/ or config/ —
+Phase 0 touches tests/ only. If a fixture cannot be recorded, stop and report; never shrink
+the model list to make recording pass.
+```
+
+**Operator gate A→B** (~5 min): (1) `git show --stat` on the Task-A commits — only `tests/` paths; any `experiments/` or `config/` change = reject. (2) `du -sh tests/fixtures/lgatr144` is MBs, not tens of MBs. (3) Open the parity test once and eyeball exactly four things: the 1.4.4 hard-assert in record mode; the bars (1e-10 / 1e-8 / 1e-6); the waiver set is *derived by rule*, not a hard-coded key list; the double-record byte-identity assertion exists. (4) CI green, new test skipping cleanly.
+
+### Task B — port + Gates A–F on 2.0.0
+
+```text
+On branch dev, execute Phases 1-3 and Gates A-F of docs/lgatr2-migration.md.
+Environment: pip install -r requirements.txt (lgatr==2.0.0 exact) and lloca==1.3.6; paste
+`pip freeze | grep -Ei "lgatr|lloca"` into your report.
+Order:
+1. Phase 1a re-verification, in full; paste its results (including the sparse_gp gradcheck and
+   the v2 state_dict key dumps) BEFORE editing any file. If any item contradicts §2, STOP and
+   report — do not improvise a fix.
+2. Phase 2: one commit per M-row, M1-M10 in order.
+3. Phase 3: S1/S2 pins go into the parity script's build overrides ONLY; shipped configs stay
+   at v2 defaults (Posture B is decided, §2.4).
+4. Build KEY_MAP from the recorded v1 keys + your Phase-1a v2 dumps; commit it with a short
+   note of the rename rules used.
+5. Run Gates A-F; paste every gate's NUMBERS (not just pass/fail) into a "Gate results"
+   subsection of this runbook's decision log.
+Hard constraints: never loosen a tolerance, widen a waiver rule, delete an assertion, or drop
+a model to make a gate pass — bars and waivers change only via a new documented S-item, which
+requires stopping and reporting first. Stop at the FIRST gate failure and report the
+first-divergence block/tensor. Do not run Gates G/H, do not touch the .sif, do not open a PR.
+```
+
+**Operator gate B→C** (~15 min, the critical one):
+1. `git diff <taskA-tip>..HEAD -- tests/experiments/test_lgatr_migration_parity.py` — acceptable changes: KEY_MAP content, rule-derived waiver additions tied to S-items, v2-only imports. **Any edit to a tolerance, waiver derivation, or assertion = reject the task, not the gate.**
+2. `git diff <taskA-tip>..HEAD -- config/` — exactly the M-row renames (M2/M3/M4/M9), zero value-level changes (the snapshot gate enforces this; you are checking the enforcement wasn't edited).
+3. Gate-results numbers: tier-1 deviations should sit well under the bar (~1e-12-ish). A tier-1 pass at 3e-11 is unexplained drift — treat as a failure to investigate, not a pass.
+4. Phase-1a report exists and either matches §2 or documents what changed upstream.
+5. `pip freeze` line shows `lgatr==2.0.0`, `lloca==1.3.6`.
+
+### Task C — posture flip, cluster gates, close-out
+
+```text
+On branch dev (Gates A-F green, operator-reviewed):
+1. FIRST, before any training: the posture-flip commit (Phase 3): re-record production
+   manifests at v2 defaults; apply the H15 optimizer exemption in BOTH grouping paths with the
+   Gate-B no-decay assertion for *.weight_mv/*.weight_s; add the §2.4 methods-sentence TODO.
+2. Gate G: fixed-seed ~1k-iter quick runs (tag_slim, tag_lgatr) on 1.4.4 and 2.0.0, 2-3 seeds
+   each; report final-loss bands side by side.
+3. Gate H: it/s table — tag_lgatr compile on/off and tag_slim, both versions; publish the
+   numbers in the decision log whatever they say.
+4. Phase 5: stale-comment sweep, relax the pin to >=2.0.0,<3, complete the decision log
+   (one entry per S-item).
+5. Open the PR dev -> main only after 1-4 are in the log.
+```
+
+**Operator gate C→merge**: Gate-G loss bands overlap by *your* physics judgment; Gate-H table present even if unflattering; decision log complete; the PR diff is the sum of diffs you already reviewed at A→B and B→C — nothing new may appear at PR time.
+
+### Failure protocol
+
+Any session that hits a gate failure **stops**. Operator triage: (a) explained by a documented S-item → add the waiver/S-row in its own reviewed commit, re-run the gate; (b) unexplained → spawn a *fresh* investigation session seeded only with the failure artifact (first-divergence block, tensor names, the two fixture values) — never let the porting session debug its own gates by editing them.
 
 ## 8. Out of scope, captured for the follow-up task: performance transfers to CGENN
 
 Not migration work — a separate task after gates pass; recorded here so the thinking isn't lost:
 
 - **Profile first**: the FLOPs tests already emit per-jet FLOPs per model — compare CGENN-hybrid rows against `tag_slim` before optimizing anything. Post-migration, the compiled attention half of every CGENN-hybrid block gets faster, making the un-optimized CGENN branch the *relative* bottleneck almost by construction (~N·k dense-Cayley contractions per jet per layer).
-- **Sparse-indexed GP transfers almost verbatim** (same Cl(1,3) 16-blade algebra; 256/4096 nonzero Cayley entries, one output blade per pair): rewrite the `fcgp.py`/`gp.py` einsums as precomputed (indices, signs) gathers with an input-saving backward — upstream made it default "because always faster", eager included. One rewrite serves the FC baseline *and* the GPS hybrid (shared modules); the GraphTrans hybrid's private `CliffordAlgebra` copy needs the same treatment separately. Mathematically identical, reorder-only — a documented performance change, no modeling change.
+- **Sparse-indexed GP transfers almost verbatim** (same Cl(1,3) 16-blade algebra; 256/4096 nonzero Cayley entries, one output blade per pair): rewrite the dense Cayley einsums as precomputed (indices, signs) gathers with an input-saving backward — upstream made it default "because always faster", eager included. **Corrected sharing map (import-verified):** the two GT/GPS hybrids share ONE stack — `cgennlgatrgraphgps.py` imports `CliffordAlgebra`/`CGLayer` from `CGENNLGATrGraphTransHybrid.py` — so one rewrite there serves *both hybrids*; the FC **baseline** uses the separate `experiments/baselines/cgenn/` package (`fcgp.py`/`gp.py`), which needs its own pass. Mathematically identical, reorder-only — a documented performance change, no modeling change.
 - **FC baseline only**: the all-pairs padded graph admits a dense `(B, N, N, ·)` masked-mean reformulation — no scatter, fixed shapes, compiles cleanly, better locality even eager. **The kNN hybrids keep the scatter** — sparsity is the design there; `index_add_` compiles fine with `dynamic=True`.
 - Compile knobs: `dynamic=True` over batch/N; `activation_memory_budget` (torch≥2.4) if N² intermediates pinch; AMP split (multivector fp32 / scalar bf16) after the parity dust settles.
 - Fullgraph pattern: `fullgraph=False` at the model root always; flip `fullgraph=True` per-module only on proven break-free leaf blocks (`LorentzNetKNNBlock` now; the CGENN block once the sparse-GP rewrite lands) as a regression guard against reintroduced graph breaks.
