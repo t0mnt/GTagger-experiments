@@ -110,13 +110,28 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc '
 
 # sanity: torch must still be the CONTAINER's own build -- a local +cuXXX / nvXX.XX string
 # (e.g. 2.11.0+cu130 on the 25.08 image, or 2.3.0a0...nv24.3 on 24.03), NOT a plain pip wheel;
-# torch-geometric should now be >= 2.6
+# torch-geometric should now be >= 2.6. Print torch.__file__ too: it must NOT live under
+# ~/.local (see the leak note below).
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc '
   source venv/bin/activate
   python -c "import torch, torch_geometric, numpy; \
+             print(torch.__file__); \
              print(torch.__version__, torch_geometric.__version__, numpy.__version__)"
 '
 ```
+
+> **Leaked `~/.local` torch — the symptom signature** (bitten once): a warning whose path
+> starts `~/.local/lib/python3.12/site-packages/torch/...` saying *"The NVIDIA driver on
+> your system is too old"*, plus `torch.cuda.is_available() == False` **on a GPU node with
+> `--nv`**, plus trainings printing `Using device cpu`. A pip torch in the user-site (left
+> by a failed install era) shadows the container build; the pip cu-wheel lacks NGC's
+> driver-forward-compat layer, so CUDA silently dies and runs fall back to CPU. Fix:
+> `grep PYTHONPATH ~/.bashrc ~/.bash_profile` (delete any export found — that's how
+> user-site beats the venv), then the reversible
+> `mv ~/.local/lib/python3.12 ~/.local/lib/python3.12.leaked`, then re-run the sanity
+> block above (want a non-`.local` `torch.__file__` and `cuda.is_available() True` with
+> `--nv`). If a source-built xformers was compiled while the leak was live, re-verify
+> `python -m xformers.info` on a GPU and rebuild it once if it reports undefined symbols.
 
 Notes:
 - **torch-geometric**: the image ships 2.3.1 but the repo needs ≥ 2.6.0 (its ptr-only
