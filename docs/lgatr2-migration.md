@@ -101,7 +101,7 @@ Because S5 + S6 are baked in, **"identical to the v1 campaign model" is not on t
 
 Either way: **verification always runs in parity mode** (pins + compensations) first — it certifies the port; the posture flip afterwards is a one-commit, documented model change, not a migration step.
 
-**Decision (2026-07-27, maintainer + review): Posture B — adopt v2 defaults wholesale for every
+**Decision (2026-07-30, maintainer + review): Posture B — adopt v2 defaults wholesale for every
 row.** Rationale: the campaign has not been trained yet, so there are no v1 numbers to protect;
 full v1 equivalence is impossible anyway (S5/S6 baked in); one lgatr version + one settings-set
 per table (H5); "lgatr 2.0.0 defaults" is the cleanest citation. Obligations this creates:
@@ -354,9 +354,14 @@ not the many-tiny-op profile where Inductor fusion pays big; the PN-ParT dynamic
 is graph-*rebuilding* cost, which compile does not remove; (3) accuracy is unaffected either
 way — compile only moves the table's train-time column. Which is the one obligation this
 scoping creates: **if any model family trains compiled and another doesn't, say so wherever
-walltime/efficiency numbers are compared** (uniform-or-disclosed). Revisit only if a profiler
-shows the non-equivariant rows dominated by launch overhead, which their kernel profile makes
-unlikely.
+walltime/efficiency numbers are compared** (uniform-or-disclosed). Two facts that defuse the
+"unfair walltime" worry: the table has mixed compiled and eager rows since BEFORE the
+migration — `tag_slim` ships `compile: true` on 1.4.4 while everything else runs eager, an
+upstream precedent, not something the migration introduces — and the **FLOPs column is the
+compile-independent efficiency measure** (compile changes kernel launch/fusion overhead, not
+arithmetic), so efficiency *claims* lean on FLOPs while walltime stays informational with a
+per-row compile footnote. Revisit only if a profiler shows the non-equivariant rows dominated
+by launch overhead, which their kernel profile makes unlikely.
 
 ## Appendix A — evidence log
 
