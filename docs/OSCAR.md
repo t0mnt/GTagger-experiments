@@ -85,7 +85,10 @@ export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"
 
 # make both permanent, for new shells and for the sbatch scripts below. Persist the RESOLVED
 # sif AFTER the module load so it overrides the module's (possibly wrong) setenv in new shells.
-echo 'module load ngc-pytorch-container/25.08-py3-ayk4' >> ~/.bashrc
+# guarded: skip inside containers (module is an env-imported function there whose lmod
+# target isn't bind-mounted -> "environment: line N: .../lmod: No such file" noise on
+# every apptainer exec) and silence broken-lmod contexts (post-9.6 upgrade)
+echo '[ -z "$APPTAINER_CONTAINER" ] && command -v module >/dev/null 2>&1 && module load ngc-pytorch-container/25.08-py3-ayk4 2>/dev/null' >> ~/.bashrc
 echo "export NGC_PYTORCH_CONTAINER=\"$NGC_PYTORCH_CONTAINER\"" >> ~/.bashrc
 echo 'export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"' >> ~/.bashrc
 # kill the ~/.local user-site class of bugs forever: no python (container, venv, or system)
@@ -483,13 +486,17 @@ scancel <jobid>           # if needed
 >   quiet spell sits in `CF` (configuring) for a few minutes while it boots. Normal,
 >   not stuck.
 >
-> **Ignorable post-9.6 noise:** lines like `environment: line 17:
-> /oscar/rt/9.6/.../lmod/libexec/lmod: No such file or directory` in job output are a
-> cluster-side profile-init inconsistency from the RHEL 9.6 rollout — cosmetic as long
-> as your job uses the absolute `IMG`/`APPTAINER` paths above (verified: downloads and
-> runs proceed normally right past them). Worth a CCV ticket, not worth debugging.
-> The same `--export=NONE` + absolute-paths header applies to ANY batch job here,
-> dataset downloads included.
+> **The `environment: line N: .../lmod: No such file` noise — mechanism + fix.** Oscar's
+> lmod exports `module` as a *shell function*; apptainer passes exported functions into
+> the container, where your `.bashrc`'s `module load` lines call it — but the function's
+> lmod path isn't bind-mounted inside, so it errors (bash labels env-imported-function
+> errors `environment:`, one message per module line). **Harmless** — the container never
+> needs `module`; `NGC_PYTORCH_CONTAINER` is exported directly. **Remediation**: guard
+> the `.bashrc` module line as §2 now writes it
+> (`[ -z "$APPTAINER_CONTAINER" ] && command -v module >/dev/null 2>&1 && module load … 2>/dev/null`)
+> — silences containers AND the post-9.6 broken-lmod host contexts in one line. In batch,
+> `--export=NONE` + absolute `IMG`/`APPTAINER` paths sidestep it entirely (that header
+> applies to ANY batch job here, dataset downloads included).
 
 Each finished run prints its `table test: … \\` row into the log (GUIDE §4).
 
