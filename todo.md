@@ -169,6 +169,19 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
 - [ ] JetClass: fill the 8 `jc_<Hybrid>.yaml` `???` batchsize/lr from find_lr on jctagging.
 - [ ] Rejection-metric convention differs top vs JetClass (one methods sentence, or unify).
 
+## 4b. Post-campaign housekeeping
+
+- [ ] **Mechanical commit: move `find_lr.py` + `aggregate_table.py` → `utils/`** (deferred
+      until after the campaign so paths stay stable while the recipes are being filled).
+      Contents, enumerated: `git mv` both; change `find_lr.py`'s
+      `@hydra.main(config_path="config")` → `"../config"` (file-relative — the one real
+      code change); repo-wide sed `python find_lr.py` → `python utils/find_lr.py` and
+      likewise for `aggregate_table.py` across ~36 + 8 referencing files (all guides,
+      OSCAR/SLURM sbatch templates, the 30 training-recipe headers, and the guardrail
+      warning STRING in `experiments/tagging/experiment.py:51`); smoke both entry points
+      after (`utils/find_lr.py -cn toptagging model=... save=false` on config_quick, and
+      an `aggregate_table.py --runs` pass over an existing run dir).
+
 ## 5. Paper release — branding / identity (only the maintainer has these)
 
 Critical (still point at the upstream LLoCa project):

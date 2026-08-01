@@ -58,6 +58,18 @@ def main():
               if not d.endswith(".leaked")]
     check("no live ~/.local/lib trees", not leaked, "; ".join(leaked),
           "mv each aside (reversible): mv <dir> <dir>.leaked")
+    pp = os.environ.get("PYTHONPATH", "")
+    check("PYTHONPATH empty", not pp, pp,
+          "something is force-injecting import paths past the venv -- find and remove "
+          "the export (bashrc/profile/module)")
+    conda_dirs = [d for d in ("~/miniconda3", "~/anaconda3", "~/.conda")
+                  if os.path.isdir(os.path.expanduser(d))]
+    pip_confs = [f for f in ("~/.config/pip/pip.conf", "~/.pip/pip.conf")
+                 if os.path.isfile(os.path.expanduser(f))]
+    if conda_dirs or pip_confs:
+        print(f"[WARN] dormant installers present: {conda_dirs + pip_confs} -- harmless "
+              "while inactive, but a conda init block or user pip.conf can redirect "
+              "installs; audit if imports ever surprise you")
 
     # ---- 2. torch provenance + CUDA ----------------------------------------------
     import torch
