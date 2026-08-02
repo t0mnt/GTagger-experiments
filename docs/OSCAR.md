@@ -17,18 +17,14 @@ editing, installs, and *submitting* jobs only — do **not** run trainings, test
 `find_lr.py` on them (heavy processes get killed). Compute happens through `interact`
 (interactive session on a compute node) or `sbatch` (batch job).
 
-Two rules for every `interact` in this doc:
-
-1. **Launch it from a LOGIN shell only, never from inside another interact.** A nested
-   session's controlling shell lives inside the *outer* job, so it dies when the outer
-   job's walltime expires — whatever its own `-t` says (observed: a 12 h download killed
-   at its parent's 30-min limit). Before any `interact`, check the prompt says
-   `loginXXX`, or that `echo $SLURM_JOB_ID` prints nothing; `exit` until it does.
-2. **Every code block in this doc is safe to paste whole — from the shell its header
-   comment names.** Blocks never mix shells: an `interact` line is always a block of its
-   own; the work that belongs inside the session is the *next* block, pasted only after
-   the prompt has changed to a compute node; leaving the session is a bare `exit`, given
-   in prose. If the prompt doesn't match what a block's header says, don't paste it.
+Every code block in this doc is safe to paste whole, and its first comment says which
+shell it belongs in — a block never mixes login-node and compute-node work. The one
+fact behind the "LOGIN shell" headers: `interact` must never be launched from inside
+another interact. A nested session's controlling shell lives inside the *outer* job,
+so it dies when the outer job's walltime expires, whatever its own `-t` says
+(observed: a 12 h download killed at its parent's 30-min limit). The check is always
+the same — the prompt says `loginXXX` and `echo $SLURM_JOB_ID` prints nothing;
+`exit` until it does.
 
 ## 1. Know the three directories (this determines where everything goes)
 
@@ -101,12 +97,17 @@ export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"
 # guarded: skip inside containers (module is an env-imported function there whose lmod
 # target isn't bind-mounted -> "environment: line N: .../lmod: No such file" noise on
 # every apptainer exec) and silence broken-lmod contexts (post-9.6 upgrade)
-echo '[ -z "$APPTAINER_CONTAINER" ] && command -v module >/dev/null 2>&1 && module load ngc-pytorch-container/25.08-py3-ayk4 2>/dev/null' >> ~/.bashrc
+# (each line is added only if absent, so re-pasting this block never stacks duplicates;
+# the NGC line is replaced rather than appended so a newly resolved sif always wins)
+grep -qF 'ngc-pytorch-container/25.08-py3-ayk4 2>/dev/null' ~/.bashrc 2>/dev/null || \
+  echo '[ -z "$APPTAINER_CONTAINER" ] && command -v module >/dev/null 2>&1 && module load ngc-pytorch-container/25.08-py3-ayk4 2>/dev/null' >> ~/.bashrc
+sed -i '/^export NGC_PYTORCH_CONTAINER=/d' ~/.bashrc
 echo "export NGC_PYTORCH_CONTAINER=\"$NGC_PYTORCH_CONTAINER\"" >> ~/.bashrc
-echo 'export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"' >> ~/.bashrc
+grep -qF 'export APPTAINER_BINDPATH=' ~/.bashrc || \
+  echo 'export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"' >> ~/.bashrc
 # kill the ~/.local user-site class of bugs forever: no python (container, venv, or system)
 # may ever import from ~/.local again (see the leak note below for why this matters)
-echo 'export PYTHONNOUSERSITE=1' >> ~/.bashrc
+grep -qF 'export PYTHONNOUSERSITE=1' ~/.bashrc || echo 'export PYTHONNOUSERSITE=1' >> ~/.bashrc
 
 # a venv that INHERITS the container's stack (torch, torch-geometric, numpy, ...),
 # created from INSIDE the container; pip adds only what the image lacks.
@@ -218,7 +219,8 @@ Notes:
     requirements, so:
 
   ```bash
-  # from a LOGIN shell (§0 rules): the ~20-40 min compile runs in a CPU session
+  # from a LOGIN shell (prompt loginXXX; echo $SLURM_JOB_ID prints nothing -- §0)
+  # the ~20-40 min compile runs in a CPU session
   interact -n 8 -m 32g -t 02:00:00
   ```
 
@@ -294,7 +296,10 @@ GROUP=your-allocation            # <-- replace with your ~/data group dir (from 
 mkdir -p ~/data/$GROUP/$USER/gtagger
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python data/collect_data.py toptagging'   # ~1.5 GB download (file mgmt: login node OK)
-mv data/toptagging_full.npz ~/data/$GROUP/$USER/gtagger/
+# mv -n, NOT mv: on a re-paste, data/toptagging_full.npz is already the symlink made
+# below, and an unguarded mv would OVERWRITE the real npz in ~/data with that symlink
+# (destroying the download); -n refuses to clobber the existing target and skips instead
+mv -n data/toptagging_full.npz ~/data/$GROUP/$USER/gtagger/
 ln -sfn ~/data/$GROUP/$USER/gtagger/toptagging_full.npz data/toptagging_full.npz
 
 # run output -> ~/scratch (fast, purged; we copy keepers back at the end)
@@ -361,7 +366,7 @@ reads the file list + md5 checksums from Zenodo record 10878355's API at downloa
 time, then verifies and extracts exactly like §2.1:
 
 ```bash
-# from a LOGIN shell (§0 rules)
+# from a LOGIN shell (prompt loginXXX; echo $SLURM_JOB_ID prints nothing -- §0)
 interact -n 4 -m 16g -t 12:00:00
 ```
 
@@ -417,7 +422,7 @@ GPU-debug session for the model smoke:
 **CPU leg** — the invariance/equivariance suites (~6 min). Session first:
 
 ```bash
-# from a LOGIN shell (§0 rules)
+# from a LOGIN shell (prompt loginXXX; echo $SLURM_JOB_ID prints nothing -- §0)
 interact -n 4 -m 16g -t 00:30:00
 ```
 
@@ -438,7 +443,7 @@ the node's cards — `torch.cuda.is_available()` is False even on a GPU node, wi
 error anywhere. "cuda False on a GPU node" = check your allocation before anything else.
 
 ```bash
-# from a LOGIN shell (§0 rules)
+# from a LOGIN shell (prompt loginXXX; echo $SLURM_JOB_ID prints nothing -- §0)
 interact -q gpu-debug -g 1 -n 4 -m 20g -t 00:30:00
 ```
 
@@ -466,7 +471,8 @@ which) — the torch build itself comes from the NGC image and is known-good.
 One session per model you plan to train (or chain them in one longer session):
 
 ```bash
-# from a LOGIN shell (§0 rules); add -f <feature> to pin a GPU type; `nodes gpu` lists them
+# from a LOGIN shell (prompt loginXXX; echo $SLURM_JOB_ID prints nothing -- §0)
+# add -f <feature> to pin a GPU type; `nodes gpu` lists them
 interact -q gpu -g 1 -n 8 -m 48g -t 02:00:00
 ```
 
@@ -507,61 +513,19 @@ the script can save you):
 mkdir -p ~/GTagger-experiments/logs
 ```
 
-The FILE `train.sbatch` (save it in the repo root — don't paste it into a shell; it
-would run the training in your foreground on the login node):
+**`train.sbatch` ships in the repo root** — nothing to copy from this doc; a `git pull`
+keeps it current. Its comments explain every flag choice; the load-bearing facts:
 
-```bash
-#!/bin/bash
-#SBATCH -J gtagger
-#SBATCH -p gpu                    # partition; `allq gpu` shows load. gpu-he needs High-End priority
-#SBATCH --gres=gpu:1
-#SBATCH -n 8
-#SBATCH --mem=48G                 # top-tagging: full npz in RAM + fp64 momenta -> 48G safe.
-                                  # JetClass/TopTagXL (streaming, per-worker fetch buffers): 64G.
-                                  # After the first run, `myjobinfo` shows MaxRSS -- trim to fit.
-#SBATCH -t 24:00:00               # raise for the heavy CGENN-GPS (~a day/trial on a top GPU)
-#SBATCH -o logs/%x-%j.out         # logs/ must exist BEFORE sbatch (see above)
-#SBATCH --export=NONE             # do NOT inherit the login env (post-9.6 it carries a stale
-                                  # lmod `module` function that errors on compute nodes)
-# #SBATCH -a <account>            # only if you belong to a condo/priority account (see `condos`)
-# #SBATCH -f ampere               # optionally pin a GPU architecture/feature
-
-# Do NOT `module load ngc-pytorch-container/...` here: that module setenv's the MISLABELED
-# 24.03 sif over your resolved path (the §2 container-guard story) — a batch job would
-# silently train on the wrong torch. Use the resolved sif and apptainer binary directly
-# (get the latter once on the login node: `readlink -f $(command -v apptainer)`).
-IMG=/oscar/rt/sw/external/ngc-pytorch-container/25.08-py3/pytorch-25.08-py3.sif
-APPTAINER=$(command -v apptainer || true)   # or hardcode the login-node `readlink -f` result here
-[ -x "$APPTAINER" ] || { echo "apptainer not on the batch PATH: hardcode APPTAINER= with the absolute path from \`readlink -f \$(command -v apptainer)\` on a login node"; exit 1; }
-export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"
-export PYTHONUNBUFFERED=1         # live logs (batch jobs have no tty -> python buffers)
-export PYTHONNOUSERSITE=1         # never import from ~/.local (the §2 leak class);
-                                  # --export=NONE strips the .bashrc copy, so set it here too
-
-MODEL=${1:?usage: sbatch train.sbatch tag_<Model> [task] [extra hydra overrides...]}
-shift
-# arg 2 is the task ONLY if it names one -- otherwise it's already a hydra override
-# (so `sbatch train.sbatch tag_X save=false` means toptagging + save=false, not task save=false)
-case "${1:-}" in
-  toptagging|jctagging|toptagxl) TASK=$1; shift ;;
-  *) TASK=toptagging ;;
-esac
-case "$TASK" in toptagging) P=top ;; jctagging) P=jc ;; toptagxl) P=xl ;; esac
-# remaining args = hydra overrides, passed through via $*
-cd "$HOME/GTagger-experiments"
-"$APPTAINER" exec --nv "$IMG" bash -c "
-  source venv/bin/activate
-  python run.py -cp config -cn $TASK \
-      model=$MODEL training=${P}_${MODEL#tag_} gpus=1 $*
-"
-# (no data.dataset override needed: config/toptagging.yaml already defaults to the
-#  full dataset, and the jc/xl configs have no such key -- it would crash there)
-# -cp config is REQUIRED: run.py defaults to the tiny config_quick tree, which has
-# no top_<Model> recipes. Recipe names are derived (tag_X + task -> top_X/jc_X/xl_X).
-#   sbatch train.sbatch tag_PlainGraphGPS                          # top-tagging
-#   sbatch train.sbatch tag_PlainGraphGPS jctagging                # JetClass
-#   sbatch train.sbatch tag_PlainGraphGPS toptagging save=false    # throwaway run
-```
+- `--mem=48G` fits top-tagging (full npz in RAM + fp64 momenta); the streaming
+  JetClass/TopTagXL runs want `64G`. After a first run, `myjobinfo` shows MaxRSS — trim to fit.
+- `-t 24:00:00` default; raise for the heavy CGENN-GPS (~a day/trial on a top GPU).
+- `--export=NONE` + absolute image/apptainer paths: batch jobs must NOT inherit the login
+  env (stale lmod `module` function) nor `module load` the mislabeled container module —
+  the §2 container-guard story, solved inside the script.
+- Recipe names are derived (`tag_X` + task → `top_X`/`jc_X`/`xl_X`), and `-cp config` is
+  pinned there because `run.py` defaults to the tiny `config_quick` tree.
+- Arg 2 is the task only if it names one (`toptagging|jctagging|toptagxl`); anything else
+  is passed through as a hydra override, as in the examples above.
 
 ```bash
 squeue -u $USER           # ALWAYS check before sbatch: a "failed" job may still be alive
@@ -574,8 +538,10 @@ myjobinfo                 # time/memory actually used after it finishes
 scancel <jobid>           # if needed
 ```
 
-> **Condo partition facts** (`-p lgouskos-h100-gcondo`; read live via `scontrol show
-> partition lgouskos-h100-gcondo` + `scontrol show node gpu2703`):
+> **Condo partition facts** (if your group has one: `condos` names it; submit with
+> `-p <group>-gcondo` and read the live limits via `scontrol show partition <name>` +
+> `scontrol show node <its-node>`. The facts below are from one H100 condo and are
+> typical, but check yours):
 > - **`-t` is MANDATORY here: `DefaultTime=00:05:00`** — an untimed submission is killed
 >   after five minutes. `MaxTime=UNLIMITED`, so be generous (`-t 48:00:00`).
 > - One node, `Gres=gpu:nvidia_h100_nvl:4`, `OverSubscribe=NO`: **four whole 94 GB H100

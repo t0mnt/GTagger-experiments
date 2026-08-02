@@ -7,11 +7,11 @@ wheel/ABI mismatches, crippled no-kernel xformers builds, GPU-less allocations.
 
     # CPU context (login node / CPU interact): provenance + stack checks only
     apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
-        'source venv/bin/activate && python scripts/env_check.py'
+        'source venv/bin/activate && python utils/env_check.py'
 
     # GPU context (interact with -g 1, apptainer --nv): everything, incl. real kernels
     apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc \
-        'source venv/bin/activate && python scripts/env_check.py --gpu'
+        'source venv/bin/activate && python utils/env_check.py --gpu'
 
 Exit code 0 = certified. Any FAIL prints what broke and how it usually got that way.
 """

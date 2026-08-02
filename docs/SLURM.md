@@ -96,7 +96,9 @@ apptainer exec --nv "$IMG" bash -lc '
 
 Fill those into `config/training/top_<Model>.yaml`, then save the following as the
 FILE `train.sbatch` (file content — don't paste it into a shell; it would run the
-training in your foreground on the login node):
+training in your foreground on the login node). The repo root ships a concrete,
+parametrized version of this file for Brown's Oscar cluster (see
+[`OSCAR.md`](OSCAR.md) §5) — on any other cluster, adapt this template:
 
 ```bash
 #!/bin/bash
