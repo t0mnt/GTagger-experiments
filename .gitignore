@@ -32,3 +32,8 @@ lr_finder_*.png
 # local sbatch copies (root only -- docs/oscar-train.sbatch stays tracked): the working
 # copy carries YOUR partition/account (-p/-A), which must never be committed to a public repo
 /*.sbatch
+
+# SLURM job logs: train.sbatch writes logs/%x-%j.out; also catch any stray root-level
+# .out from scripts that forget the logs/ prefix (early download jobs did)
+logs/
+*.out
