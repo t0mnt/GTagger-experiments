@@ -1,4 +1,7 @@
 #!/bin/bash
+# TEMPLATE -- use via:  cp docs/oscar-train.sbatch train.sbatch   (from the repo root)
+# Root-level *.sbatch is gitignored, so the partition/account you set in YOUR copy
+# (-p / -A below) stays local and cannot be committed to this public repo.
 #SBATCH -J gtagger
 #SBATCH -p gpu                    # partition; `allq gpu` shows load. gpu-he needs High-End priority
 #SBATCH --gres=gpu:1

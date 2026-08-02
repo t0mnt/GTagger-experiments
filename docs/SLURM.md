@@ -11,9 +11,9 @@ path, partition, GPU spec, account).
 ## 1. One-time setup (on a login node)
 
 ```bash
-git clone https://github.com/<you>/GTagger-experiments && cd GTagger-experiments
+git clone "https://github.com/<you>/GTagger-experiments" && cd GTagger-experiments
 module load apptainer                       # or: module load singularity
-IMG=<path/to/pytorch.sif>                    # your PyTorch container
+IMG="<path/to/pytorch.sif>"                    # your PyTorch container
 
 # a venv that INHERITS the container's torch (so pip won't reinstall/clobber it)
 apptainer exec "$IMG" python -m venv --system-site-packages venv
@@ -62,7 +62,7 @@ another srun/salloc session: a nested session's shell dies when the OUTER job's
 walltime expires, regardless of its own `--time`):
 
 ```bash
-srun --partition=<gpu-partition> --gres=gpu:1 --time=00:20:00 --pty bash
+srun --partition="<gpu-partition>" --gres=gpu:1 --time=00:20:00 --pty bash
 ```
 
 Then, once the prompt is on the compute node:
@@ -96,14 +96,14 @@ apptainer exec --nv "$IMG" bash -lc '
 
 Fill those into `config/training/top_<Model>.yaml`, then save the following as the
 FILE `train.sbatch` (file content — don't paste it into a shell; it would run the
-training in your foreground on the login node). The repo root ships a concrete,
-parametrized version of this file for Brown's Oscar cluster (see
+training in your foreground on the login node). The repo ships a concrete,
+parametrized version for Brown's Oscar cluster as `docs/oscar-train.sbatch` (see
 [`OSCAR.md`](OSCAR.md) §5) — on any other cluster, adapt this template:
 
 ```bash
 #!/bin/bash
 #SBATCH --job-name=lloca
-#SBATCH --partition=<gpu-partition>
+#SBATCH --partition="<gpu-partition>"
 #SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
@@ -112,7 +112,7 @@ parametrized version of this file for Brown's Oscar cluster (see
 # #SBATCH --account=<account>
 
 module load apptainer
-IMG=<path/to/pytorch.sif>
+IMG="<path/to/pytorch.sif>"
 
 srun apptainer exec --nv --bind "$PWD:$PWD" --pwd "$PWD" "$IMG" bash -lc '
   source venv/bin/activate

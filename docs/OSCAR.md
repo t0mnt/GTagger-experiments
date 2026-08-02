@@ -513,8 +513,19 @@ the script can save you):
 mkdir -p ~/GTagger-experiments/logs
 ```
 
-**`train.sbatch` ships in the repo root** — nothing to copy from this doc; a `git pull`
-keeps it current. Its comments explain every flag choice; the load-bearing facts:
+The script is the repo's `docs/oscar-train.sbatch` template — one-time, copy it to the
+working file (root-level `*.sbatch` is gitignored, so the copy — and any partition or
+account you add to it — physically cannot be committed to this public repo):
+
+```bash
+# on the LOGIN node
+cd ~/GTagger-experiments
+cp docs/oscar-train.sbatch train.sbatch
+# optional, condo/priority users only: set -p <your partition> and uncomment -A in train.sbatch;
+# the template's defaults (-p gpu, no account) work as-is for everyone else
+```
+
+The template's comments explain every flag choice; the load-bearing facts:
 
 - `--mem=48G` fits top-tagging (full npz in RAM + fp64 momenta); the streaming
   JetClass/TopTagXL runs want `64G`. After a first run, `myjobinfo` shows MaxRSS — trim to fit.
@@ -528,14 +539,16 @@ keeps it current. Its comments explain every flag choice; the load-bearing facts
   is passed through as a hydra override, as in the examples above.
 
 ```bash
+# on the LOGIN node -- submit + monitor
 squeue -u $USER           # ALWAYS check before sbatch: a "failed" job may still be alive
                           # (three concurrent downloads once raced this way), and startup
                           # noise in the .out is not proof of death -- sacct is
-sbatch train.sbatch
+sbatch train.sbatch tag_PlainGraphGPS     # (example; see the submissions above)
 myq                       # your queue; `squeue -u $USER -t PENDING --start` estimates start time
-tail -f slurm-<jobid>.out # or runs/<exp>/<run>/out_0.log once it starts
-myjobinfo                 # time/memory actually used after it finishes
-scancel <jobid>           # if needed
+myjobinfo                 # time/memory actually used after a job finishes
+# with a real job id (from myq):
+#   tail -f logs/gtagger-<jobid>.out    -- live log (or runs/<exp>/<run>/out_0.log once training starts)
+#   scancel <jobid>                     -- kill it
 ```
 
 > **Condo partition facts** (if your group has one: `condos` names it; submit with
