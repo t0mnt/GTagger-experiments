@@ -5,13 +5,16 @@
 #SBATCH -J gtagger
 #SBATCH -p gpu                    # partition; `allq gpu` shows load. gpu-he needs High-End priority
 #SBATCH --gres=gpu:1
-#SBATCH -n 8
+#SBATCH -n 8                      # cores. Streaming JetClass/TopTagXL benefit from more:
+                                  # raise to 16 AND pass jc_params.num_workers=12 (default 2)
 #SBATCH --mem=48G                 # top-tagging: full npz in RAM + fp64 momenta -> 48G safe.
                                   # JetClass/TopTagXL (streaming, per-worker fetch buffers): 64G.
                                   # After the first run, `myjobinfo` shows MaxRSS -- trim to fit.
 #SBATCH -t 24:00:00               # raise for the heavy CGENN-GPS (~a day/trial on a top GPU)
 #SBATCH -o logs/%x-%j.out         # logs/ must exist BEFORE sbatch: SLURM opens this file
-                                  # before the script runs -- missing dir = job dies, no output
+                                  # before the script runs -- missing dir = job dies, no output.
+                                  # %x = job name: submit with `sbatch -J <Model> ...` and the
+                                  # log becomes logs/<Model>-<jobid>.out (see the run_dir link below)
 #SBATCH --export=NONE             # do NOT inherit the login env (post-9.6 it carries a stale
                                   # lmod `module` function that errors on compute nodes)
 # #SBATCH -A <account>            # only if you belong to a condo/priority account (see `condos`)
@@ -42,12 +45,17 @@ cd "$HOME/GTagger-experiments"
 "$APPTAINER" exec --nv "$IMG" bash -c "
   source venv/bin/activate
   python run.py -cp config -cn $TASK \
-      model=$MODEL training=${P}_${MODEL#tag_} gpus=1 $*
+      model=$MODEL training=${P}_${MODEL#tag_} gpus=1 \
+      +slurm_job_id=${SLURM_JOB_ID:-none} $*
 "
 # (no data.dataset override needed: config/toptagging.yaml already defaults to the
 #  full dataset, and the jc/xl configs have no such key -- it would crash there)
 # -cp config is REQUIRED: run.py defaults to the tiny config_quick tree, which has
 # no top_<Model> recipes. Recipe names are derived (tag_X + task -> top_X/jc_X/xl_X).
-#   sbatch train.sbatch tag_PlainGraphGPS                          # top-tagging
+# +slurm_job_id records the job id INSIDE the run (config.yaml + MLflow params), and the
+# job prints its run_dir into the .out -- so either direction of jobid <-> run resolves:
+#   grep run_dir logs/<Model>-<jobid>.out          # jobid -> run
+#   grep slurm_job_id runs/<exp>/<run>/config.yaml # run   -> jobid
+#   sbatch -J PlainGraphGPS train.sbatch tag_PlainGraphGPS         # top-tagging
 #   sbatch train.sbatch tag_PlainGraphGPS jctagging                # JetClass
 #   sbatch train.sbatch tag_PlainGraphGPS toptagging save=false    # throwaway run

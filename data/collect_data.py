@@ -181,8 +181,12 @@ def _refresh_times(root):
                 pass
 
 
-def _marker_state(marker, root):
+def _marker_state(marker, root, extra_roots=()):
     """Classify an ``.extracted`` marker: 'verified', 'stale', or 'legacy'.
+
+    ``extra_roots`` are additional directories a member may legitimately live in
+    (TopTagXL extracts flat and is then organized into split folders, so a member
+    recorded as ``qcd_000.root`` ends up at ``<dest>/train_100M/qcd_000.root``).
 
     New-style markers hold the tar's member list (a manifest), so a skip can check
     the files are actually still on disk -- a scratch purge that empties SOME parts
@@ -198,7 +202,13 @@ def _marker_state(marker, root):
         return "legacy", []
     if not names:
         return "legacy", []
-    missing = [n for n in names if not os.path.exists(os.path.join(root, n))]
+
+    def present(n):
+        candidates = [os.path.join(root, n)]
+        candidates += [os.path.join(r, os.path.basename(n)) for r in extra_roots]
+        return any(os.path.exists(c) for c in candidates)
+
+    missing = [n for n in names if not present(n)]
     return ("stale", missing) if missing else ("verified", [])
 
 
@@ -298,6 +308,51 @@ def collect_jetclass(splits):
         print("JetClass NOT ready -- see the WARNINGs above; do not launch jctagging training yet.")
 
 
+TOPTAGXL_SPLIT_FOLDER = {"train": "train_100M", "test": "test_25M", "val": "val_10M"}
+
+
+def _organize_toptagxl(dest):
+    """Move flat-extracted .root files into the split folders the loader expects.
+
+    The Zenodo tars unpack their .root files DIRECTLY into ``dest`` with no internal
+    directories (verified on the real archives: 675 qcd_ + 675 top_ files landed
+    side by side), but toptagxlexperiment.py reads
+    ``<dest>/{train_100M,test_25M,val_10M}/<class>_<NNN>.root``. Each tar's marker
+    records its member list, so which split a file belongs to is read off the
+    manifest rather than guessed from the numbering. Idempotent, and a rename on the
+    same filesystem, so re-running costs nothing and moves no data.
+    """
+    moved, legacy = 0, []
+    for split, folder in TOPTAGXL_SPLIT_FOLDER.items():
+        target = os.path.join(dest, folder)
+        for fname, _md5 in TOPTAGXL.get(split, []):
+            marker = os.path.join(dest, f".{fname}.extracted")
+            if not os.path.exists(marker):
+                continue
+            with open(marker) as f:
+                names = [line for line in f.read().splitlines() if line]
+            if not names:  # legacy 0-byte marker: no manifest -> no split assignment
+                legacy.append(fname)
+                continue
+            os.makedirs(target, exist_ok=True)
+            for name in names:
+                src = os.path.join(dest, name)
+                dst = os.path.join(target, os.path.basename(name))
+                if os.path.exists(dst) or not os.path.isfile(src):
+                    continue
+                os.replace(src, dst)
+                moved += 1
+    if moved:
+        print(f"Organized {moved} .root files into {tuple(TOPTAGXL_SPLIT_FOLDER.values())} "
+              f"using the tar manifests")
+    if legacy:
+        print(
+            f"WARNING: {len(legacy)} tar(s) carry legacy markers with no manifest "
+            f"(e.g. {legacy[0]}) -- their files cannot be assigned to a split "
+            f"automatically. Delete those markers and re-run to re-extract with one."
+        )
+
+
 def collect_toptagxl(splits):
     """Download + verify + extract the TopTagXL tars for the given splits.
 
@@ -315,7 +370,9 @@ def collect_toptagxl(splits):
             tar_path = os.path.join(dest, fname)
             marker = os.path.join(dest, f".{fname}.extracted")
             if os.path.exists(marker):
-                state, missing = _marker_state(marker, dest)
+                state, missing = _marker_state(
+                    marker, dest, [os.path.join(dest, f) for f in TOPTAGXL_FOLDERS]
+                )
                 if state == "verified":
                     print(f"{fname} already extracted, skipping (manifest verified)")
                     continue
@@ -350,6 +407,8 @@ def collect_toptagxl(splits):
             print(f"Extracting {fname} -> {dest}")
             _extract_with_manifest(tar_path, dest, marker)
             print(f"Extracted {fname}  (you may delete {tar_path} to reclaim disk)")
+
+    _organize_toptagxl(dest)
 
     want = [f for f in TOPTAGXL_FOLDERS if any(s in f for s in splits) or set(splits) >= {"train", "val", "test"}]
     missing = [f for f in want if not os.path.isdir(os.path.join(dest, f))]
