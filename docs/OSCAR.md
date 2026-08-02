@@ -300,6 +300,10 @@ loudly in that state; delete the `.*.extracted` markers to force the re-download
 
 ```bash
 # download + extract (hours — run in a CPU interact session, not on the login node)
+# From a LOGIN shell only — NEVER from inside another interact: a nested session dies
+# when the OUTER job's walltime expires, whatever its own -t says (observed: a 12 h
+# download killed at its parent's 30-min limit). `exit` until the prompt says loginXXX
+# (or check: `echo $SLURM_JOB_ID` must be empty) before starting this.
 interact -n 4 -m 16g -t 12:00:00
 mkdir -p ~/scratch/jetclass && ln -s ~/scratch/jetclass ~/GTagger-experiments/data/JetClass
 cd ~/GTagger-experiments
