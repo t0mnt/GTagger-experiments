@@ -12,7 +12,7 @@
 # 5 passes apply to the subset -- shrink the range, not the epochs, to cut cost.
 #
 # Per-model batchsize + lr come from find_lr on the toptagxl task:
-#   python find_lr.py -cn toptagxl model=tag_<hybrid> save=false +lr_find.find_batch_size=true
+#   python utils/find_lr.py -cn toptagxl model=tag_<hybrid> save=false +lr_find.find_batch_size=true
 # (defaults below inherit tag_default: AdamW, lr=1e-3, batchsize=512, clip 1.0 --
 # runnable out of the box, but sweep before a real campaign.)
 defaults:

@@ -267,7 +267,7 @@ class JetClassTaggingExperiment(TaggingExperiment):
             )
 
             # results-table row in the same `table <split>:` format as top-tagging, so
-            # aggregate_table.py covers JetClass too -- only the metric columns differ
+            # utils/aggregate_table.py covers JetClass too -- only the metric columns differ
             # (ovo AUC + one rejection per non-QCD class).
             row = {
                 "accuracy": float(metrics["accuracy"]),

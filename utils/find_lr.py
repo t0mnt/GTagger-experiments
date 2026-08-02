@@ -1,7 +1,7 @@
 """
-    python find_lr.py -cp config -cn jctagging model=tag_transformer save=false
-    python find_lr.py -cp config -cn toptagging model=tag_transformer save=false
-    python find_lr.py -cp config -cn jctagging model=tag_transformer model/framesnet=learnedpd save=false
+    python utils/find_lr.py -cp config -cn jctagging model=tag_transformer save=false
+    python utils/find_lr.py -cp config -cn toptagging model=tag_transformer save=false
+    python utils/find_lr.py -cp config -cn jctagging model=tag_transformer model/framesnet=learnedpd save=false
 
 The task is selected with `-cn` (toptagging / jctagging / amplitudes / ttbar / ...)
 and the dataset within a task with the usual data overrides (e.g. `data.dataset=mini`
@@ -66,7 +66,7 @@ On a GPU you can also auto-size the batch first, then sweep the lr at that size
                                     i.e. the largest fitting power of two; <1 adds
                                     headroom but breaks the power of two)
 
-e.g.  python find_lr.py -cp config -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \\
+e.g.  python utils/find_lr.py -cp config -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \\
           save=false +lr_find.find_batch_size=true
 prints both the GPU-fit batchsize and the suggested lr. (On CPU the batch-size
 search is a no-op.) Verify the printed batchsize with a short real run before a
@@ -74,6 +74,11 @@ long job -- it measures one fwd+bwd, not a full training trajectory.
 """
 
 import os
+import sys
+
+# living in utils/, the repo root is no longer the script dir (= sys.path[0]);
+# put it back so the `experiments` package resolves without needing an install
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import hydra
 import numpy as np
@@ -347,7 +352,7 @@ def make_plot(lrs, losses, steepest, min_loss_lr, output, title="LR range test")
 
 # Default to the real config/ tree so a bare run matches training (clipping on, full data);
 # pass `-cp config_quick ... data.dataset=mini` for a fast smoke test of the finder itself.
-@hydra.main(config_path="config", config_name="toptagging", version_base=None)
+@hydra.main(config_path="../config", config_name="toptagging", version_base=None)
 def main(cfg):
     # LR finding is single-process and never trains / evaluates / saves a model
     cfg.train = False

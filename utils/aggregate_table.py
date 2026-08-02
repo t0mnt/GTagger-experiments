@@ -14,8 +14,8 @@ and a true re-run of an identical variant supersedes older ones by the log file'
 mtime (NOT by directory order: run-dir names end in a random suffix, so path order
 says nothing about recency) — and assembles them into a single LaTeX ``tabular``.
 
-    python aggregate_table.py                       # scans runs/, split=test
-    python aggregate_table.py --runs runs/topt_local_debug --split test --out table.tex
+    python utils/aggregate_table.py                       # scans runs/, split=test
+    python utils/aggregate_table.py --runs runs/topt_local_debug --split test --out table.tex
 """
 
 import argparse

@@ -48,7 +48,7 @@ class TaggingExperiment(BaseExperiment):
                 LOGGER.warning(
                     f"{modelname} is training at the UNSWEPT family fallback "
                     f"({', '.join(unswept)}) -- did you forget to fill its recipe "
-                    "from find_lr.py?"
+                    "from utils/find_lr.py?"
                 )
 
         self.cfg.model.out_channels = self.num_outputs

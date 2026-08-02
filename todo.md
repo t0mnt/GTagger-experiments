@@ -171,16 +171,17 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
 
 ## 4b. Post-campaign housekeeping
 
-- [ ] **Mechanical commit: move `find_lr.py` + `aggregate_table.py` → `utils/`** (deferred
-      until after the campaign so paths stay stable while the recipes are being filled).
-      Contents, enumerated: `git mv` both; change `find_lr.py`'s
-      `@hydra.main(config_path="config")` → `"../config"` (file-relative — the one real
-      code change); repo-wide sed `python find_lr.py` → `python utils/find_lr.py` and
-      likewise for `aggregate_table.py` across ~36 + 8 referencing files (all guides,
-      OSCAR/SLURM sbatch templates, the 30 training-recipe headers, and the guardrail
-      warning STRING in `experiments/tagging/experiment.py:51`); smoke both entry points
-      after (`utils/find_lr.py -cn toptagging model=... save=false` on config_quick, and
-      an `aggregate_table.py --runs` pass over an existing run dir).
+- [x] **Mechanical commit: move `find_lr.py` + `aggregate_table.py` → `utils/`** — done
+      PRE-campaign after all (the postpone rationale was a hand-executed move; done
+      mechanically with grep/compose verification before any recipe values existed, so
+      the docs stay stable through the campaign instead of churning after it).
+      Executed: `git mv` both; `config_path="../config"`; the repo-wide reference sweep
+      (guides, recipe headers, the `experiments/tagging/experiment.py` guardrail string,
+      both scripts' own docstrings); plus one unplanned real fix — a `sys.path` shim in
+      `find_lr.py`, since from `utils/` the repo root is no longer the script dir and
+      `import experiments` breaks without it. Verified: zero unqualified references left,
+      hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
+      the new path.
 
 ## 5. Paper release — branding / identity (only the maintainer has these)
 

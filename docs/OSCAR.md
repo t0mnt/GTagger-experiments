@@ -14,7 +14,7 @@ ssh your-brown-username@ssh.ccv.brown.edu       # replace your-brown-username; B
 
 You land on a **login node** (`[you@login00X ~]$`). Login nodes are for file management,
 editing, installs, and *submitting* jobs only — do **not** run trainings, tests, or
-`find_lr.py` on them (heavy processes get killed). Compute happens through `interact`
+`utils/find_lr.py` on them (heavy processes get killed). Compute happens through `interact`
 (interactive session on a compute node) or `sbatch` (batch job).
 
 Every code block in this doc is safe to paste whole, and its first comment says which
@@ -354,7 +354,7 @@ GUIDE §5.1 — shared epochs=5, wd=0; fill each `jc_<hybrid>.yaml`'s `???` from
 jctagging sweep, not the top-tagging one):
 
 ```bash
-# §4 becomes:  python find_lr.py -cn jctagging model=tag_<hybrid> save=false +lr_find.find_batch_size=true
+# §4 becomes:  python utils/find_lr.py -cn jctagging model=tag_<hybrid> save=false +lr_find.find_batch_size=true
 # §5 becomes:  sbatch train.sbatch tag_<hybrid> jctagging     (recipe jc_<hybrid> is derived)
 ```
 
@@ -384,7 +384,7 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
 When it finishes, `exit` back to the login shell.
 
 Commands swap exactly as in §2.1: `-cn toptagxl` + `training=xl_<hybrid>`, with the
-`???` knobs filled from a `find_lr.py -cn toptagxl` sweep (science: GUIDE §5.2 —
+`???` knobs filled from a `utils/find_lr.py -cn toptagxl` sweep (science: GUIDE §5.2 —
 binary task on JetClass-wide inputs, shared epochs=5, wd=0; shrink
 `data.val_files_range` before training, the shipped default is a 10M-jet
 validation pass).
@@ -483,7 +483,7 @@ On the GPU node:
 cd ~/GTagger-experiments
 apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
   source venv/bin/activate
-  python find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
+  python utils/find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
       save=false +lr_find.find_batch_size=true
 '
 #  ->  reuse with:  training.batchsize=<N> training.lr=<lr>
@@ -615,7 +615,7 @@ MODELS="tag_PlainGraphTrans tag_PlainGraphGPS \
 cd ~/GTagger-experiments
 for M in $MODELS; do
   apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc \
-    "source venv/bin/activate && python find_lr.py -cn toptagging model=$M save=false +lr_find.find_batch_size=true"
+    "source venv/bin/activate && python utils/find_lr.py -cn toptagging model=$M save=false +lr_find.find_batch_size=true"
 done
 ```
 
@@ -651,7 +651,7 @@ orders of magnitude lighter.)
 
 ```bash
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
-  'source venv/bin/activate && python aggregate_table.py --runs runs --split test --out comparison.tex'
+  'source venv/bin/activate && python utils/aggregate_table.py --runs runs --split test --out comparison.tex'
 ```
 
 ## 9. Save what matters (scratch purges!)

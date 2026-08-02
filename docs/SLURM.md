@@ -89,7 +89,7 @@ First (in a §3-style GPU session, or as a short batch job) size the batch and l
 # on a GPU COMPUTE node (§3's srun --pty session)
 apptainer exec --nv "$IMG" bash -lc '
   source venv/bin/activate
-  python find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
+  python utils/find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
       save=false +lr_find.find_batch_size=true
 '   # prints:  ->  reuse with:  training.batchsize=<N> training.lr=<lr>
 ```
@@ -139,7 +139,7 @@ TopTagXL works the same way: fetch with `python data/collect_data.py toptagxl`
 10878355's API at download time) onto big-file storage with `data/toptagxl`
 symlinked there, then `-cn toptagxl` + `training=xl_<Model>`, seeding each
 `xl_<Model>.yaml`'s `???` from the swept `jc_` values and confirming with a
-`find_lr.py -cn toptagxl` sweep (GUIDE §5.2 — including why to shrink
+`utils/find_lr.py -cn toptagxl` sweep (GUIDE §5.2 — including why to shrink
 `data.val_files_range` before training).
 
 ## 5. Multiple seeds, and the table
@@ -154,7 +154,7 @@ finished scheduler — that's for eval-reload / continue-training, not seeds; se
 
 ```bash
 apptainer exec "$IMG" bash -lc \
-  'source venv/bin/activate && python aggregate_table.py --runs runs --split test --out comparison.tex'
+  'source venv/bin/activate && python utils/aggregate_table.py --runs runs --split test --out comparison.tex'
 ```
 
 (See `GUIDE.md` §8 for the trial/warm-start mechanics, and §6 for the lr/weight-decay

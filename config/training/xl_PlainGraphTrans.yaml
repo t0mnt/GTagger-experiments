@@ -1,8 +1,8 @@
 # TopTagXL training recipe for tag_PlainGraphTrans -- fill in the (???) keys, then:
 #   python run.py -cp config -cn toptagxl model=tag_PlainGraphTrans training=xl_PlainGraphTrans gpus=1
 #
-#   lr         <- find_lr.py -cn toptagxl model=tag_PlainGraphTrans         (reported loss-min / 10)
-#   batchsize  <- find_lr.py -cn toptagxl ... +lr_find.find_batch_size=true
+#   lr         <- utils/find_lr.py -cn toptagxl model=tag_PlainGraphTrans         (reported loss-min / 10)
+#   batchsize  <- utils/find_lr.py -cn toptagxl ... +lr_find.find_batch_size=true
 #   (epochs=5 + CosineAnnealingWarmup + weight_decay=0 are shared in xl_gts_and_friends_default)
 #
 # Seed BOTH knobs from the swept jc_PlainGraphTrans values if those exist -- TopTagXL inputs

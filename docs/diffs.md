@@ -7,7 +7,7 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
 ## Added
 - Models: the 8 GraphTrans/GraphGPS hybrids ({Plain, ParticleNet-ParT, CGENN–L-GATr,
   LorentzNet–L-GATr-slim} × {GraphTrans, GraphGPS}) with configs, quick-configs and tests.
-- Tools: `find_lr.py` (LR range test + GPU batch-size finder), `aggregate_table.py`,
+- Tools: `utils/find_lr.py` (LR range test + GPU batch-size finder), `utils/aggregate_table.py`,
   `data/collect_data.py {jetclass, toptagxl}` (download + md5-verify + extract).
 - Recipes: shared family defaults (`tag_/jc_gts_and_friends_default`) + per-model
   `top_/jc_<hybrid>.yaml`; both task configs default to the family recipe (was `jc_ParT`-style).
@@ -16,7 +16,7 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
 - Epoch budget: `training.epochs` → iterations derived at runtime (`_resolve_epoch_budget`);
   `CosineAnnealingWarmup` (linear warmup → cosine) scheduler option.
 - Table row extended with model name, trials tag, train time, per-jet FLOPs, kNN metric;
-  `aggregate_table.py` emits one table per task (top/XL/JetClass columns differ) and
+  `utils/aggregate_table.py` emits one table per task (top/XL/JetClass columns differ) and
   JetClass emits an aggregator-compatible row.
 - Guardrail warnings: hybrid training at the unswept 512/1e-3 fallback; `seed` set together
   with a fresh trial; end-of-training loss-vs-accuracy checkpoint-selection cross-check.
