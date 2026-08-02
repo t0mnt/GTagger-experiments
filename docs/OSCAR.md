@@ -24,10 +24,11 @@ Two rules for every `interact` in this doc:
    job's walltime expires — whatever its own `-t` says (observed: a 12 h download killed
    at its parent's 30-min limit). Before any `interact`, check the prompt says
    `loginXXX`, or that `echo $SLURM_JOB_ID` prints nothing; `exit` until it does.
-2. **Paste blocks containing `interact` in two stages**: the `interact` line alone,
-   wait for the prompt to change to a compute node, then the rest of the block. A
-   whole-block paste races the allocation — if it queues or fails, the remaining lines
-   execute on the login node instead (and a trailing `exit` then closes your SSH session).
+2. **Every code block in this doc is safe to paste whole — from the shell its header
+   comment names.** Blocks never mix shells: an `interact` line is always a block of its
+   own; the work that belongs inside the session is the *next* block, pasted only after
+   the prompt has changed to a compute node; leaving the session is a bare `exit`, given
+   in prose. If the prompt doesn't match what a block's header says, don't paste it.
 
 ## 1. Know the three directories (this determines where everything goes)
 
@@ -217,6 +218,14 @@ Notes:
     requirements, so:
 
   ```bash
+  # from a LOGIN shell (§0 rules): the ~20-40 min compile runs in a CPU session
+  interact -n 8 -m 32g -t 02:00:00
+  ```
+
+  Then, on the compute node:
+
+  ```bash
+  # on the COMPUTE node
   apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
     source venv/bin/activate
     pip uninstall -y xformers 2>/dev/null   # clear any mismatched/crippled install first
@@ -240,6 +249,8 @@ Notes:
 
   Sanity: if the "build" finishes in under a minute, it did not compile anything —
   check the wheel it reports (tiny + `py39-none` = crippled; big + `cp312`-arch = real).
+  `exit` back to the login shell when the build is done (the decision-tree commands
+  below are light enough to run from anywhere the venv resolves).
 
   **The flash question, post-build** (source-verified against v0.0.32.post2, which shares
   v0.0.35's gate structure): xformers checks for a flash implementation in order —
@@ -310,19 +321,28 @@ between download and first training run, the split dirs are empty but the `.extr
 markers survive and would make a naive re-run skip everything — the collector now warns
 loudly in that state; delete the `.*.extracted` markers to force the re-download.
 
+The download + extraction takes hours, so it runs in a CPU interact session, never on
+the login node. First, the session — nothing else in this block:
+
 ```bash
-# download + extract (hours — run in a CPU interact session, not on the login node)
-# From a LOGIN shell only, pasted in two stages -- §0 rules (a nested interact dies at
-# the OUTER job's walltime; this is exactly how a 12 h download once died in 30 min)
+# from a LOGIN shell (§0: prompt says loginXXX / echo $SLURM_JOB_ID prints nothing --
+# a nested interact dies at the OUTER job's walltime; a 12 h download once died in 30 min)
 interact -n 4 -m 16g -t 12:00:00
+```
+
+Wait for the prompt to change to a compute node, then paste the work:
+
+```bash
+# on the COMPUTE node the interact above landed you on
 mkdir -p ~/scratch/jetclass && ln -sfn ~/scratch/jetclass ~/GTagger-experiments/data/JetClass
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python data/collect_data.py jetclass' \
   && rm ~/scratch/jetclass/*.tar   # && : reclaim the ~190 GB of tars ONLY on a clean
                                    # collector exit -- a failed run keeps them to resume
-exit
 ```
+
+When it finishes, `exit` back to the login shell.
 
 Training swaps the config name and recipe in the *same* §4/§5 commands (science:
 GUIDE §5.1 — shared epochs=5, wd=0; fill each `jc_<hybrid>.yaml`'s `???` from the
@@ -341,15 +361,22 @@ reads the file list + md5 checksums from Zenodo record 10878355's API at downloa
 time, then verifies and extracts exactly like §2.1:
 
 ```bash
-# from a LOGIN shell only, pasted in two stages (§0 rules)
+# from a LOGIN shell (§0 rules)
 interact -n 4 -m 16g -t 12:00:00
+```
+
+Wait for the compute-node prompt, then:
+
+```bash
+# on the COMPUTE node
 mkdir -p ~/scratch/toptagxl && ln -sfn ~/scratch/toptagxl ~/GTagger-experiments/data/toptagxl
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python data/collect_data.py toptagxl' \
   && rm ~/scratch/toptagxl/*.tar   # && : reclaim tar space ONLY on a clean collector exit
-exit
 ```
+
+When it finishes, `exit` back to the login shell.
 
 Commands swap exactly as in §2.1: `-cn toptagxl` + `training=xl_<hybrid>`, with the
 `???` knobs filled from a `find_lr.py -cn toptagxl` sweep (science: GUIDE §5.2 —
@@ -367,10 +394,16 @@ hints. Run it after: fresh setup, `git pull`, an xformers rebuild, a cluster upg
 and always once before a campaign:
 
 ```bash
-# CPU context (login node):
+# on the LOGIN node (CPU context: provenance + stack checks)
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python utils/env_check.py'
-# GPU context (interact -g 1, --nv) — the full certification:
+```
+
+The full certification needs a GPU allocation (a §3-style `interact -q gpu-debug -g 1 …`
+from a login shell); inside it:
+
+```bash
+# on a GPU COMPUTE node (allocated with -g 1)
 apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python utils/env_check.py --gpu'
 # exit 0 + "CERTIFIED" = proceed; any FAIL names the fix section
@@ -381,21 +414,38 @@ apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc \
 Never on the login node — grab a short interactive CPU session for the tests, then a
 GPU-debug session for the model smoke:
 
+**CPU leg** — the invariance/equivariance suites (~6 min). Session first:
+
 ```bash
-# CPU: the invariance/equivariance suites (~6 min). No --nv on a CPU node.
-# BOTH interacts below: from a LOGIN shell, pasted in stages (§0 rules) -- in
-# particular, exit the CPU session and be back on loginXXX before the GPU one.
+# from a LOGIN shell (§0 rules)
 interact -n 4 -m 16g -t 00:30:00
+```
+
+On the compute node:
+
+```bash
+# on the CPU COMPUTE node (no --nv on a CPU node)
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && pytest tests/experiments/test_tag_equivariance.py tests/experiments/test_tag_invariance.py -q'
-exit
+```
 
-# GPU: one tiny training end-to-end (gpu-debug = short wait, short cap)
-# The `-g 1` is NOT optional: without it SLURM allocates zero GPUs and its cgroup HIDES
-# the node's cards -- torch.cuda.is_available() is False even on a GPU node, with no
-# error anywhere. "cuda False on a GPU node" = check your allocation before anything else.
+Then `exit` — you must be back on `loginXXX` before the GPU leg (§0 rule 1).
+
+**GPU leg** — one tiny training end-to-end (gpu-debug = short wait, short cap).
+The `-g 1` is NOT optional: without it SLURM allocates zero GPUs and its cgroup HIDES
+the node's cards — `torch.cuda.is_available()` is False even on a GPU node, with no
+error anywhere. "cuda False on a GPU node" = check your allocation before anything else.
+
+```bash
+# from a LOGIN shell (§0 rules)
 interact -q gpu-debug -g 1 -n 4 -m 20g -t 00:30:00
+```
+
+On the GPU node:
+
+```bash
+# on the GPU COMPUTE node
 cd ~/GTagger-experiments
 nvidia-smi                                   # confirm you see a GPU (host side)
 apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
@@ -403,8 +453,9 @@ apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
   python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
   python run.py -cp config_quick -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS save=false gpus=1
 '
-exit
 ```
+
+Then `exit` back to the login shell.
 
 If `torch.cuda.is_available()` is `False` inside the container, the usual causes are a
 missing `--nv` flag or not actually being on a GPU node (`nvidia-smi` on the host settles
@@ -415,7 +466,14 @@ which) — the torch build itself comes from the NGC image and is known-good.
 One session per model you plan to train (or chain them in one longer session):
 
 ```bash
-interact -q gpu -g 1 -n 8 -m 48g -t 02:00:00     # from a LOGIN shell (§0 rules); add -f <feature> to pin a GPU type; `nodes gpu` lists them
+# from a LOGIN shell (§0 rules); add -f <feature> to pin a GPU type; `nodes gpu` lists them
+interact -q gpu -g 1 -n 8 -m 48g -t 02:00:00
+```
+
+On the GPU node:
+
+```bash
+# on the GPU COMPUTE node
 cd ~/GTagger-experiments
 apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
   source venv/bin/activate
@@ -424,6 +482,8 @@ apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
 '
 #  ->  reuse with:  training.batchsize=<N> training.lr=<lr>
 ```
+
+(`exit` when done — or stay in the session and chain the next model's sweep.)
 
 Fill each printed pair into that model's `config/training/top_<Model>.yaml` (they are the
 only `???` keys — the shared recipe pins epochs=20, AdamW, warmup-cosine; GUIDE §5–6).
@@ -447,7 +507,8 @@ the script can save you):
 mkdir -p ~/GTagger-experiments/logs
 ```
 
-`train.sbatch`:
+The FILE `train.sbatch` (save it in the repo root — don't paste it into a shell; it
+would run the training in your foreground on the login node):
 
 ```bash
 #!/bin/bash
@@ -563,20 +624,23 @@ in the run dir carries everything else.) The run's table row consolidates to
 The study's grid is the 8 hybrids. **All 8 need §4** (their recipes deliberately leave
 `batchsize`/`lr` as `???`); everything else in their shared recipe is already decided:
 
+Inside a §4-style GPU session (its `interact` block first, from a login shell), one
+sweep per model — fill each `top_<Model>.yaml` as they print:
+
 ```bash
+# on the GPU COMPUTE node (§4's interact; raise its -t to cover all 8 sweeps)
 MODELS="tag_PlainGraphTrans tag_PlainGraphGPS \
         tag_ParticleNetParTGraphTrans tag_ParticleNetParTGraphGPS \
         tag_CGENNLGATrGraphTrans tag_CGENNLGATrGraphGPS \
         tag_LorentzNetLGATrSlimGraphTrans tag_LorentzNetLGATrSlimGraphGPS"
-
-# in a GPU interact session (§4): one sweep per model, fill each top_<Model>.yaml
+cd ~/GTagger-experiments
 for M in $MODELS; do
   apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc \
     "source venv/bin/activate && python find_lr.py -cn toptagging model=$M save=false +lr_find.find_batch_size=true"
 done
-
-# then one sbatch per model (§5), then 2 more fresh-trial seeds each (§6)
 ```
+
+Then `exit`, and submit one sbatch per model (§5) plus 2 more fresh-trial seeds each (§6).
 
 Once the recipes are filled, shake down the config axes before (or alongside) the seed
 runs, in this order — PlainGraphGPS PE/SE variants first (`model.net.use_edge_attr`,

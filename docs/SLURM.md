@@ -57,10 +57,18 @@ apptainer exec "$IMG" bash -lc 'source venv/bin/activate && python data/collect_
 
 ## 3. Smoke-test on a GPU node
 
+Grab the session first — this line alone, and only from a login shell (never inside
+another srun/salloc session: a nested session's shell dies when the OUTER job's
+walltime expires, regardless of its own `--time`):
+
 ```bash
-# from a LOGIN shell only (never inside another srun/salloc session: a nested session's
-# shell dies when the OUTER job's walltime expires, regardless of its own --time)
 srun --partition=<gpu-partition> --gres=gpu:1 --time=00:20:00 --pty bash
+```
+
+Then, once the prompt is on the compute node:
+
+```bash
+# on the GPU COMPUTE node
 module load apptainer
 apptainer exec --nv "$IMG" bash -lc '
   source venv/bin/activate
@@ -68,14 +76,17 @@ apptainer exec --nv "$IMG" bash -lc '
 '
 ```
 
+`exit` back to the login shell when done.
+
 `--nv` exposes the GPU to the container. If your `$HOME`/scratch isn't auto-mounted,
 add `--bind <data_dir>:<data_dir>`.
 
 ## 4. Find lr + batch size, then train (sbatch)
 
-First (interactively or as a short job) size the batch and lr:
+First (in a §3-style GPU session, or as a short batch job) size the batch and lr:
 
 ```bash
+# on a GPU COMPUTE node (§3's srun --pty session)
 apptainer exec --nv "$IMG" bash -lc '
   source venv/bin/activate
   python find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
@@ -83,7 +94,9 @@ apptainer exec --nv "$IMG" bash -lc '
 '   # prints:  ->  reuse with:  training.batchsize=<N> training.lr=<lr>
 ```
 
-Fill those into `config/training/top_<Model>.yaml`, then submit `train.sbatch`:
+Fill those into `config/training/top_<Model>.yaml`, then save the following as the
+FILE `train.sbatch` (file content — don't paste it into a shell; it would run the
+training in your foreground on the login node):
 
 ```bash
 #!/bin/bash
@@ -138,7 +151,8 @@ finished scheduler — that's for eval-reload / continue-training, not seeds; se
 `GUIDE.md` §8.) Across *different* models, collect the rows afterwards:
 
 ```bash
-python aggregate_table.py --runs runs --split test --out comparison.tex
+apptainer exec "$IMG" bash -lc \
+  'source venv/bin/activate && python aggregate_table.py --runs runs --split test --out comparison.tex'
 ```
 
 (See `GUIDE.md` §8 for the trial/warm-start mechanics, and §6 for the lr/weight-decay
