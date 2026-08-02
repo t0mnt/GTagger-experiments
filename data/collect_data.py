@@ -181,6 +181,49 @@ def _refresh_times(root):
                 pass
 
 
+def _marker_state(marker, root):
+    """Classify an ``.extracted`` marker: 'verified', 'stale', or 'legacy'.
+
+    New-style markers hold the tar's member list (a manifest), so a skip can check
+    the files are actually still on disk -- a scratch purge that empties SOME parts
+    while others survive would otherwise be invisible (observed: markers from a
+    fully purged download survived, later parts 0-2 were re-downloaded, and the
+    coarse dest-not-empty check then skipped parts 3-9 as "already extracted").
+    Old 0-byte markers carry no manifest and stay 'legacy' (coarse check only).
+    """
+    try:
+        with open(marker) as f:
+            names = [line for line in f.read().splitlines() if line]
+    except OSError:
+        return "legacy", []
+    if not names:
+        return "legacy", []
+    missing = [n for n in names if not os.path.exists(os.path.join(root, n))]
+    return ("stale", missing) if missing else ("verified", [])
+
+
+def _extract_with_manifest(tar_path, dest, marker):
+    """Extract ``tar_path`` into ``dest`` and write the member list into ``marker``."""
+    with tarfile.open(tar_path) as tar:
+        names = tar.getnames()
+        try:
+            tar.extractall(dest, filter="data")  # python >= 3.12 safe extraction
+        except TypeError:
+            tar.extractall(dest)
+    _refresh_times(dest)  # archive timestamps look years-idle to purge daemons
+    with open(marker, "w") as f:
+        f.write("\n".join(names) + "\n")
+
+
+# the JetClass (Pythia) layout is deterministic: 100k events/file ->
+# train 100M = 1000 files, val 5M = 50, test 20M = 200
+JETCLASS_EXPECTED = {
+    "train": ("Pythia/train_100M", 1000),
+    "val": ("Pythia/val_5M", 50),
+    "test": ("Pythia/test_20M", 200),
+}
+
+
 def collect_jetclass(splits):
     """Download + verify + extract the JetClass (Pythia) tars for the given splits.
 
@@ -197,14 +240,29 @@ def collect_jetclass(splits):
             tar_path = os.path.join(base, fname)
             marker = os.path.join(base, f".{fname}.extracted")
             if os.path.exists(marker):
-                if not os.listdir(dest):
+                state, missing = _marker_state(marker, dest)
+                if state == "verified":
+                    print(f"{fname} already extracted, skipping (manifest verified)")
+                    continue
+                if state == "stale":
                     print(
-                        f"WARNING: {fname} is marked extracted but {dest} is EMPTY -- "
-                        f"scratch purge? Delete the .*.extracted markers under {base} "
-                        f"to force a re-download/re-extract."
+                        f"WARNING: {fname} is marked extracted but {len(missing)} of its "
+                        f"files are GONE (e.g. {missing[0]}) -- scratch purge? "
+                        f"Re-downloading this part."
                     )
-                print(f"{fname} already extracted, skipping")
-                continue
+                    os.remove(marker)  # fall through to download + extract
+                else:  # legacy 0-byte marker: no manifest to check against
+                    if not os.listdir(dest):
+                        print(
+                            f"WARNING: {fname} is marked extracted but {dest} is EMPTY -- "
+                            f"scratch purge? Delete the .*.extracted markers under {base} "
+                            f"to force a re-download/re-extract."
+                        )
+                    print(
+                        f"{fname} already extracted, skipping (legacy marker, contents "
+                        f"UNVERIFIED -- check the file-count summary below)"
+                    )
+                    continue
             url = f"{JETCLASS_BASE}/{fname}"
             if os.path.exists(tar_path) and _md5(tar_path) == md5:
                 print(f"{fname} already downloaded (md5 ok)")
@@ -215,15 +273,29 @@ def collect_jetclass(splits):
                 print(f"Downloading {url}")
                 _download_verified(url, tar_path, md5)
             print(f"Extracting {fname} -> {dest}")
-            with tarfile.open(tar_path) as tar:
-                try:
-                    tar.extractall(dest, filter="data")  # python >= 3.12 safe extraction
-                except TypeError:
-                    tar.extractall(dest)
-            _refresh_times(dest)  # archive timestamps look years-idle to purge daemons
-            open(marker, "w").close()
+            _extract_with_manifest(tar_path, dest, marker)
             print(f"Extracted {fname}  (you may delete {tar_path} to reclaim disk)")
-    print(f"JetClass ready under {base}/Pythia -- matches config/jctagging.yaml data.data_dir.")
+
+    # the layout is deterministic, so an absolute file-count check catches anything the
+    # markers missed (partial purges, legacy unverifiable markers, interrupted runs)
+    shortfall = False
+    for split in splits:
+        folder, expected = JETCLASS_EXPECTED[split]
+        split_dir = os.path.join(base, folder)
+        n = len([f for f in os.listdir(split_dir) if f.endswith(".root")]) if os.path.isdir(split_dir) else 0
+        if n != expected:
+            shortfall = True
+            print(
+                f"WARNING: {split} split has {n} of {expected} expected .root files under "
+                f"{split_dir} -- the dataset is INCOMPLETE. Delete the .*.extracted "
+                f"markers under {base} for the affected tars and re-run."
+            )
+        else:
+            print(f"{split} split complete: {n}/{expected} .root files")
+    if not shortfall:
+        print(f"JetClass ready under {base}/Pythia -- matches config/jctagging.yaml data.data_dir.")
+    else:
+        print("JetClass NOT ready -- see the WARNINGs above; do not launch jctagging training yet.")
 
 
 def collect_toptagxl(splits):
@@ -243,17 +315,29 @@ def collect_toptagxl(splits):
             tar_path = os.path.join(dest, fname)
             marker = os.path.join(dest, f".{fname}.extracted")
             if os.path.exists(marker):
-                if not any(
-                    os.path.isdir(os.path.join(dest, d)) and os.listdir(os.path.join(dest, d))
-                    for d in TOPTAGXL_FOLDERS
-                ):
+                state, missing = _marker_state(marker, dest)
+                if state == "verified":
+                    print(f"{fname} already extracted, skipping (manifest verified)")
+                    continue
+                if state == "stale":
                     print(
-                        f"WARNING: {fname} is marked extracted but no split folder under "
-                        f"{dest} has any files -- scratch purge? Delete the .*.extracted "
-                        f"markers there to force a re-download/re-extract."
+                        f"WARNING: {fname} is marked extracted but {len(missing)} of its "
+                        f"files are GONE (e.g. {missing[0]}) -- scratch purge? "
+                        f"Re-downloading this part."
                     )
-                print(f"{fname} already extracted, skipping")
-                continue
+                    os.remove(marker)  # fall through to download + extract
+                else:  # legacy 0-byte marker: no manifest to check against
+                    if not any(
+                        os.path.isdir(os.path.join(dest, d)) and os.listdir(os.path.join(dest, d))
+                        for d in TOPTAGXL_FOLDERS
+                    ):
+                        print(
+                            f"WARNING: {fname} is marked extracted but no split folder under "
+                            f"{dest} has any files -- scratch purge? Delete the .*.extracted "
+                            f"markers there to force a re-download/re-extract."
+                        )
+                    print(f"{fname} already extracted, skipping (legacy marker, contents UNVERIFIED)")
+                    continue
             url = f"{TOPTAGXL_BASE}/{fname}/content"
             if os.path.exists(tar_path) and _md5(tar_path) == md5:
                 print(f"{fname} already downloaded (md5 ok)")
@@ -264,13 +348,7 @@ def collect_toptagxl(splits):
                 print(f"Downloading {url}")
                 _download_verified(url, tar_path, md5)
             print(f"Extracting {fname} -> {dest}")
-            with tarfile.open(tar_path) as tar:
-                try:
-                    tar.extractall(dest, filter="data")  # python >= 3.12 safe extraction
-                except TypeError:
-                    tar.extractall(dest)
-            _refresh_times(dest)  # archive timestamps look years-idle to purge daemons
-            open(marker, "w").close()
+            _extract_with_manifest(tar_path, dest, marker)
             print(f"Extracted {fname}  (you may delete {tar_path} to reclaim disk)")
 
     want = [f for f in TOPTAGXL_FOLDERS if any(s in f for s in splits) or set(splits) >= {"train", "val", "test"}]

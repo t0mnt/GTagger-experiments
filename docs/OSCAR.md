@@ -322,9 +322,15 @@ The purge risk manages itself while you train: the streaming loader reads the RO
 files continuously, refreshing their atime — an *active* campaign is purge-safe, but
 files idle > 30 days are at risk, and the window opens at the collector's timestamp
 stamp, not the archive dates (see the §1 tar-extraction footgun). If a purge does hit
-between download and first training run, the split dirs are empty but the `.extracted`
-markers survive and would make a naive re-run skip everything — the collector now warns
-loudly in that state; delete the `.*.extracted` markers to force the re-download.
+between download and first training run, the split dirs lose files but the `.extracted`
+markers survive and would make a naive re-run skip everything — even a *partial* purge,
+where surviving files from other parts hide the gap. The collector defends itself two
+ways (post-`git pull`): markers it writes are **manifests** (the tar's file list), so a
+skip verifies every file is still on disk and a purged part re-downloads itself
+automatically; and a final **file-count summary** (train 1000 / val 50 / test 200
+`.root` files) prints "ready" only when the counts are exact. Old 0-byte markers can't
+be content-verified — if the summary reports a shortfall, delete the `.*.extracted`
+markers for the affected tars and re-run.
 
 The download + extraction takes hours, so it runs in a CPU interact session, never on
 the login node. First, the session — nothing else in this block:
@@ -343,7 +349,7 @@ mkdir -p ~/scratch/jetclass && ln -sfn ~/scratch/jetclass ~/GTagger-experiments/
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python data/collect_data.py jetclass' \
-  && rm ~/scratch/jetclass/*.tar   # && : reclaim the ~190 GB of tars ONLY on a clean
+  && rm -f ~/scratch/jetclass/*.tar   # && : reclaim the ~190 GB of tars ONLY on a clean
                                    # collector exit -- a failed run keeps them to resume
 ```
 
@@ -378,7 +384,7 @@ mkdir -p ~/scratch/toptagxl && ln -sfn ~/scratch/toptagxl ~/GTagger-experiments/
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python data/collect_data.py toptagxl' \
-  && rm ~/scratch/toptagxl/*.tar   # && : reclaim tar space ONLY on a clean collector exit
+  && rm -f ~/scratch/toptagxl/*.tar   # && : reclaim tar space ONLY on a clean collector exit
 ```
 
 When it finishes, `exit` back to the login shell.
