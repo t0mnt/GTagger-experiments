@@ -284,11 +284,11 @@ mkdir -p ~/data/$GROUP/$USER/gtagger
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python data/collect_data.py toptagging'   # ~1.5 GB download (file mgmt: login node OK)
 mv data/toptagging_full.npz ~/data/$GROUP/$USER/gtagger/
-ln -s ~/data/$GROUP/$USER/gtagger/toptagging_full.npz data/toptagging_full.npz
+ln -sfn ~/data/$GROUP/$USER/gtagger/toptagging_full.npz data/toptagging_full.npz
 
 # run output -> ~/scratch (fast, purged; we copy keepers back at the end)
 mkdir -p ~/scratch/gtagger_runs
-ln -s ~/scratch/gtagger_runs runs
+ln -sfn ~/scratch/gtagger_runs runs
 ```
 
 **Dataset placement rule of thumb** — three tiers by size and replaceability: the
@@ -315,7 +315,7 @@ loudly in that state; delete the `.*.extracted` markers to force the re-download
 # From a LOGIN shell only, pasted in two stages -- §0 rules (a nested interact dies at
 # the OUTER job's walltime; this is exactly how a 12 h download once died in 30 min)
 interact -n 4 -m 16g -t 12:00:00
-mkdir -p ~/scratch/jetclass && ln -s ~/scratch/jetclass ~/GTagger-experiments/data/JetClass
+mkdir -p ~/scratch/jetclass && ln -sfn ~/scratch/jetclass ~/GTagger-experiments/data/JetClass
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python data/collect_data.py jetclass' \
@@ -343,7 +343,7 @@ time, then verifies and extracts exactly like §2.1:
 ```bash
 # from a LOGIN shell only, pasted in two stages (§0 rules)
 interact -n 4 -m 16g -t 12:00:00
-mkdir -p ~/scratch/toptagxl && ln -s ~/scratch/toptagxl ~/GTagger-experiments/data/toptagxl
+mkdir -p ~/scratch/toptagxl && ln -sfn ~/scratch/toptagxl ~/GTagger-experiments/data/toptagxl
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python data/collect_data.py toptagxl' \
