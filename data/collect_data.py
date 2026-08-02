@@ -309,6 +309,17 @@ def collect_jetclass(splits):
 
 
 TOPTAGXL_SPLIT_FOLDER = {"train": "train_100M", "test": "test_25M", "val": "val_10M"}
+TOPTAGXL_CLASSES = ("qcd", "top")
+# (folder, [lo, hi)) per split -- MUST mirror config/toptagxl.yaml's
+# {train,test,val}_files_range, which toptagxlexperiment.py turns into
+# <folder>/<class>_<NNN>.root requests. The numbering is GLOBAL and continuous across
+# splits (train 000-499, test 500-624, val 625-674 per class), which is why organizing
+# keeps each file's original name instead of renumbering per folder.
+TOPTAGXL_EXPECTED = {
+    "train": ("train_100M", (0, 500)),
+    "test": ("test_25M", (500, 625)),
+    "val": ("val_10M", (625, 675)),
+}
 
 
 def _organize_toptagxl(dest):
@@ -410,16 +421,25 @@ def collect_toptagxl(splits):
 
     _organize_toptagxl(dest)
 
-    want = [f for f in TOPTAGXL_FOLDERS if any(s in f for s in splits) or set(splits) >= {"train", "val", "test"}]
-    missing = [f for f in want if not os.path.isdir(os.path.join(dest, f))]
-    if missing:
-        print(
-            f"WARNING: expected folder(s) {missing} not found under {dest} after "
-            f"extraction. Inspect the extracted layout and symlink/rename it so the "
-            f"loader finds <data_dir>/<split_folder>/<class>_<NNN>.root, i.e. "
-            f"{TOPTAGXL_FOLDERS} with qcd_/top_ .root files (config/toptagxl.yaml "
-            f"data.data_dir = {dest}); the Zenodo tars do not document their internal tree."
-        )
+    shortfall = False
+    for split in splits:
+        folder, (lo, hi) = TOPTAGXL_EXPECTED[split]
+        split_dir = os.path.join(dest, folder)
+        want = [f"{c}_{i:03d}.root" for c in TOPTAGXL_CLASSES for i in range(lo, hi)]
+        missing = [f for f in want if not os.path.exists(os.path.join(split_dir, f))]
+        if missing:
+            shortfall = True
+            print(
+                f"WARNING: {split} split is missing {len(missing)} of {len(want)} files the "
+                f"loader will request from {split_dir} (e.g. {missing[0]}). "
+                f"config/toptagxl.yaml {split}_files_range expects "
+                f"<class>_{lo:03d}..{hi - 1:03d} for classes {TOPTAGXL_CLASSES}."
+            )
+        else:
+            print(f"{split} split complete: {len(want)}/{len(want)} files match "
+                  f"config/toptagxl.yaml {split}_files_range")
+    if shortfall:
+        print("TopTagXL NOT ready -- see the WARNINGs above; do not launch toptagxl training yet.")
     else:
         print(f"TopTagXL ready under {dest} -- matches config/toptagxl.yaml data.data_dir.")
 
