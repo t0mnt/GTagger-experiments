@@ -180,6 +180,14 @@ class BaseExperiment:
 
         # initialize environment
         self._init_logger()
+        # Announce where this run writes, and which batch job produced it. In batch the
+        # SLURM log and the run dir are otherwise only linkable by timestamp; the sbatch
+        # template passes +slurm_job_id, so this one line closes job -> run, while the
+        # id saved in config.yaml closes run -> job (docs/OSCAR.md section 5).
+        LOGGER.info(f"run_dir: {self.cfg.run_dir}  (run_idx {self.cfg.run_idx})")
+        job_id = self.cfg.get("slurm_job_id", None)
+        if job_id is not None:
+            LOGGER.info(f"slurm_job_id: {job_id}")
         self._init_backend()
 
         return experiment_id, run_name

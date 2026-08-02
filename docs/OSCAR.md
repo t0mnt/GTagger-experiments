@@ -592,7 +592,7 @@ carries the model name when you submit with `-J <Model>`. Both directions resolv
 
 ```bash
 # on the LOGIN node -- substitute your model name / job id / run path
-grep -h "run_dir\|Saving config" logs/PlainGraphGPS-4519312.out   # job id -> run directory
+grep run_dir logs/PlainGraphGPS-4519312.out                        # job id -> run directory
 grep slurm_job_id runs/topt_local_debug/PlainGraphGPS_1234/config.yaml  # run -> job id
 myjobinfo 4519312                                                  # time/memory actually used
 ```
