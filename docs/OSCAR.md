@@ -391,9 +391,9 @@ When it finishes, `exit` back to the login shell.
 
 Commands swap exactly as in §2.1: `-cn toptagxl` + `training=xl_<hybrid>`, with the
 `???` knobs filled from a `utils/find_lr.py -cn toptagxl` sweep (science: GUIDE §5.2 —
-binary task on JetClass-wide inputs, shared epochs=5, wd=0; shrink
-`data.val_files_range` before training, the shipped default is a 10M-jet
-validation pass).
+binary task on JetClass-wide inputs, shared epochs=5, wd=0; the shipped
+`data.val_files_range` is the canonical 10M-jet validation split -- keep it,
+it costs ~3% of training compute).
 
 ## 2.9 Environment certification (run after ANY environment change)
 

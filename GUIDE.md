@@ -202,9 +202,12 @@ python run.py -cp config -cn toptagxl model=tag_PlainGraphGPS training=xl_PlainG
 ```
 
 Two XL-specific footnotes. First, the shipped `data.val_files_range: [625, 675]` is
-a **10M-jet validation pass**; under the family recipe's once-per-epoch cadence,
-shrink it (e.g. `[625, 626]` = 200k jets) unless you want validations costing a real
-fraction of a training epoch. Second, TopTagXL reuses the top-tagging binary
+the dataset's **canonical 10M-jet validation split** (Zenodo's 100M/25M/10M
+partition) — keep it. Under the family recipe's once-per-epoch cadence it costs
+about 3% of training compute (5 forward-only passes over 10M jets, against 500M
+training samples at ~3x the per-sample cost), and staying on the published split
+keeps val-derived numbers comparable with the LLoCa paper's. Shrink it only for
+debugging, where you validate many times per epoch. Second, TopTagXL reuses the top-tagging binary
 evaluation path unchanged, so the rejection metrics and the results-table /
 `utils/aggregate_table.py` machinery of §8 work as-is. Baseline reference rows run under
 the task default (`jc_transformer`: AdamW, 1M fixed iterations) or their own
