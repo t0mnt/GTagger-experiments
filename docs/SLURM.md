@@ -58,6 +58,8 @@ apptainer exec "$IMG" bash -lc 'source venv/bin/activate && python data/collect_
 ## 3. Smoke-test on a GPU node
 
 ```bash
+# from a LOGIN shell only (never inside another srun/salloc session: a nested session's
+# shell dies when the OUTER job's walltime expires, regardless of its own --time)
 srun --partition=<gpu-partition> --gres=gpu:1 --time=00:20:00 --pty bash
 module load apptainer
 apptainer exec --nv "$IMG" bash -lc '

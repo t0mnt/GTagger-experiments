@@ -17,6 +17,18 @@ editing, installs, and *submitting* jobs only — do **not** run trainings, test
 `find_lr.py` on them (heavy processes get killed). Compute happens through `interact`
 (interactive session on a compute node) or `sbatch` (batch job).
 
+Two rules for every `interact` in this doc:
+
+1. **Launch it from a LOGIN shell only, never from inside another interact.** A nested
+   session's controlling shell lives inside the *outer* job, so it dies when the outer
+   job's walltime expires — whatever its own `-t` says (observed: a 12 h download killed
+   at its parent's 30-min limit). Before any `interact`, check the prompt says
+   `loginXXX`, or that `echo $SLURM_JOB_ID` prints nothing; `exit` until it does.
+2. **Paste blocks containing `interact` in two stages**: the `interact` line alone,
+   wait for the prompt to change to a compute node, then the rest of the block. A
+   whole-block paste races the allocation — if it queues or fails, the remaining lines
+   execute on the login node instead (and a trailing `exit` then closes your SSH session).
+
 ## 1. Know the three directories (this determines where everything goes)
 
 | dir | path | size | properties | use it for |
@@ -300,16 +312,15 @@ loudly in that state; delete the `.*.extracted` markers to force the re-download
 
 ```bash
 # download + extract (hours — run in a CPU interact session, not on the login node)
-# From a LOGIN shell only — NEVER from inside another interact: a nested session dies
-# when the OUTER job's walltime expires, whatever its own -t says (observed: a 12 h
-# download killed at its parent's 30-min limit). `exit` until the prompt says loginXXX
-# (or check: `echo $SLURM_JOB_ID` must be empty) before starting this.
+# From a LOGIN shell only, pasted in two stages -- §0 rules (a nested interact dies at
+# the OUTER job's walltime; this is exactly how a 12 h download once died in 30 min)
 interact -n 4 -m 16g -t 12:00:00
 mkdir -p ~/scratch/jetclass && ln -s ~/scratch/jetclass ~/GTagger-experiments/data/JetClass
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
-  'source venv/bin/activate && python data/collect_data.py jetclass'
-rm ~/scratch/jetclass/*.tar     # reclaim the ~190 GB of tars once extraction finished
+  'source venv/bin/activate && python data/collect_data.py jetclass' \
+  && rm ~/scratch/jetclass/*.tar   # && : reclaim the ~190 GB of tars ONLY on a clean
+                                   # collector exit -- a failed run keeps them to resume
 exit
 ```
 
@@ -319,7 +330,7 @@ jctagging sweep, not the top-tagging one):
 
 ```bash
 # §4 becomes:  python find_lr.py -cn jctagging model=tag_<hybrid> save=false +lr_find.find_batch_size=true
-# train.sh:    python run.py -cp config -cn jctagging model=tag_<hybrid> training=jc_<hybrid> gpus=1
+# §5 becomes:  sbatch train.sbatch tag_<hybrid> jctagging     (recipe jc_<hybrid> is derived)
 ```
 
 ### 2.2 TopTagXL (only if you run the toptagxl campaign)
@@ -330,12 +341,13 @@ reads the file list + md5 checksums from Zenodo record 10878355's API at downloa
 time, then verifies and extracts exactly like §2.1:
 
 ```bash
+# from a LOGIN shell only, pasted in two stages (§0 rules)
 interact -n 4 -m 16g -t 12:00:00
 mkdir -p ~/scratch/toptagxl && ln -s ~/scratch/toptagxl ~/GTagger-experiments/data/toptagxl
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
-  'source venv/bin/activate && python data/collect_data.py toptagxl'
-rm ~/scratch/toptagxl/*.tar     # reclaim the tar space once extraction finished
+  'source venv/bin/activate && python data/collect_data.py toptagxl' \
+  && rm ~/scratch/toptagxl/*.tar   # && : reclaim tar space ONLY on a clean collector exit
 exit
 ```
 
@@ -371,6 +383,8 @@ GPU-debug session for the model smoke:
 
 ```bash
 # CPU: the invariance/equivariance suites (~6 min). No --nv on a CPU node.
+# BOTH interacts below: from a LOGIN shell, pasted in stages (§0 rules) -- in
+# particular, exit the CPU session and be back on loginXXX before the GPU one.
 interact -n 4 -m 16g -t 00:30:00
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
@@ -401,7 +415,7 @@ which) — the torch build itself comes from the NGC image and is known-good.
 One session per model you plan to train (or chain them in one longer session):
 
 ```bash
-interact -q gpu -g 1 -n 8 -m 48g -t 02:00:00     # add -f <feature> to pin a GPU type; `nodes gpu` lists them
+interact -q gpu -g 1 -n 8 -m 48g -t 02:00:00     # from a LOGIN shell (§0 rules); add -f <feature> to pin a GPU type; `nodes gpu` lists them
 cd ~/GTagger-experiments
 apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
   source venv/bin/activate
@@ -456,19 +470,23 @@ mkdir -p ~/GTagger-experiments/logs
 # silently train on the wrong torch. Use the resolved sif and apptainer binary directly
 # (get the latter once on the login node: `readlink -f $(command -v apptainer)`).
 IMG=/oscar/rt/sw/external/ngc-pytorch-container/25.08-py3/pytorch-25.08-py3.sif
-APPTAINER=<paste absolute apptainer path>
+APPTAINER=$(command -v apptainer || true)   # or hardcode the login-node `readlink -f` result here
+[ -x "$APPTAINER" ] || { echo "apptainer not on the batch PATH: hardcode APPTAINER= with the absolute path from \`readlink -f \$(command -v apptainer)\` on a login node"; exit 1; }
 export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"
 export PYTHONUNBUFFERED=1         # live logs (batch jobs have no tty -> python buffers)
 export PYTHONNOUSERSITE=1         # never import from ~/.local (the §2 leak class);
                                   # --export=NONE strips the .bashrc copy, so set it here too
 
 MODEL=${1:?usage: sbatch train.sbatch tag_<Model> [task] [extra hydra overrides...]}
-TASK=${2:-toptagging}             # toptagging | jctagging | toptagxl
-case "$TASK" in
-  toptagging) P=top ;; jctagging) P=jc ;; toptagxl) P=xl ;;
-  *) echo "unknown task $TASK"; exit 1 ;;
+shift
+# arg 2 is the task ONLY if it names one -- otherwise it's already a hydra override
+# (so `sbatch train.sbatch tag_X save=false` means toptagging + save=false, not task save=false)
+case "${1:-}" in
+  toptagging|jctagging|toptagxl) TASK=$1; shift ;;
+  *) TASK=toptagging ;;
 esac
-shift; [ $# -gt 0 ] && shift      # remaining args = hydra overrides, passed through
+case "$TASK" in toptagging) P=top ;; jctagging) P=jc ;; toptagxl) P=xl ;; esac
+# remaining args = hydra overrides, passed through via $*
 cd "$HOME/GTagger-experiments"
 "$APPTAINER" exec --nv "$IMG" bash -c "
   source venv/bin/activate
@@ -527,7 +545,9 @@ Each finished run prints its `table test: … \\` row into the log (GUIDE §4).
 
 After trial 1 finishes, submit the same run twice more as **fresh-trial warm starts**
 (never plain warm starts — those reload the trained model and its finished scheduler;
-GUIDE §8). In `train.sh`, replace the `python run.py` line with:
+GUIDE §8). This needs a different `-cp` (the run dir, not `config`), which the
+parametrized `train.sbatch` can't express as an override — so make a one-off copy
+(`cp train.sbatch seed.sbatch`) and replace its `python run.py` line with:
 
 ```bash
 python run.py -cp ~/GTagger-experiments/runs/EXPNAME/RUNNAME -cn config \
@@ -570,12 +590,13 @@ The **baseline reference rows** (`tag_ParT`, `tag_particlenet`, `tag_lgatr`, `ta
 their published recipes, which already pin lr/batchsize/budget:
 
 ```bash
-# same train.sh/train.sbatch pattern as §5, with the payload line:
-python run.py -cp config -cn toptagging model=tag_ParT training=top_ParT data.dataset=full gpus=1
-# likewise: tag_lgatr+top_lgatr, tag_slim+top_slim, tag_lorentznet+top_lorentznet, ...
-# xformers isn't installed (§2), so the four attention baselines need a backend override
-# (flash if the image has flash-attn, else flex -- see the §2 note; validate on gpu-debug):
-#   model=tag_lgatr training=top_lgatr model.attention_backend=flash
+# the same §5 train.sbatch works as-is (recipe top_<name> is derived from tag_<name>):
+sbatch train.sbatch tag_ParT
+# likewise tag_lgatr, tag_slim, tag_lorentznet, tag_particlenet, ...
+# if you SKIPPED the §2 xformers build, the four attention baselines need a backend
+# override (flash if the image's flash-attn imports clean, else flex -- see the §2
+# note; validate on gpu-debug first):
+sbatch train.sbatch tag_lgatr model.attention_backend=flash
 # (same for tag_slim, tag_transformer, tag_top_transformer; all other rows run as-is)
 ```
 
@@ -612,7 +633,8 @@ irreplaceable parts.
 | GPU types available | `nodes gpu` |
 | quotas | `checkquota` |
 | condo limits (if any) | `condos` |
-| interactive CPU / GPU | `interact -n 4 -m 16g -t 01:00:00` / `interact -q gpu -g 1` |
+| interactive CPU / GPU | `interact -n 4 -m 16g -t 01:00:00` / `interact -q gpu -g 1` — from a login shell only (§0) |
+| am I on a login shell? | `echo $SLURM_JOB_ID` — must print nothing before any `interact` |
 | scratch purge check | `find ~/scratch -atime +25` |
 
 Alternatives to raw SSH that CCV supports, if you prefer them: Open OnDemand (browser
