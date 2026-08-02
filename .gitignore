@@ -24,7 +24,7 @@ data/toptagxl/
 *.npz
 *.ipynb_checkpoint*
 
-# find_lr.py default outputs (plot; the .npz is already covered above)
+# utils/find_lr.py default outputs (plot; the .npz is already covered above)
 lr_finder_*.png
 
 

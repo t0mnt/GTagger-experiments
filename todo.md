@@ -13,8 +13,8 @@ The 8 hybrid recipes are skeletons with required `???` keys:
 The 8 GT recipes now inherit `tag_gts_and_friends_default` (shared `epochs=20` + `scheduler=CosineAnnealingWarmup`);
 only **`batchsize`, `lr`** remain `???` per model (optionally `weight_decay`):
 
-- [ ] `batchsize` ← `find_lr.py +lr_find.find_batch_size=true` (largest power-of-two that fits the H100).
-- [ ] `lr` ← `find_lr.py` (reported loss-min / 10).
+- [ ] `batchsize` ← `utils/find_lr.py +lr_find.find_batch_size=true` (largest power-of-two that fits the H100).
+- [ ] `lr` ← `utils/find_lr.py` (reported loss-min / 10).
       (`weight_decay` tuning moved to `docs/ablations.md` "Training-side minor tunes" —
       the shared 0.01 ships as the decided default.)
 - [x] `epochs` (shared data-exposure budget) and `scheduler` are **decided** in `tag_gts_and_friends_default`
@@ -58,12 +58,12 @@ the toggle only changes which checkpoint `es_load_best_model` keeps/reports.
 
 All via Hydra overrides on `run.py` (use `-cp config` for the full configs). Every override is
 recorded per-run in `config.yaml` + the flattened MLflow params, so any sweep is reconstructable
-from the run dir. **Surfaced in the results table** (`aggregate_table.py` `COLUMNS`): only `frames`
+from the run dir. **Surfaced in the results table** (`utils/aggregate_table.py` `COLUMNS`): only `frames`
 (framesnet) and `kNN` (`knn_metric`); everything else (knn_k, num_layers/num_blocks, bias,
 pair_input_dim, use_rwse, use_edge_attr, …) lives only in config.yaml / MLflow. Rows are grouped into ONE
 table per task (toptagging / toptagxl / jctagging — different metric columns; `exp_type` read
 from each run's config.yaml; JetClass emits an aggregator-compatible row too). To put a knob in
-the head-to-head table, add it to `aggregate_table.py`'s per-task `COLUMNS` legend **and** the
+the head-to-head table, add it to `utils/aggregate_table.py`'s per-task `COLUMNS` legend **and** the
 per-run `table …:` log line that the regex reads.
 
 - **kNN graph (all networks).** count `model.net.knn_k=K` (CGENN uses `model.net.k=K`); metric
@@ -231,4 +231,4 @@ Minor (stale strings / metadata):
   `change_local_frame` + `LLoCaAttention`), **additive** (identity frames bit-identical: 0 added params),
   jet-frame class token (GraphTrans) / invariant mean-pool (GraphGPS), rapidity clamp.
 - Equivariance suite (24/24, incl. full Lorentz boost under learned `so(1,3)` frames).
-- `find_lr.py` batch-size finder; `aggregate_table.py`; `data/collect_data.py jetclass`; `GUIDE.md`; `docs/SLURM.md`.
+- `utils/find_lr.py` batch-size finder; `utils/aggregate_table.py`; `data/collect_data.py jetclass`; `GUIDE.md`; `docs/SLURM.md`.
