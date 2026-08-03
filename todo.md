@@ -205,8 +205,12 @@ Minor (stale strings / metadata):
 - [ ] add a `CITATION.cff` for the new paper.
 - [ ] `experiments/base_experiment.py:299` — `path_code = os.path.join(self.cfg.base_dir, "lloca")`
       hardcodes "lloca" for the saved-source dir → project name.
-- [ ] `docs/OSCAR.md` §2 — fix the `.sif` discrepancy once CCV remedies it: the
-      `ngc-pytorch-container/25.08-py3-ayk4` module `setenv`s the 24.03 sif; drop the resolve-the-real-25.08-sif workaround when the module is corrected.
+- [x] `docs/OSCAR.md` §2 — `.sif` discrepancy: CCV has corrected the
+      `ngc-pytorch-container/25.08-py3-ayk4` module (it no longer `setenv`s the 24.03 sif).
+      The prose now says so; the resolve-and-hard-stop guard is **kept on purpose** — it is
+      free, self-checking (overrides only when the value is wrong), and the failure it
+      catches is silent (a 24.03 image trains fine-looking garbage on torch 2.3). Remove it
+      only if the modulefile is ever guaranteed stable across all login nodes.
 - [ ] `docs/SLURM.md:79` — `#SBATCH --job-name=lloca`.
 - [ ] `config/{toptagging,jctagging,ttbar}.yaml` + `config_quick/*` — debug `exp_name`s
       (`topt_local_debug`, `jc_debug`, `ttbar_debug`).

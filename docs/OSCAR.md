@@ -59,14 +59,17 @@ Python ≥ 3.10 and a CUDA-tuned torch both come from the **NGC PyTorch containe
 inside it via `apptainer exec --nv "$NGC_PYTORCH_CONTAINER" …`. Bare `python` on Oscar is
 the system 3.9 — never use it for this repo (too old, and no torch).
 
-> **Verify the image — the module has shipped mis-labelled.** On Oscar the `25.08-py3-ayk4`
-> modulefile has `setenv`'d `$NGC_PYTORCH_CONTAINER` to the **24.03** sif
-> (check: `module show ngc-pytorch-container/25.08-py3-ayk4 | grep NGC_PYTORCH_CONTAINER`).
-> The 24.03 image silently breaks this repo — its python has no `ensurepip` (so
-> `python -m venv` fails and pip leaks into `~/.local`), and its torch 2.3 is too old for
-> `torch-geometric >= 2.6` (`torch.compiler has no attribute is_compiling` at import). So do
-> **not** trust the module's value: resolve the real 25.08 sif and hard-stop if it isn't one
-> (the block below does this). If it's still broken when you read this, file a CCV ticket.
+> **Verify the image.** The `25.08-py3-ayk4` modulefile once `setenv`'d
+> `$NGC_PYTORCH_CONTAINER` to the **24.03** sif; CCV has since corrected this, and the
+> module is expected to resolve a 25.08 image (check yours:
+> `module show ngc-pytorch-container/25.08-py3-ayk4 | grep NGC_PYTORCH_CONTAINER`).
+> The block below **keeps verifying anyway** — deliberately, not out of distrust of the
+> fix: it costs nothing, it is self-checking (it only overrides when the value is wrong),
+> and the failure it guards against is silent. A 24.03 image breaks this repo in two
+> non-obvious ways: its python has no `ensurepip` (so `python -m venv` fails and pip
+> leaks into `~/.local`), and its torch 2.3 is too old for `torch-geometric >= 2.6`
+> (`torch.compiler has no attribute is_compiling` at import). If the guard ever fires
+> again, the module has regressed — file a CCV ticket.
 
 ```bash
 # repo + venv live in home
@@ -75,10 +78,10 @@ git clone https://github.com/t0mnt/GTagger-experiments.git
 cd GTagger-experiments
 
 module load ngc-pytorch-container/25.08-py3-ayk4
-echo "$NGC_PYTORCH_CONTAINER"        # -> the image the module chose (may be WRONG, see above)
+echo "$NGC_PYTORCH_CONTAINER"        # -> the image the module chose (should now be 25.08)
 
-# Trust the resolved sif, not the module: if it isn't a 25.08 image, point at the real one
-# directly; then hard-stop if we STILL don't have 25.08 (everything below would fail on 24.03).
+# Verify rather than trust: if it isn't a 25.08 image, point at the real one directly;
+# then hard-stop if we STILL don't have 25.08 (everything below would fail on 24.03).
 case "$NGC_PYTORCH_CONTAINER" in
   *25.08*) : ;;   # module happened to be correct -- keep it
   *) export NGC_PYTORCH_CONTAINER="$(ls /oscar/rt/sw/external/ngc-pytorch-container/25.08-py3/*.sif | head -1)" ;;
