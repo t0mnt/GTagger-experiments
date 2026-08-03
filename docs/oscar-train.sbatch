@@ -5,8 +5,12 @@
 #SBATCH -J gtagger
 #SBATCH -p gpu                    # partition; `allq gpu` shows load. gpu-he needs High-End priority
 #SBATCH --gres=gpu:1
-#SBATCH -n 8                      # cores. Streaming JetClass/TopTagXL benefit from more:
-                                  # raise to 16 AND pass jc_params.num_workers=12 (default 2)
+#SBATCH -n 8                      # cores. The shipped jc/xl loaders use num_workers=2 (the
+                                  # published setting) and sustain >9k jets/s -- faster than any
+                                  # model here consumes, so they are NOT the bottleneck. Raise
+                                  # -n AND jc_params.num_workers together only if nvidia-smi
+                                  # shows the GPU starved mid-run, and then do it for EVERY row
+                                  # (the table reports walltime).
 #SBATCH --mem=48G                 # top-tagging: full npz in RAM + fp64 momenta -> 48G safe.
                                   # JetClass/TopTagXL (streaming, per-worker fetch buffers): 64G.
                                   # After the first run, `myjobinfo` shows MaxRSS -- trim to fit.
