@@ -215,6 +215,15 @@ recipes, as in REPRODUCE.md.
 
 ---
 
+Two checks before you sweep eight unpublished models. **(1) Validate the finder** on a
+baseline with a published lr: run it on ParticleNet at that recipe's fixed batchsize
+(`utils/find_lr.py -cn toptagging model=tag_particlenet training=top_particlenet
+save=false`) and confirm the suggestion sits within an order of magnitude of the
+published `1e-2`. **(2) Reproduce a known number** with one `save=false` ParticleNet
+training under its published recipe, comparing test accuracy/AUC with the literature. A
+mismatch in either is an environment or data problem, and is far cheaper to find here
+than inside a multi-day hybrid run.
+
 ## 6. Choosing hyperparameters
 
 **Learning rate (and GPU batch size) — `utils/find_lr.py`.** Runs a Leslie-Smith LR

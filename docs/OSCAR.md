@@ -477,7 +477,23 @@ which) — the torch build itself comes from the NGC image and is known-good.
 
 ## 4. Find batch size + LR per model (GPU interactive)
 
-One session per model you plan to train (or chain them in one longer session):
+**First, sanity-check the finder itself on a published baseline.** ParticleNet has a
+known recipe (`lr: 1e-2`, `batchsize: 512`), so running the finder against it at that
+fixed batch size tells you whether the tool lands in the right neighbourhood before you
+trust it for eight unpublished models. Order-of-magnitude agreement is the pass
+criterion -- the finder reports loss-min/10, not the authors' tuned value:
+
+```bash
+# on the GPU COMPUTE node -- fixed batch size (no find_batch_size), published recipe
+cd ~/GTagger-experiments
+apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
+  source venv/bin/activate
+  python utils/find_lr.py -cn toptagging model=tag_particlenet training=top_particlenet save=false
+'
+# compare the printed lr against config/training/top_particlenet.yaml (1e-2)
+```
+
+Then, one session per model you plan to train (or chain them in one longer session):
 
 ```bash
 # from a LOGIN shell (prompt loginXXX; echo $SLURM_JOB_ID prints nothing -- §0)
@@ -504,6 +520,18 @@ Fill each printed pair into that model's `config/training/top_<Model>.yaml` (the
 only `???` keys — the shared recipe pins epochs=20, AdamW, warmup-cosine; GUIDE §5–6).
 
 ## 5. Submit the real training
+
+**Before the first real submission, reproduce a known result.** Train ParticleNet under
+its published recipe with `save=false` (no weights, no table row) and check its test
+accuracy/AUC against the published numbers. This exercises the whole path -- data,
+loader, model, evaluation, table row -- against an answer you already know, so a
+mismatch here is an environment or data problem, not a hypothesis about your hybrids:
+
+```bash
+# on the LOGIN node (a full run, so submit it; ~1 day on JetClass, far less on top tagging)
+sbatch -J particlenet-check train.sbatch tag_particlenet toptagging save=false
+# when it finishes: grep "table test" logs/particlenet-check-<jobid>.out
+```
 
 One parametrized sbatch file covers every model and task — the model is the argument,
 extra hydra overrides pass straight through, so no per-model payload scripts:

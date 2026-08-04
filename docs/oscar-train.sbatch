@@ -5,12 +5,15 @@
 #SBATCH -J gtagger
 #SBATCH -p gpu                    # partition; `allq gpu` shows load. gpu-he needs High-End priority
 #SBATCH --gres=gpu:1
-#SBATCH -n 8                      # cores. The shipped jc/xl loaders use num_workers=2 (the
-                                  # published setting) and sustain >9k jets/s -- faster than any
-                                  # model here consumes, so they are NOT the bottleneck. Raise
-                                  # -n AND jc_params.num_workers together only if nvidia-smi
-                                  # shows the GPU starved mid-run, and then do it for EVERY row
-                                  # (the table reports walltime).
+#SBATCH -n 8                      # cores. jc/xl ship num_workers=2 (the published setting).
+                                  # Indirect evidence that this is enough: the published plain
+                                  # transformer moved 500M samples in 15h = ~9.3k jets/s at that
+                                  # setting, and our models are estimated slower per sample --
+                                  # but that was THEIR filesystem and OUR speeds are estimates,
+                                  # so treat it as a prior, not proof. MEASURE: if nvidia-smi
+                                  # shows the GPU idling mid-run, raise -n and
+                                  # jc_params.num_workers together -- and then for EVERY row,
+                                  # since the table reports walltime.
 #SBATCH --mem=48G                 # top-tagging: full npz in RAM + fp64 momenta -> 48G safe.
                                   # JetClass/TopTagXL (streaming, per-worker fetch buffers): 64G.
                                   # After the first run, `myjobinfo` shows MaxRSS -- trim to fit.
@@ -36,6 +39,7 @@ export PYTHONNOUSERSITE=1         # never import from ~/.local (the docs/OSCAR.m
                                   # --export=NONE strips the .bashrc copy, so set it here too
 
 MODEL=${1:?usage: sbatch train.sbatch tag_<Model> [task] [extra hydra overrides...]}
+MODEL=${MODEL#model=}             # accept either `tag_X` or the hydra-style `model=tag_X`
 shift
 # arg 2 is the task ONLY if it names one -- otherwise it's already a hydra override
 # (so `sbatch train.sbatch tag_X save=false` means toptagging + save=false, not task save=false)
@@ -44,13 +48,19 @@ case "${1:-}" in
   *) TASK=toptagging ;;
 esac
 case "$TASK" in toptagging) P=top ;; jctagging) P=jc ;; toptagxl) P=xl ;; esac
-# remaining args = hydra overrides, passed through via $*
+
+# Everything left is a hydra override, passed through verbatim. Hydra REJECTS a duplicate
+# override, so only supply our defaults for keys the caller did not set -- that way any
+# command that works with `python run.py ...` also works with train.sbatch in front.
+EXTRA="$*"
+case " $EXTRA " in *" training="*) RECIPE="" ;; *) RECIPE="training=${P}_${MODEL#tag_}" ;; esac
+case " $EXTRA " in *" gpus="*)     GPUS=""   ;; *) GPUS="gpus=1"                        ;; esac
 cd "$HOME/GTagger-experiments"
 "$APPTAINER" exec --nv "$IMG" bash -c "
   source venv/bin/activate
   python run.py -cp config -cn $TASK \
-      model=$MODEL training=${P}_${MODEL#tag_} gpus=1 \
-      +slurm_job_id=${SLURM_JOB_ID:-none} $*
+      model=$MODEL $RECIPE $GPUS \
+      +slurm_job_id=${SLURM_JOB_ID:-none} $EXTRA
 "
 # (no data.dataset override needed: config/toptagging.yaml already defaults to the
 #  full dataset, and the jc/xl configs have no such key -- it would crash there)

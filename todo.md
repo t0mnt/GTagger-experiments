@@ -13,6 +13,15 @@ The 8 hybrid recipes are skeletons with required `???` keys:
 The 8 GT recipes now inherit `tag_gts_and_friends_default` (shared `epochs=20` + `scheduler=CosineAnnealingWarmup`);
 only **`batchsize`, `lr`** remain `???` per model (optionally `weight_decay`):
 
+- [ ] **Validate the finder on a published baseline FIRST**: `utils/find_lr.py -cn toptagging
+      model=tag_particlenet training=top_particlenet save=false` at ParticleNet's fixed
+      batchsize (512) should land within an order of magnitude of its published `lr: 1e-2`.
+      The finder reports loss-min/10, not the authors' tuned value, so agreement in scale is
+      the pass criterion -- a wildly different answer means the tool (or the environment) is
+      wrong before eight unpublished models depend on it.
+- [ ] **Reproduce a known result before the campaign**: one `save=false` ParticleNet run under
+      its published recipe, checking test accuracy/AUC against the published numbers. It
+      exercises data, loader, model and evaluation end to end against a known answer.
 - [ ] `batchsize` ← `utils/find_lr.py +lr_find.find_batch_size=true` (largest power-of-two that fits the H100).
 - [ ] `lr` ← `utils/find_lr.py` (reported loss-min / 10).
       (`weight_decay` tuning moved to `docs/ablations.md` "Training-side minor tunes" —

@@ -12,5 +12,6 @@
 defaults:
   - jc_gts_and_friends_default
 
+# found using utils/find_lr.py
 batchsize: ???
 lr: ???
