@@ -1,6 +1,11 @@
 """ Particle Transformer (ParT)
 
 Paper: "Particle Transformer for Jet Tagging" - https://arxiv.org/abs/2202.03772
+
+NOT the baseline row, and not imported anywhere: `tag_ParT.yaml` instantiates
+`lloca.backbone.particletransformer.ParticleTransformer`, which this file is a stale
+near-copy of (it predates lloca's LLoCaAttention wiring). Read the lloca package file when
+reasoning about what the table's ParT row does.
 """
 
 import math

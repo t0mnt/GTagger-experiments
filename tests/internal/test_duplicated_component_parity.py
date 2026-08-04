@@ -167,3 +167,40 @@ def test_edgeconv_block_parity():
     torch.manual_seed(11)
     points, features = torch.randn(3, 3, 9), torch.randn(3, 6, 9)
     _assert_same_output(hybrid, vendored, (points, features))
+
+
+def test_edgeconv_block_matches_the_live_lloca_baseline():
+    """The reference that matters is the one the TABLE uses.
+
+    `experiments/baselines/particlenet.py` is an unused stock-weaver copy; the
+    tag_particlenet row instantiates `lloca.backbone.particlenet.ParticleNet`. So the
+    comparison that actually protects the study is hybrid-vs-lloca: under identity frames
+    and an unmasked plain-L2 kNN the hybrid's EdgeConv must be BIT-identical to it, which
+    is what makes 'the hybrid's GNN stage is ParticleNet' a checkable claim rather than a
+    description. The hybrid's documented extensions (phi-wrapped deltaR, padding-aware kNN,
+    explicit self-loop removal, k capping) are all switched off by these arguments.
+    """
+    from lloca.backbone import particlenet as L_pn
+    from lloca.framesnet.frames import Frames
+    from lloca.reps.tensorreps import TensorReps
+
+    torch.manual_seed(5)
+    hybrid = H_pn.EdgeConvBlock(k=4, in_feat=6, out_feats=(8, 8))
+    torch.manual_seed(5)
+    lloca = L_pn.EdgeConvBlock(k=4, in_reps=TensorReps("6x0n"), out_feats=(8, 8))
+    torch.manual_seed(11)
+    # 3-d coords so both take the gram-matrix branch (the hybrid wraps phi only for 2-d
+    # eta-phi input, a deliberate divergence tested elsewhere)
+    points, features = torch.randn(3, 3, 9), torch.randn(3, 6, 9)
+    frames = Frames(is_identity=True, device=points.device, dtype=points.dtype, shape=(3 * 9,))
+    hp, lp = dict(hybrid.named_parameters()), dict(lloca.named_parameters())
+    assert set(hp) == set(lp), f"parameter names diverged: {sorted(set(hp) ^ set(lp))}"
+    with torch.no_grad():
+        for name in hp:
+            hp[name].copy_(lp[name].reshape(hp[name].shape))
+    hybrid.eval()
+    lloca.eval()
+    with torch.no_grad():
+        a = hybrid(points, features, knn_metric="deltaR", mask=None, frames=None)
+        b = lloca(points, features, frames=frames)
+    assert torch.equal(a, b), f"outputs differ, max |delta| {(a - b).abs().max():.3e}"
