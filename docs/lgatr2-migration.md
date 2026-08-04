@@ -343,7 +343,12 @@ Not migration work — a separate task after gates pass; recorded here so the th
   compile**: dense padded `(B, P, K)` gather + Conv2d MLPs + masked sum/mean — static-shaped,
   no scatter at all. `dynamic=True` over B/P and it should compile without a single break.
 
-### Non-equivariant family: deliberately OUT of this task's scope
+### Non-equivariant family: out of scope FOR THIS TASK (not out of scope for `dev`)
+
+To be unambiguous about what "out of scope" means here: it scopes the **lgatr 2.0 migration
+and the CGENN compile work**, the task this runbook covers. It is not a judgement that the
+non-equivariant models are excluded from `dev` generally, nor that they should never be
+compiled — only that compiling them is not part of *this* change and does not gate it.
 
 Plain / ParticleNet-ParT (both variants) and the plain-transformer baselines get no compile
 work here, for three reasons: (1) no forcing event — the lgatr migration is what makes the
@@ -360,8 +365,16 @@ migration — `tag_slim` ships `compile: true` on 1.4.4 while everything else ru
 upstream precedent, not something the migration introduces — and the **FLOPs column is the
 compile-independent efficiency measure** (compile changes kernel launch/fusion overhead, not
 arithmetic), so efficiency *claims* lean on FLOPs while walltime stays informational with a
-per-row compile footnote. Revisit only if a profiler shows the non-equivariant rows dominated
-by launch overhead, which their kernel profile makes unlikely.
+per-row compile footnote. **Update (2026-08):** weaver-core has since added torch.compile support for ParticleNet and
+ParT upstream. That removes the *feasibility* doubt — someone has implemented and validated
+it for those architectures — but not reason (2), the ROI argument, and their versions are
+standalone backbones rather than ones wrapped in this repo's GraphTrans/GPS machinery
+(per-batch kNN rebuild, PyG scatter, LLoCa frame transport), which is where the graph breaks
+would come from. So the scoping stands for this task, with a sharper revisit trigger:
+post-campaign, measure compile on ParticleNetParTGraphTrans/GPS, and **if the whole table
+turns out to compile, prefer uniform compilation** to the current split -- it retires the
+per-row disclosure above rather than managing it. Also revisit if a profiler shows the
+non-equivariant rows dominated by launch overhead, which their kernel profile makes unlikely.
 
 ## Appendix A — evidence log
 
