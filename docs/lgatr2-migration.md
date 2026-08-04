@@ -157,7 +157,7 @@ After Gates A–F pass, one **posture-flip commit** (first thing in Task C, befo
 | D | Full existing suite | 64/64 |
 | E | Identity-frames bit-exactness spot check | hybrid with identity frames ≡ plain backbone, bit-identical on v2 (internal-consistency proof) |
 | F | Blade-table equivalence | audit script vs v2 `lgatr.primitives.bilinear._load_geometric_product_tensor`: agreement ≤ 2e-6 fp32, as on 1.4.4 |
-| G | Training sanity (cluster) | fixed-seed 1k-iter quick runs (`tag_slim`, `tag_lgatr`) on both versions: final train loss within seed-noise band (2–3 seeds). Point-wise curve equality is **out of scope by design** (S3/S5/S6/S7); this catches gross regressions only |
+| G | Training sanity (cluster) | fixed-seed 1k-iter quick runs (`tag_slim`, `tag_lgatr`) on both versions: final train loss within seed-noise band (2–3 seeds). Point-wise curve equality is **out of scope for this gate, by design** (S3/S5/S6/S7 make it unattainable) -- the gate catches gross regressions only, and says nothing about whether curve-level study belongs in `dev` later |
 | H | Throughput report (cluster) | not pass/fail: it/s for `tag_lgatr` v2 `compile=True/False` vs 1.4.4, and `tag_slim` (already compiled on 1.4.4, so expect little). Quantifies the carrot; publish the number in the decision log either way |
 
 ### Why these gates discriminate, and their blind spots (closed)
@@ -308,7 +308,12 @@ On branch dev (Gates A-F green, operator-reviewed):
 
 Any session that hits a gate failure **stops**. Operator triage: (a) explained by a documented S-item → add the waiver/S-row in its own reviewed commit, re-run the gate; (b) unexplained → spawn a *fresh* investigation session seeded only with the failure artifact (first-divergence block, tensor names, the two fixture values) — never let the porting session debug its own gates by editing them.
 
-## 8. Out of scope, captured for the follow-up task: performance transfers to CGENN
+## 8. Out of scope for THIS TASK (the lgatr 2.0 migration), captured for the follow-up: performance transfers to CGENN
+
+Throughout this runbook, "out of scope" always means **out of scope for the task the section
+names** -- the lgatr 2.0 migration here, the CGENN compile work in `docs/cgenn-compile.md`.
+It never means "excluded from `dev`" or "decided against"; deferred items keep their revisit
+triggers below.
 
 Not migration work — a separate task after gates pass; recorded here so the thinking isn't lost:
 
