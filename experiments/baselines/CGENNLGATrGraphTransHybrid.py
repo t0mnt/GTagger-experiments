@@ -546,11 +546,19 @@ class MVLayerNorm(nn.Module):
         super().__init__()
         self.algebra = algebra
         self.channels = channels
-        self.a = nn.Parameter(torch.ones(1, channels))
+        # 1-d (channels,) rather than the official (1, channels): a norm GAIN must fall
+        # under the optimizer's ndim<=1 weight-decay exemption (base_experiment.py:377)
+        # like every other norm gain in the family. The official 2-d shape is silently
+        # weight-decayed, which would regularize the CGENN hybrids' norm gains while the
+        # vendored tag_cgenn baseline's are exempt -- an asymmetry across exactly the
+        # comparison these recipes exist to make fair. Mirrors the vendored fix in
+        # experiments/baselines/cgenn/mvlayernorm.py; forward is unchanged (we unsqueeze
+        # to (1, channels) before broadcasting).
+        self.a = nn.Parameter(torch.ones(channels))
 
     def forward(self, input):
         norm = self.algebra.norm(input)[..., :1].mean(dim=1, keepdim=True) + EPS
-        a = unsqueeze_like(self.a, norm, dim=2)
+        a = unsqueeze_like(self.a.unsqueeze(0), norm, dim=2)
         return a * input / norm
 
 class MVSiLU(nn.Module):

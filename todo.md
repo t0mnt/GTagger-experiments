@@ -205,12 +205,6 @@ ParT upstream. That weakens the *feasibility* half of the argument (someone has 
 and validated it) but not the *ROI* half, and their versions are standalone backbones,
 not wrapped in this repo's hybrid + LLoCa-frames machinery.
 
-- [ ] **Post-campaign**: try compile on ParticleNetParTGraphTrans/GPS and measure. If the
-      whole table can compile, prefer UNIFORM compilation over the current split -- it
-      removes the per-row disclosure asymmetry in the walltime column. Do not attempt this
-      pre-campaign: it is scope creep against a fixed timeline, and accuracy columns are
-      unaffected either way (compile is numerics-preserving; FLOPs are compile-independent).
-
 ## 4c. Versioning
 
 `pyproject.toml` now reads **0.9.0** — pre-release: code complete, campaign not run,

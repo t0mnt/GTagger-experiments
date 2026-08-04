@@ -82,6 +82,13 @@ class TaggingExperiment(BaseExperiment):
                 # CGENN cant handle zero scalar inputs -> give 1 input with zeros
                 self.cfg.model.net.in_features_h = 1 + in_s_channels
             elif modelname == "CGENNLGATrGraphTrans":
+                # No `1 +` here, unlike the CGENN row above. That guard is inherited from
+                # the reference lorentz_cggnn wrapper, where use_invariant_network=False
+                # sets in_features_h=0; CGENNWrapper implements it by appending an all-zero
+                # scalar column, which is inert (zero input -> zero contribution and zero
+                # gradient into embedding_h). The hybrid backbone always runs the invariant
+                # network and builds fine at in_s_channels=0 (verified by forward), so the
+                # column would buy nothing. Both rows see the same real scalars.
                 self.cfg.model.net.in_s_channels = in_s_channels
             elif modelname == "LorentzNetLGATrSlimGraphTrans":
                 self.cfg.model.net.in_s_channels = in_s_channels

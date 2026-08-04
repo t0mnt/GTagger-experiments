@@ -78,7 +78,17 @@ def test_tagging(framesnet, model_list, equivectors, jet_size=50):
     data.ptr[-1] = jet_size
 
     with FlopCounterMode(display=False) as flop_counter:
-        exp._get_ypred_and_label(data)
+        try:
+            exp._get_ypred_and_label(data)
+        except AssertionError as e:
+            # An attention backend can be missing at FORWARD time rather than init time:
+            # lloca's LGATr equivectors resolve `attention_backend` inside their forward, so
+            # an xformers build that is ABI-mismatched with the installed torch fails here,
+            # past the init_model guard above. Tolerate that ONE message as a visible skip;
+            # every other AssertionError is a real failure and must propagate.
+            if "not installed, run 'pip install lloca[" not in str(e):
+                raise
+            pytest.skip(f"attention backend unavailable in this environment: {e}")
     flops = flop_counter.get_total_flops()
     num_parameters = sum(p.numel() for p in exp.model.parameters())
 

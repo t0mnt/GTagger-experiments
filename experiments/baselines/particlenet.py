@@ -2,6 +2,12 @@
 
 Paper: "ParticleNet: Jet Tagging via Particle Clouds" - https://arxiv.org/abs/1902.08570
 Code: https://github.com/hqucms/weaver-core/blob/main/weaver/nn/model/ParticleNet.py
+
+NOT the baseline row. `tag_particlenet.yaml` instantiates
+`lloca.backbone.particlenet.ParticleNet` (the LLoCa version); no config or module imports
+this file. It survives as the stock-weaver reference the hybrid EdgeConv is checked
+against in tests/internal/test_duplicated_component_parity.py. Read the lloca package
+file, not this one, when reasoning about what the table's ParticleNet row does.
 """
 
 import numpy as np

@@ -319,6 +319,18 @@ def p3_norm(p, eps=1e-8):
 
 
 def pairwise_lv_fts(xi, xj, num_outputs=4, eps=1e-8, for_onnx=False):
+    """Weaver's pairwise interaction features (the published ParT set).
+
+    lloca's `pairwise_lv_fts_pp` emits the SAME four features in a different order --
+    [lnm2, lnkt, lnz, lndelta] there, [lnkt, lnz, lndelta, lnm2] here -- because lloca
+    promoted the Lorentz scalar to slot 0 so that truncating to num_outputs=1 keeps the
+    invariant one. At pair_input_dim=4 (what every config in this repo uses) the two are a
+    channel permutation ahead of a BatchNorm1d + 1x1 Conv with iid-initialised weights, so
+    the model class and the training distribution are identical. They are NOT interchangeable
+    at other widths: 1 gives lndelta here vs lnm2 there, and 3 is valid here but asserts
+    there. If pair_input_dim is ever changed, decide which convention the hybrid should
+    follow rather than assuming this one matches the tag_ParT row.
+    """
     pti, rapi, phii = to_ptrapphim(xi, False, eps=None, for_onnx=for_onnx).split((1, 1, 1), dim=1)
     ptj, rapj, phij = to_ptrapphim(xj, False, eps=None, for_onnx=for_onnx).split((1, 1, 1), dim=1)
 
