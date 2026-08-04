@@ -313,7 +313,7 @@ one working point (0.5) the paper doesn't report, with a coarser ruler.
 
 The built-in Transformer / L-GATr taggers and the `lgatr` frame predictor use
 xformers' memory-efficient attention (saves ~2× RAM on variable-length jets); on
-an H100 you normally just `pip install xformers` and it's the upstream-default
+a recent NVIDIA GPU you normally just `pip install xformers` and it's the upstream-default
 backend. Note "default" ≠ "fastest": for ragged jets **flash** (flash-attn v2
 kernels, fp16/bf16) is typically the fastest backend — and the only one besides
 native that honors attention-weight dropout — so `model.attention_backend=flash`
@@ -379,7 +379,8 @@ path is version-sensitive, so smoke-test it on your GPU first).
 
 For 3 seeds of a model: launch the run, then fresh-trial warm-start it twice more (same
 `exp_name`/`run_name`, `warm_start_load=false`). For the heavy `CGENNLGATrGraphGPS`
-(~4.5e11 FLOPs/jet, ~a day per trial on an H100) budget accordingly; the slim model is
+(~4.5e11 FLOPs/jet -- roughly a day per trial on an H100-class GPU, longer on anything
+slower; the run prints its own estimate early) budget accordingly; the slim model is
 ~300× lighter.
 
 ---

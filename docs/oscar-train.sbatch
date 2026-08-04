@@ -14,10 +14,15 @@
 #SBATCH --mem=48G                 # top-tagging: full npz in RAM + fp64 momenta -> 48G safe.
                                   # JetClass/TopTagXL (streaming, per-worker fetch buffers): 64G.
                                   # After the first run, `myjobinfo` shows MaxRSS -- trim to fit.
-#SBATCH -t 24:00:00               # raise for the heavy hybrids. Any per-model hour figure in
-                                  # these docs is an ESTIMATE; the run prints its own
-                                  # "training time estimate" within the first ~1000 steps --
-                                  # size -t from that, not from the estimate.
+#SBATCH -t 168:00:00              # 1 week. No time is wasted by asking for more than you use --
+                                  # SLURM bills what you consume, and the job exits when training
+                                  # ends -- but a too-small -t kills a run mid-training, and some
+                                  # partitions default to minutes if you omit it. A week is not
+                                  # generous for JetClass on an H100, especially pre-2.0 or on
+                                  # slower hardware. Any per-model hour figure in these docs is an
+                                  # ESTIMATE; the run prints its own "training time estimate"
+                                  # within the first ~1000 steps -- size -t from that.
+                                  # (Check your partition's MaxTime: `scontrol show partition <p>`.)
 #SBATCH -o logs/%x-%j.out         # logs/ must exist BEFORE sbatch: SLURM opens this file
                                   # before the script runs -- missing dir = job dies, no output.
                                   # %x = job name: submit with `sbatch -J <Model> ...` and the
