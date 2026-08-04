@@ -90,3 +90,40 @@ Effort: Task α ≈ one focused session; Task β ≈ one cluster hour. Log secti
 ## Log
 
 *(empty — no work done)*
+
+---
+
+## Table-wide compile policy (decide before the results table is built)
+
+`torch.compile` never changes accuracy (numerics-preserving up to fusion-order noise)
+and never changes FLOPs, so this is purely about the **walltime column**. Two kinds of
+comparability are in tension and you cannot have both:
+
+- **Intra-table**: every row measured under the same setting, so the walltime column
+  ranks architectures rather than compile status.
+- **Cross-paper**: your walltimes comparable with the published LLoCa/ParT/L-GATr
+  numbers we cite as anchors — those were measured **uncompiled**.
+
+Compiling everything buys the first and destroys the second. Compiling nothing keeps
+both, because the published anchors are uncompiled too.
+
+**Therefore the cheapest uniform state is uniformly OFF, not uniformly ON.** Today the
+table would have exactly one compiled row (`config/model/tag_slim.yaml:22` ships
+`compile: true` from upstream); overriding that one flag for the headline runs makes the
+whole table uniform for free, with no compile engineering at all.
+
+Costs of the compile-everything route, for the record:
+- Compile changes the memory profile, so the batch size that fits can change -- which
+  invalidates the tuned lr that was swept at the old batch size. Compiling after the
+  sweeps means either re-sweeping or knowingly running off-optimum.
+- Warmup and recompilation pollute short runs and the early "training time estimate".
+- Fusion changes float accumulation order; harmless in expectation, but a bit-level
+  gate would be needed to claim "same model, faster".
+- Any model that will not compile cleanly (graph breaks in the GraphTrans/GPS wrapper:
+  per-batch kNN rebuild, PyG scatter, LLoCa transport) reintroduces the asymmetry the
+  exercise was meant to remove.
+
+**Recommended:** headline table uniformly uncompiled (one override on `tag_slim`);
+`torch.compile` reported as a separate efficiency study -- CGENN per this document, ParT
+and ParticleNet if cheap (weaver-core supports both upstream now), hybrids post-campaign
+-- where a speedup is the *result* rather than a confound.
