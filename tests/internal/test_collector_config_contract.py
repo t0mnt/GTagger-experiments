@@ -20,8 +20,8 @@ collect_data = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(collect_data)
 
 
-def _cfg(name):
-    return yaml.safe_load((REPO / "config" / f"{name}.yaml").read_text())
+def _cfg(name, tree="config"):
+    return yaml.safe_load((REPO / tree / f"{name}.yaml").read_text())
 
 
 def test_toptagxl_ranges_match_the_collector_exactly():
@@ -77,3 +77,27 @@ def test_jetclass_extract_subdir_is_consistent_with_the_expected_folder(split):
         f"jetclass {split}: tars extract into '{subdir}' but the completeness check counts "
         f"'{expected_folder}', which is not inside it -- one of the two is wrong."
     )
+
+
+@pytest.mark.parametrize("task", ["toptagxl", "jctagging"])
+def test_quick_configs_request_files_that_can_exist(task):
+    """config_quick trims the file RANGE, but the numbering is not free to invent.
+
+    A quick range outside what the collector downloads resolves to zero files and dies
+    at miniweaver's bare `assert len(new_files) > 0` -- which is how
+    config_quick/toptagxl.yaml shipped broken (train [622,623] under a 000-499 train
+    split, plus a data_dir typo) while config/ was fine and this file only read config/.
+    """
+    quick, full = _cfg(task, "config_quick")["data"], _cfg(task)["data"]
+    assert quick["data_dir"] == full["data_dir"], (
+        f"config_quick/{task}.yaml data_dir {quick['data_dir']!r} != "
+        f"config/{task}.yaml {full['data_dir']!r}; the collector only builds the latter."
+    )
+    for key in ("train_files_range", "test_files_range", "val_files_range"):
+        qlo, qhi = quick[key]
+        flo, fhi = full[key]
+        assert flo <= qlo < qhi <= fhi, (
+            f"config_quick/{task}.yaml {key}={quick[key]} falls outside the files the "
+            f"collector actually provides for that split ({full[key]}); it would resolve "
+            f"zero files."
+        )
