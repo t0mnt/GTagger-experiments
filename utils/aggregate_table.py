@@ -14,8 +14,8 @@ and a true re-run of an identical variant supersedes older ones by the log file'
 mtime (NOT by directory order: run-dir names end in a random suffix, so path order
 says nothing about recency) — and assembles them into a single LaTeX ``tabular``.
 
-    python aggregate_table.py                       # scans runs/, split=test
-    python aggregate_table.py --runs runs/topt_local_debug --split test --out table.tex
+    python utils/aggregate_table.py                       # scans runs/, split=test
+    python utils/aggregate_table.py --runs runs/topt_local_debug --split test --out table.tex
 """
 
 import argparse
@@ -33,10 +33,13 @@ COLUMNS = {
         r"model & frames & iters & params & accuracy & AUC & "
         r"$1/\epsilon_B$(0.3) & (0.5) & (0.8) & time & FLOPs & kNN"
     ),
-    # jctagging (10-class): per-class rejections, no FLOPs column
+    # jctagging (10-class): per-class rejections. Column set MUST match
+    # TaggingExperiment._log_table_row's output exactly (... & time & FLOPs & kNN) --
+    # a legend narrower than the row silently mislabels every column after the gap.
     "jctagging": (
         r"model & frames & iters & params & accuracy & AUC(ovo) & "
-        r"$1/\epsilon_B$: HBB & HCC & HGG & H4Q & HQQL & TBQQ & TBL & WQQ & ZQQ & time & kNN"
+        r"$1/\epsilon_B$: HBB & HCC & HGG & H4Q & HQQL & TBQQ & TBL & WQQ & ZQQ & "
+        r"time & FLOPs & kNN"
     ),
 }
 

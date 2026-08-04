@@ -39,7 +39,7 @@ and reading along with print statements. `config/` is the real training setup.
 | path | what |
 |---|---|
 | `run.py` | entry point: builds an experiment from a hydra config and trains/evaluates it |
-| `find_lr.py` | LR range test + optional GPU batch-size finder (see §6) |
+| `utils/find_lr.py` | LR range test + optional GPU batch-size finder (see §6) |
 | `config/` | real configs; `config_quick/` the tiny mirror |
 | `config/model/tag_*.yaml` | one file per tagger (model definition only) |
 | `config/training/top_*.yaml` | training budgets / optimizers / schedules |
@@ -119,13 +119,13 @@ or budget. Those come from the **training** config, selected separately. The
 top-tagging default is now `tag_gts_and_friends_default` (AdamW, epochs=20,
 CosineAnnealingWarmup, wd=0.01) — the shared GT-hybrid recipe — so the new models run
 correctly with no `training=` at all (you just fill `lr`/`batchsize` from
-`find_lr.py`). Pass `training=top_<baseline>` to run a baseline under its own tuned
+`utils/find_lr.py`). Pass `training=top_<baseline>` to run a baseline under its own tuned
 recipe (e.g. `top_transformer` = Lion, lr=3e-5, 300k iters) — see §7.
 
 The 8 GT hybrids share one recipe: each `config/training/top_<hybrid>.yaml`
 `defaults: [tag_gts_and_friends_default]` (AdamW, **epochs=20**,
 CosineAnnealingWarmup, shared `weight_decay=0.01`, validate once/epoch) and only fills
-its own `batchsize` + `lr` from `find_lr.py` — that shared budget is what makes the
+its own `batchsize` + `lr` from `utils/find_lr.py` — that shared budget is what makes the
 hybrid-vs-hybrid table fair. The upstream baselines keep their own recipes as
 reference rows — `top_ParT` (Ranger, lr=1e-3, 20 epochs), `top_lorentznet` (AdamW,
 lr=1e-3, 35 epochs), `top_lgatr` (Lion, lr=3e-4, wd=0.2), `top_particlenet` (lr=1e-2)
@@ -151,7 +151,7 @@ jctagging task** (don't copy the top-tagging values — the wider inputs move bo
 memory ceiling and the loss-vs-lr curve):
 
 ```bash
-python find_lr.py -cn jctagging model=tag_CGENNLGATrGraphGPS save=false \
+python utils/find_lr.py -cn jctagging model=tag_CGENNLGATrGraphGPS save=false \
     +lr_find.find_batch_size=true
 # -> fill training.batchsize / training.lr into config/training/jc_CGENNLGATrGraphGPS.yaml
 ```
@@ -195,26 +195,38 @@ Everything from §5.1 carries over:
   here identically):
 
 ```bash
-python find_lr.py -cn toptagxl model=tag_PlainGraphGPS save=false \
+python utils/find_lr.py -cn toptagxl model=tag_PlainGraphGPS save=false \
     +lr_find.find_batch_size=true
 # -> fill training.batchsize / training.lr into config/training/xl_PlainGraphGPS.yaml
 python run.py -cp config -cn toptagxl model=tag_PlainGraphGPS training=xl_PlainGraphGPS
 ```
 
 Two XL-specific footnotes. First, the shipped `data.val_files_range: [625, 675]` is
-a **10M-jet validation pass**; under the family recipe's once-per-epoch cadence,
-shrink it (e.g. `[625, 626]` = 200k jets) unless you want validations costing a real
-fraction of a training epoch. Second, TopTagXL reuses the top-tagging binary
+the dataset's **canonical 10M-jet validation split** (Zenodo's 100M/25M/10M
+partition) — keep it. Under the family recipe's once-per-epoch cadence it costs
+about 3% of training compute (5 forward-only passes over 10M jets, against 500M
+training samples at ~3x the per-sample cost), and staying on the published split
+keeps val-derived numbers comparable with the LLoCa paper's. Shrink it only for
+debugging, where you validate many times per epoch. Second, TopTagXL reuses the top-tagging binary
 evaluation path unchanged, so the rejection metrics and the results-table /
-`aggregate_table.py` machinery of §8 work as-is. Baseline reference rows run under
+`utils/aggregate_table.py` machinery of §8 work as-is. Baseline reference rows run under
 the task default (`jc_transformer`: AdamW, 1M fixed iterations) or their own
 recipes, as in REPRODUCE.md.
 
 ---
 
+Two checks before you sweep eight unpublished models. **(1) Validate the finder** on a
+baseline with a published lr: run it on ParticleNet at that recipe's fixed batchsize
+(`utils/find_lr.py -cn toptagging model=tag_particlenet training=top_particlenet
+save=false`) and confirm the suggestion sits within an order of magnitude of the
+published `1e-2`. **(2) Reproduce a known number** with one `save=false` ParticleNet
+training under its published recipe, comparing test accuracy/AUC with the literature. A
+mismatch in either is an environment or data problem, and is far cheaper to find here
+than inside a multi-day hybrid run.
+
 ## 6. Choosing hyperparameters
 
-**Learning rate (and GPU batch size) — `find_lr.py`.** Runs a Leslie-Smith LR
+**Learning rate (and GPU batch size) — `utils/find_lr.py`.** Runs a Leslie-Smith LR
 range test under the *training config's* optimizer + param-group ratios (but with
 weight-decay and grad-clipping switched off for the sweep — they'd only mask the
 divergence) and reports a robust `loss-min/10` peak LR — a safe peak for the
@@ -222,15 +234,15 @@ warmup→cosine schedule (it never builds the scheduler; it ramps the LR by hand
 is now `tag_gts_and_friends_default` (AdamW, clip=1.0, wd=0.01), so for the GT
 hybrids you sweep with nothing extra. Pass `training=<recipe>` only to match a
 *different* optimizer — the LR scale is optimizer-specific, so a Lion baseline (e.g.
-`training=top_transformer`) must be swept under Lion. `find_lr.py` now defaults to the real `config/` tree
+`training=top_transformer`) must be swept under Lion. `utils/find_lr.py` now defaults to the real `config/` tree
 (full data); add `data.dataset=mini` for a quick trial.
 
 ```bash
 # LR only (default training is the shared AdamW gts-and-friends recipe)
-python find_lr.py -cn toptagging model=tag_CGENNLGATrGraphGPS save=false
+python utils/find_lr.py -cn toptagging model=tag_CGENNLGATrGraphGPS save=false
 
 # on a GPU: fit the batch size first, then sweep the LR at that size
-python find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
+python utils/find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
     save=false +lr_find.find_batch_size=true
 ```
 
@@ -301,7 +313,18 @@ one working point (0.5) the paper doesn't report, with a coarser ruler.
 
 The built-in Transformer / L-GATr taggers and the `lgatr` frame predictor use
 xformers' memory-efficient attention (saves ~2× RAM on variable-length jets); on
-an H100 you normally just `pip install xformers` and it's the recommended backend.
+a recent NVIDIA GPU you normally just `pip install xformers` and it's the upstream-default
+backend. Note "default" ≠ "fastest": for ragged jets **flash** (flash-attn v2
+kernels, fp16/bf16) is typically the fastest backend — and the only one besides
+native that honors attention-weight dropout — so `model.attention_backend=flash`
+is a legitimate first choice, not just a fallback. The gap is small, though:
+xformers' `memory_efficient_attention` is itself a *dispatcher* that usually
+selects the same flash kernels internally when dtype/head-dim allow, so when it
+does the two are near-equal — the practical differences are the dropout arg name
+(`p` vs `dropout_p`), kernel-version lag (new flash releases land in flash-attn
+first), and a fp32 fallback path only xformers has. (lgatr 2.0
+changes this calculus: its compiled-xformers custom ops become the flagship fast
+path under torch.compile — see `docs/lgatr2-migration.md`.)
 The new **GraphGPS non-equivariant** models use plain `torch.nn.MultiheadAttention`,
 so they need no xformers at all. If you do want a learned framesnet without
 xformers, use the **MLP frame predictor**:
@@ -318,9 +341,12 @@ touch xformers in the framesnet — their L-GATr stages attend with dense masks
 The only models that don't are the four baselines whose configs pin
 `attention_backend: xformers` (`tag_transformer`, `tag_top_transformer`,
 `tag_lgatr`, `tag_slim`); on an xformers-free install, run those with
-`model.attention_backend=flash` (needs the flash-attn package; NGC/cluster
-containers usually ship it) or `=flex` (pure-torch FlexAttention — slower, and
-its torch.compile path is version-sensitive, so smoke-test it on your GPU first).
+`model.attention_backend=flash` (needs a WORKING flash-attn — always test
+`python -c "import flash_attn"` first *in a clean environment*: an earlier
+"image copy is ABI-broken" verdict turned out to be a leaked user-site torch
+shadowing the container's, see the ~/.local note in docs/OSCAR.md) or `=flex`
+(pure-torch FlexAttention, needs torch≥2.7 — slower, and its torch.compile
+path is version-sensitive, so smoke-test it on your GPU first).
 
 ---
 
@@ -345,7 +371,7 @@ its torch.compile path is version-sensitive, so smoke-test it on your GPU first)
   either way.)
 - **Different models do *not* merge** into one table — each lands in its own run
   directory with its own row. To build a comparison table, run
-  `python aggregate_table.py --runs runs --split test --out comparison.tex` (it collects each
+  `python utils/aggregate_table.py --runs runs --split test --out comparison.tex` (it collects each
   run's row and emits ONE LaTeX table PER TASK -- toptagging / toptagxl / jctagging report
   different metric columns, read from each run's saved `config.yaml` `exp_type`; JetClass
   runs emit an aggregator-compatible `table test:` row too), or do it by hand
@@ -353,7 +379,8 @@ its torch.compile path is version-sensitive, so smoke-test it on your GPU first)
 
 For 3 seeds of a model: launch the run, then fresh-trial warm-start it twice more (same
 `exp_name`/`run_name`, `warm_start_load=false`). For the heavy `CGENNLGATrGraphGPS`
-(~4.5e11 FLOPs/jet, ~a day per trial on an H100) budget accordingly; the slim model is
+(~4.5e11 FLOPs/jet -- roughly a day per trial on an H100-class GPU, longer on anything
+slower; the run prints its own estimate early) budget accordingly; the slim model is
 ~300× lighter.
 
 ---
@@ -383,7 +410,7 @@ xformers build.)
 ## 10. Gotchas
 
 - **The default training recipe** (`tag_gts_and_friends_default`, AdamW) now
-  fits the new models — just set an LR/batchsize from `find_lr.py` (§5/§6). Baselines
+  fits the new models — just set an LR/batchsize from `utils/find_lr.py` (§5/§6). Baselines
   still need their own `training=top_<baseline>` (e.g. Lion for the transformer).
 - **`use_float64`** is `false` in production (float32); the equivariance tests flip
   it on for the exact-invariance checks. The kNN distance computations follow the

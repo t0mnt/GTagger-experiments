@@ -132,8 +132,8 @@ class ParticleNetParTGraphGPS(nn.Module):
                  knn_metric="deltaR",       # how layer-0 graph is seeded ('deltaR'/'minkowski')
                  edge_mlp_layers=2,
                  use_fts_bn=True,
-                 # ParT pairwise attention bias (global branch)
-                 bias=True,                 # toggle the ParT pairwise additive attention bias
+                 # ParT pairwise additive attention bias (global branch)
+                 bias=True,
                  pair_input_dim=4,
                  pair_extra_dim=0,
                  pair_embed_dims=[64, 64, 64],

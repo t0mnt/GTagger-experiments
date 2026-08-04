@@ -180,6 +180,12 @@ class BaseExperiment:
 
         # initialize environment
         self._init_logger()
+        # Links the SLURM log to the run dir (otherwise only matchable by timestamp);
+        # the id saved in config.yaml closes the other direction. docs/OSCAR.md section 5.
+        LOGGER.info(f"run_dir: {self.cfg.run_dir}  (run_idx {self.cfg.run_idx})")
+        job_id = self.cfg.get("slurm_job_id", None)
+        if job_id is not None:
+            LOGGER.info(f"slurm_job_id: {job_id}")
         self._init_backend()
 
         return experiment_id, run_name

@@ -2,7 +2,10 @@ import numpy as np
 import os, sys
 import hashlib
 import tarfile
-import wget
+import time
+
+import requests
+from tqdm import tqdm
 
 # dataset sizes: toptagging 1.5G, event-generation 4.7G, JetClass ~190G (full)
 BASE_URL = "https://www.thphys.uni-heidelberg.de/~plehn/data"
@@ -18,6 +21,11 @@ DATA_DIR = "data"
 # and config/jctagging.yaml sets data.data_dir = data/JetClass/Pythia -- which is exactly
 # the layout these official tars unpack to, so no post-processing or path edits are needed.
 JETCLASS_BASE = "https://zenodo.org/record/6619768/files"
+# NB the extract subdirs below are deliberately ASYMMETRIC, and verified against the real
+# archives (Pythia/ ends up holding train_100M, val_5M and test_20M): the ten train
+# part-tars are packed FLAT, so they extract into Pythia/train_100M and merge there, while
+# the single val and test tars each carry their own directory and so extract into Pythia.
+# Do not "fix" this into a uniform mapping -- that breaks whichever half you change.
 JETCLASS = {
     # split: (extract subdir under data/JetClass, [(tar filename, md5), ...])
     "train": (
@@ -87,13 +95,69 @@ TOPTAGXL = {
 }
 
 
+def _download(url, out, max_tries=8):
+    """Streaming download with resume + retries.
+
+    Replaces the abandoned ``wget`` package, whose urlretrieve backend dies
+    unrecoverably on any mid-transfer connection drop (ContentTooShortError at
+    13% of a 15 GB tar, observed on cluster). Partial progress lives at
+    ``out + '.part'`` and is resumed via HTTP Range (Zenodo supports it); a
+    server that ignores Range (plain 200 instead of 206) restarts the file.
+    Renames to ``out`` only when the byte count checks out, so callers never
+    see a partial file at the final path.
+    """
+    tmp = out + ".part"
+    for attempt in range(1, max_tries + 1):
+        try:
+            pos = os.path.getsize(tmp) if os.path.exists(tmp) else 0
+            headers = {"Range": f"bytes={pos}-"} if pos else {}
+            with requests.get(url, stream=True, timeout=(30, 60), headers=headers) as r:
+                if r.status_code == 416:
+                    break  # local >= remote (e.g. crash between download and rename)
+                r.raise_for_status()
+                if pos and r.status_code != 206:
+                    pos = 0  # server ignored Range -> restart from scratch
+                remaining = r.headers.get("Content-Length")
+                total = (int(remaining) + pos) if remaining is not None else None
+                with open(tmp, "ab" if pos else "wb") as f, tqdm(
+                    total=total, initial=pos, unit="B", unit_scale=True,
+                    desc=os.path.basename(out),
+                ) as bar:
+                    for chunk in r.iter_content(chunk_size=1 << 20):
+                        f.write(chunk)
+                        bar.update(len(chunk))
+                if total is not None and os.path.getsize(tmp) != total:
+                    raise IOError(f"size mismatch: got {os.path.getsize(tmp)} of {total} bytes")
+            break
+        except (requests.RequestException, IOError) as e:
+            if attempt == max_tries:
+                raise RuntimeError(f"download failed after {max_tries} tries: {url}") from e
+            wait = min(2**attempt, 60)
+            print(
+                f"\n[collect_data] {type(e).__name__}: {e} -- "
+                f"retry {attempt}/{max_tries - 1} in {wait}s (resumes from {os.path.getsize(tmp) if os.path.exists(tmp) else 0} bytes)"
+            )
+            time.sleep(wait)
+    os.replace(tmp, out)
+    print(f"Successfully downloaded {out}")
+
+
+def _download_verified(url, path, md5):
+    """Download + md5-verify; on mismatch delete and retry ONCE from scratch."""
+    for _round in range(2):
+        _download(url, path)
+        if _md5(path) == md5:
+            return
+        print(f"[collect_data] md5 mismatch for {os.path.basename(path)} -- deleting and re-downloading")
+        os.remove(path)
+    raise RuntimeError(f"md5 mismatch for {path} after a clean re-download; upstream file issue?")
+
+
 def load(filename):
     url = os.path.join(BASE_URL, filename)
     print(f"Started to download {url}")
     target_path = os.path.join(DATA_DIR, filename)
-    wget.download(url, out=target_path)
-    print("")
-    print(f"Successfully downloaded {target_path}")
+    _download(url, target_path)
 
 
 def _md5(path, chunk=1 << 20):
@@ -102,6 +166,77 @@ def _md5(path, chunk=1 << 20):
         for block in iter(lambda: f.read(chunk), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def _refresh_times(root):
+    """Stamp everything under ``root`` with the current time.
+
+    tarfile.extractall restores each member's ARCHIVE timestamps (atime = mtime =
+    when the file was packed, often years ago), so freshly extracted files look
+    years-idle to scratch purge daemons and get deleted on the next sweep -- observed
+    on Oscar: a fully extracted JetClass tree wiped days after extraction, with only
+    the fresh 0-byte .extracted markers surviving. Cheap insurance: touch it all.
+    """
+    now = time.time()
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for f in filenames:
+            try:
+                os.utime(os.path.join(dirpath, f), (now, now))
+            except OSError:
+                pass
+
+
+def _marker_state(marker, root, extra_roots=()):
+    """Classify an ``.extracted`` marker: 'verified', 'stale', or 'legacy'.
+
+    ``extra_roots`` are additional directories a member may legitimately live in
+    (TopTagXL extracts flat and is then organized into split folders, so a member
+    recorded as ``qcd_000.root`` ends up at ``<dest>/train_100M/qcd_000.root``).
+
+    New-style markers hold the tar's member list (a manifest), so a skip can check
+    the files are actually still on disk -- a scratch purge that empties SOME parts
+    while others survive would otherwise be invisible (observed: markers from a
+    fully purged download survived, later parts 0-2 were re-downloaded, and the
+    coarse dest-not-empty check then skipped parts 3-9 as "already extracted").
+    Old 0-byte markers carry no manifest and stay 'legacy' (coarse check only).
+    """
+    try:
+        with open(marker) as f:
+            names = [line for line in f.read().splitlines() if line]
+    except OSError:
+        return "legacy", []
+    if not names:
+        return "legacy", []
+
+    def present(n):
+        candidates = [os.path.join(root, n)]
+        candidates += [os.path.join(r, os.path.basename(n)) for r in extra_roots]
+        return any(os.path.exists(c) for c in candidates)
+
+    missing = [n for n in names if not present(n)]
+    return ("stale", missing) if missing else ("verified", [])
+
+
+def _extract_with_manifest(tar_path, dest, marker):
+    """Extract ``tar_path`` into ``dest`` and write the member list into ``marker``."""
+    with tarfile.open(tar_path) as tar:
+        names = tar.getnames()
+        try:
+            tar.extractall(dest, filter="data")  # python >= 3.12 safe extraction
+        except TypeError:
+            tar.extractall(dest)
+    _refresh_times(dest)  # archive timestamps look years-idle to purge daemons
+    with open(marker, "w") as f:
+        f.write("\n".join(names) + "\n")
+
+
+# the JetClass (Pythia) layout is deterministic: 100k events/file ->
+# train 100M = 1000 files, val 5M = 50, test 20M = 200
+JETCLASS_EXPECTED = {
+    "train": ("Pythia/train_100M", 1000),
+    "val": ("Pythia/val_5M", 50),
+    "test": ("Pythia/test_20M", 200),
+}
 
 
 def collect_jetclass(splits):
@@ -120,28 +255,118 @@ def collect_jetclass(splits):
             tar_path = os.path.join(base, fname)
             marker = os.path.join(base, f".{fname}.extracted")
             if os.path.exists(marker):
-                print(f"{fname} already extracted, skipping")
-                continue
+                state, missing = _marker_state(marker, dest)
+                if state == "verified":
+                    print(f"{fname} already extracted, skipping (manifest verified)")
+                    continue
+                if state == "stale":
+                    print(
+                        f"WARNING: {fname} is marked extracted but {len(missing)} of its "
+                        f"files are GONE (e.g. {missing[0]}) -- scratch purge? "
+                        f"Re-downloading this part."
+                    )
+                    os.remove(marker)  # fall through to download + extract
+                else:  # legacy 0-byte marker: no manifest to check against
+                    if not os.listdir(dest):
+                        print(
+                            f"WARNING: {fname} is marked extracted but {dest} is EMPTY -- "
+                            f"scratch purge? Delete the .*.extracted markers under {base} "
+                            f"to force a re-download/re-extract."
+                        )
+                    print(
+                        f"{fname} already extracted, skipping (legacy marker, contents "
+                        f"UNVERIFIED -- check the file-count summary below)"
+                    )
+                    continue
             url = f"{JETCLASS_BASE}/{fname}"
             if os.path.exists(tar_path) and _md5(tar_path) == md5:
                 print(f"{fname} already downloaded (md5 ok)")
             else:
                 if os.path.exists(tar_path):
-                    os.remove(tar_path)  # partial/corrupt -> re-download
+                    os.remove(tar_path)  # stale corrupt file at the FINAL path (old wget
+                    #                      runs); in-progress partials resume via .part
                 print(f"Downloading {url}")
-                wget.download(url, out=tar_path)
-                print("")
-                if _md5(tar_path) != md5:
-                    raise RuntimeError(f"md5 mismatch for {fname}; delete it and retry")
+                _download_verified(url, tar_path, md5)
             print(f"Extracting {fname} -> {dest}")
-            with tarfile.open(tar_path) as tar:
-                try:
-                    tar.extractall(dest, filter="data")  # python >= 3.12 safe extraction
-                except TypeError:
-                    tar.extractall(dest)
-            open(marker, "w").close()
+            _extract_with_manifest(tar_path, dest, marker)
             print(f"Extracted {fname}  (you may delete {tar_path} to reclaim disk)")
-    print(f"JetClass ready under {base}/Pythia -- matches config/jctagging.yaml data.data_dir.")
+
+    # the layout is deterministic, so an absolute file-count check catches anything the
+    # markers missed (partial purges, legacy unverifiable markers, interrupted runs)
+    shortfall = False
+    for split in splits:
+        folder, expected = JETCLASS_EXPECTED[split]
+        split_dir = os.path.join(base, folder)
+        n = len([f for f in os.listdir(split_dir) if f.endswith(".root")]) if os.path.isdir(split_dir) else 0
+        if n != expected:
+            shortfall = True
+            print(
+                f"WARNING: {split} split has {n} of {expected} expected .root files under "
+                f"{split_dir} -- the dataset is INCOMPLETE. Delete the .*.extracted "
+                f"markers under {base} for the affected tars and re-run."
+            )
+        else:
+            print(f"{split} split complete: {n}/{expected} .root files")
+    if not shortfall:
+        print(f"JetClass ready under {base}/Pythia -- matches config/jctagging.yaml data.data_dir.")
+    else:
+        print("JetClass NOT ready -- see the WARNINGs above; do not launch jctagging training yet.")
+
+
+TOPTAGXL_SPLIT_FOLDER = {"train": "train_100M", "test": "test_25M", "val": "val_10M"}
+TOPTAGXL_CLASSES = ("qcd", "top")
+# (folder, [lo, hi)) per split -- MUST mirror config/toptagxl.yaml's
+# {train,test,val}_files_range, which toptagxlexperiment.py turns into
+# <folder>/<class>_<NNN>.root requests. The numbering is GLOBAL and continuous across
+# splits (train 000-499, test 500-624, val 625-674 per class), which is why organizing
+# keeps each file's original name instead of renumbering per folder.
+TOPTAGXL_EXPECTED = {
+    "train": ("train_100M", (0, 500)),
+    "test": ("test_25M", (500, 625)),
+    "val": ("val_10M", (625, 675)),
+}
+
+
+def _organize_toptagxl(dest):
+    """Move flat-extracted .root files into the split folders the loader expects.
+
+    The Zenodo tars unpack their .root files DIRECTLY into ``dest`` with no internal
+    directories (verified on the real archives: 675 qcd_ + 675 top_ files landed
+    side by side), but toptagxlexperiment.py reads
+    ``<dest>/{train_100M,test_25M,val_10M}/<class>_<NNN>.root``. Each tar's marker
+    records its member list, so which split a file belongs to is read off the
+    manifest rather than guessed from the numbering. Idempotent, and a rename on the
+    same filesystem, so re-running costs nothing and moves no data.
+    """
+    moved, legacy = 0, []
+    for split, folder in TOPTAGXL_SPLIT_FOLDER.items():
+        target = os.path.join(dest, folder)
+        for fname, _md5 in TOPTAGXL.get(split, []):
+            marker = os.path.join(dest, f".{fname}.extracted")
+            if not os.path.exists(marker):
+                continue
+            with open(marker) as f:
+                names = [line for line in f.read().splitlines() if line]
+            if not names:  # legacy 0-byte marker: no manifest -> no split assignment
+                legacy.append(fname)
+                continue
+            os.makedirs(target, exist_ok=True)
+            for name in names:
+                src = os.path.join(dest, name)
+                dst = os.path.join(target, os.path.basename(name))
+                if os.path.exists(dst) or not os.path.isfile(src):
+                    continue
+                os.replace(src, dst)
+                moved += 1
+    if moved:
+        print(f"Organized {moved} .root files into {tuple(TOPTAGXL_SPLIT_FOLDER.values())} "
+              f"using the tar manifests")
+    if legacy:
+        print(
+            f"WARNING: {len(legacy)} tar(s) carry legacy markers with no manifest "
+            f"(e.g. {legacy[0]}) -- their files cannot be assigned to a split "
+            f"automatically. Delete those markers and re-run to re-extract with one."
+        )
 
 
 def collect_toptagxl(splits):
@@ -161,38 +386,65 @@ def collect_toptagxl(splits):
             tar_path = os.path.join(dest, fname)
             marker = os.path.join(dest, f".{fname}.extracted")
             if os.path.exists(marker):
-                print(f"{fname} already extracted, skipping")
-                continue
+                state, missing = _marker_state(
+                    marker, dest, [os.path.join(dest, f) for f in TOPTAGXL_FOLDERS]
+                )
+                if state == "verified":
+                    print(f"{fname} already extracted, skipping (manifest verified)")
+                    continue
+                if state == "stale":
+                    print(
+                        f"WARNING: {fname} is marked extracted but {len(missing)} of its "
+                        f"files are GONE (e.g. {missing[0]}) -- scratch purge? "
+                        f"Re-downloading this part."
+                    )
+                    os.remove(marker)  # fall through to download + extract
+                else:  # legacy 0-byte marker: no manifest to check against
+                    if not any(
+                        os.path.isdir(os.path.join(dest, d)) and os.listdir(os.path.join(dest, d))
+                        for d in TOPTAGXL_FOLDERS
+                    ):
+                        print(
+                            f"WARNING: {fname} is marked extracted but no split folder under "
+                            f"{dest} has any files -- scratch purge? Delete the .*.extracted "
+                            f"markers there to force a re-download/re-extract."
+                        )
+                    print(f"{fname} already extracted, skipping (legacy marker, contents UNVERIFIED)")
+                    continue
             url = f"{TOPTAGXL_BASE}/{fname}/content"
             if os.path.exists(tar_path) and _md5(tar_path) == md5:
                 print(f"{fname} already downloaded (md5 ok)")
             else:
                 if os.path.exists(tar_path):
-                    os.remove(tar_path)  # partial/corrupt -> re-download
+                    os.remove(tar_path)  # stale corrupt file at the FINAL path (old wget
+                    #                      runs); in-progress partials resume via .part
                 print(f"Downloading {url}")
-                wget.download(url, out=tar_path)
-                print("")
-                if _md5(tar_path) != md5:
-                    raise RuntimeError(f"md5 mismatch for {fname}; delete it and retry")
+                _download_verified(url, tar_path, md5)
             print(f"Extracting {fname} -> {dest}")
-            with tarfile.open(tar_path) as tar:
-                try:
-                    tar.extractall(dest, filter="data")  # python >= 3.12 safe extraction
-                except TypeError:
-                    tar.extractall(dest)
-            open(marker, "w").close()
+            _extract_with_manifest(tar_path, dest, marker)
             print(f"Extracted {fname}  (you may delete {tar_path} to reclaim disk)")
 
-    want = [f for f in TOPTAGXL_FOLDERS if any(s in f for s in splits) or set(splits) >= {"train", "val", "test"}]
-    missing = [f for f in want if not os.path.isdir(os.path.join(dest, f))]
-    if missing:
-        print(
-            f"WARNING: expected folder(s) {missing} not found under {dest} after "
-            f"extraction. Inspect the extracted layout and symlink/rename it so the "
-            f"loader finds <data_dir>/<split_folder>/<class>_<NNN>.root, i.e. "
-            f"{TOPTAGXL_FOLDERS} with qcd_/top_ .root files (config/toptagxl.yaml "
-            f"data.data_dir = {dest}); the Zenodo tars do not document their internal tree."
-        )
+    _organize_toptagxl(dest)
+
+    shortfall = False
+    for split in splits:
+        folder, (lo, hi) = TOPTAGXL_EXPECTED[split]
+        split_dir = os.path.join(dest, folder)
+        want = [f"{c}_{i:03d}.root" for c in TOPTAGXL_CLASSES for i in range(lo, hi)]
+        missing = [f for f in want if not os.path.exists(os.path.join(split_dir, f))]
+        if missing:
+            shortfall = True
+            print(
+                f"WARNING: {split} split is missing {len(missing)} of {len(want)} files the "
+                f"loader will request from {split_dir} (e.g. {missing[0]}). "
+                f"config/toptagxl.yaml {split}_files_range expects "
+                f"<class>_{lo:03d}..{hi - 1:03d} for classes {TOPTAGXL_CLASSES}."
+            )
+        else:
+            print(f"{split} split complete: {len(want)}/{len(want)} files match "
+                  f"config/toptagxl.yaml {split}_files_range")
+    if shortfall:
+        print("TopTagXL NOT ready -- see the WARNINGs above; do not launch toptagxl training yet.")
     else:
         print(f"TopTagXL ready under {dest} -- matches config/toptagxl.yaml data.data_dir.")
 

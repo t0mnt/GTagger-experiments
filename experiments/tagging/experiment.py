@@ -48,7 +48,7 @@ class TaggingExperiment(BaseExperiment):
                 LOGGER.warning(
                     f"{modelname} is training at the UNSWEPT family fallback "
                     f"({', '.join(unswept)}) -- did you forget to fill its recipe "
-                    "from find_lr.py?"
+                    "from utils/find_lr.py?"
                 )
 
         self.cfg.model.out_channels = self.num_outputs
@@ -560,11 +560,25 @@ class TaggingExperiment(BaseExperiment):
         if not hasattr(self, "val_selection_history"):
             self.val_selection_history = []
         self.val_selection_history.append((step, metrics["loss"], metrics["accuracy"]))
+        # Keep the best checkpoint under the NON-selected metric too, so a selection-metric
+        # doubt is settled by evaluating a saved file rather than re-training. One extra file.
+        primary_is_acc = self.cfg.training.get("best_model_metric", "loss") == "accuracy"
+        secondary = metrics["loss"] if primary_is_acc else 1.0 - metrics["accuracy"]
+        if not hasattr(self, "_secondary_best"):
+            self._secondary_best = float("inf")
+        if self.cfg.training.es_load_best_model and secondary < self._secondary_best:
+            self._secondary_best = secondary
+            self._secondary_best_step = step
+            self._save_model(self._secondary_best_filename())
         # best_model_metric selects which checkpoint es_load_best_model keeps. Default
         # 'loss'; 'accuracy' returns 1 - accuracy so the loop's "lower is better" holds.
-        if self.cfg.training.get("best_model_metric", "loss") == "accuracy":
+        if primary_is_acc:
             return 1.0 - metrics["accuracy"]
         return metrics["loss"]
+
+    def _secondary_best_filename(self):
+        other = "loss" if self.cfg.training.get("best_model_metric", "loss") == "accuracy" else "acc"
+        return f"model_run{self.cfg.run_idx}_best_{other}.pt"
 
     def _log_checkpoint_selection(self, best_step):
         """Cross-check the kept checkpoint against selection-by-accuracy.
@@ -598,7 +612,11 @@ class TaggingExperiment(BaseExperiment):
         # divergence is expected tie-breaking, above it flag for eyes
         if gap > 5e-4:
             LOGGER.warning(
-                msg + " Material gap -- consider a best_model_metric=accuracy cross-check run."
+                msg + f" Material gap -- the accuracy-best checkpoint is saved as "
+                f"models/{self._secondary_best_filename()}; evaluate it post-hoc "
+                f"(warm_start_load=true, train_model=false on this run dir with "
+                f"the checkpoint swapped in) before considering a global "
+                f"best_model_metric switch. Do NOT switch per-run."
             )
         else:
             LOGGER.info(msg + " Within counting noise; selection-by-loss stands.")

@@ -8,12 +8,17 @@ dependencies install *on top of* the container's torch instead of clobbering it.
 Replace the `<...>` placeholders with your cluster's values (module name, image
 path, partition, GPU spec, account).
 
+**On Brown's Oscar, use [`OSCAR.md`](OSCAR.md) instead** — it is this same recipe with
+the cluster's specifics already filled in (container module, `interact`, the three
+storage tiers, a ready `train.sbatch`), plus the failure modes we hit there. This file
+is the portable version: shorter, no cluster-specific workarounds, `<...>` to fill in.
+
 ## 1. One-time setup (on a login node)
 
 ```bash
-git clone https://github.com/<you>/GTagger-experiments && cd GTagger-experiments
+git clone "https://github.com/<you>/GTagger-experiments" && cd GTagger-experiments
 module load apptainer                       # or: module load singularity
-IMG=<path/to/pytorch.sif>                    # your PyTorch container
+IMG="<path/to/pytorch.sif>"                    # your PyTorch container
 
 # a venv that INHERITS the container's torch (so pip won't reinstall/clobber it)
 apptainer exec "$IMG" python -m venv --system-site-packages venv
@@ -43,9 +48,18 @@ Notes:
   attention baselines whose configs pin `attention_backend: xformers`
   (`tag_transformer`, `tag_top_transformer`, `tag_lgatr`, `tag_slim`) would crash
   on a GPU without it — run those with `model.attention_backend=flash` (if the
-  container ships flash-attn; NGC images usually do) or `=flex` (pure torch), and
-  validate the override with a quick config_quick run first. If your cluster can
-  build xformers against the container torch, keep the lines in instead.
+  container ships flash-attn; NGC images usually do — flash is typically the
+  fastest backend for ragged jets anyway, see GUIDE §7) or `=flex` (pure torch),
+  and validate the override with a quick config_quick run first. If your cluster
+  can build xformers against the container torch, keep the lines in instead.
+
+Verify the environment before trusting it — `utils/env_check.py` certifies interpreter
+provenance, container-vs-pip torch, CUDA, the science-stack versions and the xformers
+build in one command (`--gpu` on a GPU allocation adds real kernel tests):
+
+```bash
+apptainer exec --nv "$IMG" bash -lc 'source venv/bin/activate && python utils/env_check.py --gpu'
+```
 
 ## 2. Get the data
 
@@ -56,8 +70,18 @@ apptainer exec "$IMG" bash -lc 'source venv/bin/activate && python data/collect_
 
 ## 3. Smoke-test on a GPU node
 
+Grab the session first — this line alone, and only from a login shell (never inside
+another srun/salloc session: a nested session's shell dies when the OUTER job's
+walltime expires, regardless of its own `--time`):
+
 ```bash
-srun --partition=<gpu-partition> --gres=gpu:1 --time=00:20:00 --pty bash
+srun --partition="<gpu-partition>" --gres=gpu:1 --time=00:20:00 --pty bash
+```
+
+Then, once the prompt is on the compute node:
+
+```bash
+# on the GPU COMPUTE node
 module load apptainer
 apptainer exec --nv "$IMG" bash -lc '
   source venv/bin/activate
@@ -65,27 +89,34 @@ apptainer exec --nv "$IMG" bash -lc '
 '
 ```
 
+`exit` back to the login shell when done.
+
 `--nv` exposes the GPU to the container. If your `$HOME`/scratch isn't auto-mounted,
 add `--bind <data_dir>:<data_dir>`.
 
 ## 4. Find lr + batch size, then train (sbatch)
 
-First (interactively or as a short job) size the batch and lr:
+First (in a §3-style GPU session, or as a short batch job) size the batch and lr:
 
 ```bash
+# on a GPU COMPUTE node (§3's srun --pty session)
 apptainer exec --nv "$IMG" bash -lc '
   source venv/bin/activate
-  python find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
+  python utils/find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
       save=false +lr_find.find_batch_size=true
 '   # prints:  ->  reuse with:  training.batchsize=<N> training.lr=<lr>
 ```
 
-Fill those into `config/training/top_<Model>.yaml`, then submit `train.sbatch`:
+Fill those into `config/training/top_<Model>.yaml`, then save the following as the
+FILE `train.sbatch` (file content — don't paste it into a shell; it would run the
+training in your foreground on the login node). The repo ships a concrete,
+parametrized version for Brown's Oscar cluster as `docs/oscar-train.sbatch` (see
+[`OSCAR.md`](OSCAR.md) §5) — on any other cluster, adapt this template:
 
 ```bash
 #!/bin/bash
 #SBATCH --job-name=lloca
-#SBATCH --partition=<gpu-partition>
+#SBATCH --partition="<gpu-partition>"
 #SBATCH --gres=gpu:h100:1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
@@ -94,7 +125,7 @@ Fill those into `config/training/top_<Model>.yaml`, then submit `train.sbatch`:
 # #SBATCH --account=<account>
 
 module load apptainer
-IMG=<path/to/pytorch.sif>
+IMG="<path/to/pytorch.sif>"
 
 srun apptainer exec --nv --bind "$PWD:$PWD" --pwd "$PWD" "$IMG" bash -lc '
   source venv/bin/activate
@@ -121,8 +152,8 @@ TopTagXL works the same way: fetch with `python data/collect_data.py toptagxl`
 10878355's API at download time) onto big-file storage with `data/toptagxl`
 symlinked there, then `-cn toptagxl` + `training=xl_<Model>`, seeding each
 `xl_<Model>.yaml`'s `???` from the swept `jc_` values and confirming with a
-`find_lr.py -cn toptagxl` sweep (GUIDE §5.2 — including why to shrink
-`data.val_files_range` before training).
+`utils/find_lr.py -cn toptagxl` sweep (GUIDE §5.2; keep the canonical
+`data.val_files_range`).
 
 ## 5. Multiple seeds, and the table
 
@@ -135,7 +166,8 @@ finished scheduler — that's for eval-reload / continue-training, not seeds; se
 `GUIDE.md` §8.) Across *different* models, collect the rows afterwards:
 
 ```bash
-python aggregate_table.py --runs runs --split test --out comparison.tex
+apptainer exec "$IMG" bash -lc \
+  'source venv/bin/activate && python utils/aggregate_table.py --runs runs --split test --out comparison.tex'
 ```
 
 (See `GUIDE.md` §8 for the trial/warm-start mechanics, and §6 for the lr/weight-decay

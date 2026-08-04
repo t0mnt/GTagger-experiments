@@ -13,8 +13,17 @@ The 8 hybrid recipes are skeletons with required `???` keys:
 The 8 GT recipes now inherit `tag_gts_and_friends_default` (shared `epochs=20` + `scheduler=CosineAnnealingWarmup`);
 only **`batchsize`, `lr`** remain `???` per model (optionally `weight_decay`):
 
-- [ ] `batchsize` ← `find_lr.py +lr_find.find_batch_size=true` (largest power-of-two that fits the H100).
-- [ ] `lr` ← `find_lr.py` (reported loss-min / 10).
+- [ ] **Validate the finder on a published baseline FIRST**: `utils/find_lr.py -cn toptagging
+      model=tag_particlenet training=top_particlenet save=false` at ParticleNet's fixed
+      batchsize (512) should land within an order of magnitude of its published `lr: 1e-2`.
+      The finder reports loss-min/10, not the authors' tuned value, so agreement in scale is
+      the pass criterion -- a wildly different answer means the tool (or the environment) is
+      wrong before eight unpublished models depend on it.
+- [ ] **Reproduce a known result before the campaign**: one `save=false` ParticleNet run under
+      its published recipe, checking test accuracy/AUC against the published numbers. It
+      exercises data, loader, model and evaluation end to end against a known answer.
+- [ ] `batchsize` ← `utils/find_lr.py +lr_find.find_batch_size=true` (largest power-of-two that fits YOUR GPU -- the finder measures it, so the answer is per-machine, not a number to copy).
+- [ ] `lr` ← `utils/find_lr.py` (reported loss-min / 10).
       (`weight_decay` tuning moved to `docs/ablations.md` "Training-side minor tunes" —
       the shared 0.01 ships as the decided default.)
 - [x] `epochs` (shared data-exposure budget) and `scheduler` are **decided** in `tag_gts_and_friends_default`
@@ -58,12 +67,12 @@ the toggle only changes which checkpoint `es_load_best_model` keeps/reports.
 
 All via Hydra overrides on `run.py` (use `-cp config` for the full configs). Every override is
 recorded per-run in `config.yaml` + the flattened MLflow params, so any sweep is reconstructable
-from the run dir. **Surfaced in the results table** (`aggregate_table.py` `COLUMNS`): only `frames`
+from the run dir. **Surfaced in the results table** (`utils/aggregate_table.py` `COLUMNS`): only `frames`
 (framesnet) and `kNN` (`knn_metric`); everything else (knn_k, num_layers/num_blocks, bias,
 pair_input_dim, use_rwse, use_edge_attr, …) lives only in config.yaml / MLflow. Rows are grouped into ONE
 table per task (toptagging / toptagxl / jctagging — different metric columns; `exp_type` read
 from each run's config.yaml; JetClass emits an aggregator-compatible row too). To put a knob in
-the head-to-head table, add it to `aggregate_table.py`'s per-task `COLUMNS` legend **and** the
+the head-to-head table, add it to `utils/aggregate_table.py`'s per-task `COLUMNS` legend **and** the
 per-run `table …:` log line that the regex reads.
 
 - **kNN graph (all networks).** count `model.net.knn_k=K` (CGENN uses `model.net.k=K`); metric
@@ -90,6 +99,12 @@ per-run `table …:` log line that the regex reads.
         (ZINC, ~23 nodes, diameter ~10); jet kNN is dense and small-diameter so the walk mixes
         fast and ~4–8 steps likely capture the useful return-probability structure (higher k adds
         near-saturated, redundant dims) — sweep `{4,8,16}` on Plain before generalizing.
+  - [ ] **PE/SE is a PRE-campaign gate, not a post-hoc ablation** (decided): whether the
+        headline GPS rows ship with RWSE changes what those models ARE, so decide it before
+        the primary runs — Plain-GPS ± RWSE (k=8) at tuned lr/batch on top tagging; if RWSE
+        wins meaningfully, port it to the other three GPS models (item above) BEFORE the
+        campaign; if null/negative, keep off and report as the ablation. LapPE stays post-hoc
+        only (expected negative, O(P^3) — never gates the campaign).
 - **Depth (transformer / GPS blocks).** `model.net.num_layers=N` (Plain, ParticleNet-ParT) /
   `model.net.num_blocks=N` (CGENN, LorentzNet). The depth curve is the "can the transformer
   compensate for a weaker GNN" story → a performance/efficiency section (room to discuss BigBird /
@@ -163,6 +178,65 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
 - [ ] JetClass: fill the 8 `jc_<Hybrid>.yaml` `???` batchsize/lr from find_lr on jctagging.
 - [ ] Rejection-metric convention differs top vs JetClass (one methods sentence, or unify).
 
+## 4b. Post-campaign housekeeping
+
+- [x] **Mechanical commit: move `find_lr.py` + `aggregate_table.py` → `utils/`** — done
+      PRE-campaign after all (the postpone rationale was a hand-executed move; done
+      mechanically with grep/compose verification before any recipe values existed, so
+      the docs stay stable through the campaign instead of churning after it).
+      Executed: `git mv` both; `config_path="../config"`; the repo-wide reference sweep
+      (guides, recipe headers, the `experiments/tagging/experiment.py` guardrail string,
+      both scripts' own docstrings); plus one unplanned real fix — a `sys.path` shim in
+      `find_lr.py`, since from `utils/` the repo root is no longer the script dir and
+      `import experiments` breaks without it. Verified: zero unqualified references left,
+      hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
+      the new path.
+
+## 4b-bis. torch.compile scope — revisit trigger (recorded 2026-08)
+
+Current scope: compile the equivariant-heavy paths (L-GATr / CGENN stages, where many
+small kernels fuse well and the rows are the expensive ones); leave the non-equivariant
+family (Plain, ParticleNet-ParT) uncompiled, since dense matmul + SDPA already run near
+roofline and the GraphTrans/GPS wrapper adds compile-hostile structure (PyG scatter,
+per-batch kNN, ragged shapes -> graph breaks and recompiles).
+
+**New evidence**: weaver-core has since added torch.compile support for ParticleNet and
+ParT upstream. That weakens the *feasibility* half of the argument (someone has done it
+and validated it) but not the *ROI* half, and their versions are standalone backbones,
+not wrapped in this repo's hybrid + LLoCa-frames machinery.
+
+- [ ] **Post-campaign**: try compile on ParticleNetParTGraphTrans/GPS and measure. If the
+      whole table can compile, prefer UNIFORM compilation over the current split -- it
+      removes the per-row disclosure asymmetry in the walltime column. Do not attempt this
+      pre-campaign: it is scope creep against a fixed timeline, and accuracy columns are
+      unaffected either way (compile is numerics-preserving; FLOPs are compile-independent).
+
+## 4c. Versioning
+
+`pyproject.toml` now reads **0.9.0** — pre-release: code complete, campaign not run,
+lgatr 2.0 merge pending. (It previously read 1.1.0, inherited from upstream
+lloca-experiments, which described *that* project's history rather than this fork's.)
+
+- [ ] **Bump to 1.0.0 when dev merges and the campaign tables exist** — that pairing is
+      what makes the number mean something: a reader can ask "which code produced the
+      table?" and get one answer.
+- [ ] **Tag the pre-merge state before starting the campaign** (`git tag pre-lgatr2 &&
+      git push --tags`). The campaign straddles the lgatr 1.x -> 2.0 boundary, so the
+      top-tagging rows and the post-merge rows come from different code; a tag names the
+      earlier state. Runs already archive their own source zip + config.yaml, so this is
+      convenience, not the only provenance.
+
+## 4d. Development records to delete at release
+
+- [ ] **Delete `docs/audit-ledger.md`.** It records which audit findings were fixed and why
+      — useful while the work is in flight (and while a re-audit might re-raise a settled
+      question), useless to a reader of the published repo, whose decisions are documented
+      where they apply. Its load-bearing content is already inline: e.g. the boost_jet
+      entry's reasoning lives at `experiments/tagging/experiment.py:125-145`. Delete at
+      release, NOT before: an auditor re-reporting a settled decision is exactly what it
+      prevents, and the campaign is still running.
+- [ ] Same timing for `todo.md` itself and, if you want the release lean, `docs/diffs.md`.
+
 ## 5. Paper release — branding / identity (only the maintainer has these)
 
 Critical (still point at the upstream LLoCa project):
@@ -185,8 +259,12 @@ Minor (stale strings / metadata):
 - [ ] add a `CITATION.cff` for the new paper.
 - [ ] `experiments/base_experiment.py:299` — `path_code = os.path.join(self.cfg.base_dir, "lloca")`
       hardcodes "lloca" for the saved-source dir → project name.
-- [ ] `docs/OSCAR.md` §2 — fix the `.sif` discrepancy once CCV remedies it: the
-      `ngc-pytorch-container/25.08-py3-ayk4` module `setenv`s the 24.03 sif; drop the resolve-the-real-25.08-sif workaround when the module is corrected.
+- [x] `docs/OSCAR.md` §2 — `.sif` discrepancy: CCV has corrected the
+      `ngc-pytorch-container/25.08-py3-ayk4` module (it no longer `setenv`s the 24.03 sif).
+      The prose now says so; the resolve-and-hard-stop guard is **kept on purpose** — it is
+      free, self-checking (overrides only when the value is wrong), and the failure it
+      catches is silent (a 24.03 image trains fine-looking garbage on torch 2.3). Remove it
+      only if the modulefile is ever guaranteed stable across all login nodes.
 - [ ] `docs/SLURM.md:79` — `#SBATCH --job-name=lloca`.
 - [ ] `config/{toptagging,jctagging,ttbar}.yaml` + `config_quick/*` — debug `exp_name`s
       (`topt_local_debug`, `jc_debug`, `ttbar_debug`).
@@ -211,4 +289,4 @@ Minor (stale strings / metadata):
   `change_local_frame` + `LLoCaAttention`), **additive** (identity frames bit-identical: 0 added params),
   jet-frame class token (GraphTrans) / invariant mean-pool (GraphGPS), rapidity clamp.
 - Equivariance suite (24/24, incl. full Lorentz boost under learned `so(1,3)` frames).
-- `find_lr.py` batch-size finder; `aggregate_table.py`; `data/collect_data.py jetclass`; `GUIDE.md`; `docs/SLURM.md`.
+- `utils/find_lr.py` batch-size finder; `utils/aggregate_table.py`; `data/collect_data.py jetclass`; `GUIDE.md`; `docs/SLURM.md`.
