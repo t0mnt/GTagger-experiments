@@ -568,14 +568,18 @@ cp docs/oscar-train.sbatch train.sbatch
 mkdir -p logs                    # SLURM opens logs/%x-%j.out BEFORE the script runs
 ```
 
-**Do you have to edit it? Check `condos` first.** If your group owns a condo partition,
-use it: condo hardware is usually newer than the general `gpu` pool (a 4x H100 condo node
-vs a mixed bag of older cards -- `nodes gpu` lists what the general partition actually
-has), and you queue only against your own group instead of the whole university. Set
-`-p <your-condo>` and uncomment `-A <account>` in your copy. The shipped defaults (`-p gpu`, no account)
-submit to Oscar's general GPU partition and work unedited. Everything else in the file
-resolves at run time — `IMG` is the absolute container path, `APPTAINER` is looked up
-with a self-diagnosing guard, and the model/task/overrides all come from the command line.
+**What you fill in.** The template opens with a marked `FILL THESE IN` block — three
+lines, and only the first is mandatory:
+
+| line | when you need it |
+|---|---|
+| `-p <partition>` | always. `condos` shows a group condo if you have one — prefer it: newer cards than the general `gpu` pool (`nodes gpu` lists what that pool actually holds), and you queue only against your own group |
+| `-A <account>` | only if your partition requires one (condo/priority accounts usually do) |
+| `--mail-user` + `--mail-type=FAIL,TIME_LIMIT` | optional, recommended for multi-day runs: you get an email when a job fails or is killed at its walltime, instead of discovering it days later |
+
+Everything else resolves at run time — the container path is absolute, `apptainer` is
+looked up with a self-diagnosing guard, and model/task/overrides come from the command line. The shipped defaults (`-p gpu`, no account)
+submit to Oscar's general GPU partition and work unedited. 
 
 The template's comments explain every flag choice; the load-bearing facts:
 

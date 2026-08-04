@@ -3,7 +3,14 @@
 # Root-level *.sbatch is gitignored, so the partition/account you set in YOUR copy
 # (-p / -A below) stays local and cannot be committed to this public repo.
 #SBATCH -J gtagger
-#SBATCH -p gpu                    # partition; `allq gpu` shows load. gpu-he needs High-End priority
+# ---- FILL THESE IN -- the only lines in this file that need your values -----------
+#SBATCH -p gpu                    # YOUR PARTITION. `condos` shows a group condo if you have
+                                  # one (prefer it: newer cards, you queue only against your
+                                  # group). `allq gpu` shows load on the general pool.
+# #SBATCH -A your-account         # uncomment + set if your partition requires an account
+# #SBATCH --mail-user=you@example.edu   # uncomment BOTH mail lines to be emailed on failure
+# #SBATCH --mail-type=FAIL,TIME_LIMIT   # FAIL = nonzero exit; TIME_LIMIT = killed by -t
+# ---- end fill-in -----------------------------------------------------------------
 #SBATCH --gres=gpu:1
 #SBATCH -n 8                      # cores. jc/xl ship num_workers=2 (the published setting): it
                                   # fed the fastest published model at ~9.3k jets/s, and every
@@ -29,7 +36,6 @@
                                   # log becomes logs/<Model>-<jobid>.out (see the run_dir link below)
 #SBATCH --export=NONE             # do NOT inherit the login env (post-9.6 it carries a stale
                                   # lmod `module` function that errors on compute nodes)
-# #SBATCH -A <account>            # only if you belong to a condo/priority account (see `condos`)
 # #SBATCH -C ampere               # optionally pin a GPU architecture/feature (--constraint)
 
 # Do NOT `module load ngc-pytorch-container/...` here: that module setenv's the MISLABELED
