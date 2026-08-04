@@ -374,27 +374,37 @@ class BaseExperiment:
     def _init_optimizer(self, param_groups=None):
         if param_groups is None:
 
-            def is_bias(param):
-                return param.ndim <= 1
+            def is_bias(name, param):
+                # ndim<=1 catches norm gains and ordinary 1-d biases. The name check
+                # catches MULTI-DIM biases -- CGENN's MVLinear.bias is (1, C, 1) -- which
+                # the ParT grouping in tagging/experiment.py already exempts by name.
+                # Without it the two paths disagree, and the same hybrid family is
+                # regularized differently in its GraphTrans (ParT path) and GraphGPS
+                # (this path) variants: an asymmetry across the study's primary axis.
+                return param.ndim <= 1 or name.endswith(".bias")
 
             param_groups = [
                 {
-                    "params": [p for p in self.model.net.parameters() if not is_bias(p)],
+                    "params": [p for n, p in self.model.net.named_parameters() if not is_bias(n, p)],
                     "lr": self.cfg.training.lr,
                     "weight_decay": self.cfg.training.weight_decay,
                 },
                 {
-                    "params": [p for p in self.model.net.parameters() if is_bias(p)],
+                    "params": [p for n, p in self.model.net.named_parameters() if is_bias(n, p)],
                     "lr": self.cfg.training.lr,
                     "weight_decay": 0,
                 },
                 {
-                    "params": [p for p in self.model.framesnet.parameters() if not is_bias(p)],
+                    "params": [
+                        p for n, p in self.model.framesnet.named_parameters() if not is_bias(n, p)
+                    ],
                     "lr": self.cfg.training.lr_factor_framesnet * self.cfg.training.lr,
                     "weight_decay": self.cfg.training.weight_decay_framesnet,
                 },
                 {
-                    "params": [p for p in self.model.framesnet.parameters() if is_bias(p)],
+                    "params": [
+                        p for n, p in self.model.framesnet.named_parameters() if is_bias(n, p)
+                    ],
                     "lr": self.cfg.training.lr_factor_framesnet * self.cfg.training.lr,
                     "weight_decay": 0,
                 },
