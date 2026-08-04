@@ -44,6 +44,8 @@ Fixtures are trivial compared to the lgatr migration: eager outputs on a fixed s
 
 ## 4. Task split, prompts, operator gates
 
+> **Execution is driven from `docs/execution-playbook.md`** (steps C-α/C-β there, plus the LorentzNet Stage-2 and non-equivariant extensions this document's policy section calls for). It carries the canonical prompt copies and the exact operator check commands. On divergence, sync in a dedicated commit before running.
+
 ### Task α — rewrites + knob + gates (CPU web session)
 
 ```text
