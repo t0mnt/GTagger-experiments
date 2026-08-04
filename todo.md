@@ -205,11 +205,19 @@ ParT upstream. That weakens the *feasibility* half of the argument (someone has 
 and validated it) but not the *ROI* half, and their versions are standalone backbones,
 not wrapped in this repo's hybrid + LLoCa-frames machinery.
 
-- [ ] **Post-campaign**: try compile on ParticleNetParTGraphTrans/GPS and measure. If the
-      whole table can compile, prefer UNIFORM compilation over the current split -- it
-      removes the per-row disclosure asymmetry in the walltime column. Do not attempt this
-      pre-campaign: it is scope creep against a fixed timeline, and accuracy columns are
-      unaffected either way (compile is numerics-preserving; FLOPs are compile-independent).
+**GOAL: uniform compilation across the whole table.** Mixed compiled/eager rows force a
+per-row walltime footnote forever; one uniform setting retires it. Accuracy is unaffected
+either way (compile is numerics-preserving, FLOPs compile-independent), so this is a
+reporting-quality goal, not a physics one -- which is exactly why it must not delay the
+campaign. Staged:
+- [ ] **During the dev sprint**: CGENN (already planned, docs/cgenn-compile.md). Add ParT
+      and ParticleNet if and only if it costs little -- weaver-core has upstream support
+      for both now, so the risk is much lower than when this was first scoped.
+- [ ] **Post-campaign**: the 8 GT hybrids. Measure ParticleNetParTGraphTrans/GPS first --
+      the GraphTrans/GPS wrapper (per-batch kNN rebuild, PyG scatter, LLoCa transport) is
+      where graph breaks would come from, not the backbones.
+- [ ] Until uniform, keep the disclosure rule: FLOPs carries efficiency claims, walltime
+      stays informational with a per-row compile footnote.
 
 ## 4c. Versioning
 
