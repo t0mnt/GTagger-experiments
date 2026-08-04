@@ -33,10 +33,13 @@ COLUMNS = {
         r"model & frames & iters & params & accuracy & AUC & "
         r"$1/\epsilon_B$(0.3) & (0.5) & (0.8) & time & FLOPs & kNN"
     ),
-    # jctagging (10-class): per-class rejections, no FLOPs column
+    # jctagging (10-class): per-class rejections. Column set MUST match
+    # TaggingExperiment._log_table_row's output exactly (... & time & FLOPs & kNN) --
+    # a legend narrower than the row silently mislabels every column after the gap.
     "jctagging": (
         r"model & frames & iters & params & accuracy & AUC(ovo) & "
-        r"$1/\epsilon_B$: HBB & HCC & HGG & H4Q & HQQL & TBQQ & TBL & WQQ & ZQQ & time & kNN"
+        r"$1/\epsilon_B$: HBB & HCC & HGG & H4Q & HQQL & TBQQ & TBL & WQQ & ZQQ & "
+        r"time & FLOPs & kNN"
     ),
 }
 

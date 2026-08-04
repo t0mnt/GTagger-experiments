@@ -60,8 +60,8 @@ CP=config; TASK=""; MODEL=""; RECIPE=""; EXTRA=""
 while [ $# -gt 0 ]; do
   case "$1" in
     python|python3|run.py) shift ;;   # so a `python run.py ...` line pastes in verbatim
-    -cp|--config-path) CP=$2; shift 2 ;;
-    -cn|--config-name) TASK=$2; shift 2 ;;
+    -cp|--config-path) [ $# -ge 2 ] || { echo "$1 needs a value"; exit 1; }; CP=$2; shift 2 ;;
+    -cn|--config-name) [ $# -ge 2 ] || { echo "$1 needs a value"; exit 1; }; TASK=$2; shift 2 ;;
     model=*)    MODEL=${1#model=}; shift ;;
     training=*) RECIPE=$1; shift ;;
     gpus=*)     [ "${1#gpus=}" = "1" ] || { echo "refusing gpus=${1#gpus=}: this repo's DDP path is not supported -- run one GPU per job"; exit 1; }; shift ;;
@@ -76,7 +76,7 @@ case "$TASK" in toptagging) P=top ;; jctagging) P=jc ;; toptagxl) P=xl ;; *) ech
 # Derive the training recipe only when one EXISTS: the 8 hybrids ship top_/jc_/xl_ recipes,
 # but baselines like tag_MIParT-L do not and must fall back to the task config's default
 # (auto-adding training=jc_MIParT-L would fail composition).
-if [ -z "$RECIPE" ] && [ -n "$MODEL" ] && [ -f "config/training/${P}_${MODEL#tag_}.yaml" ]; then
+if [ -z "$RECIPE" ] && [ -n "$MODEL" ] && [ -f "$CP/training/${P}_${MODEL#tag_}.yaml" ]; then
   RECIPE="training=${P}_${MODEL#tag_}"
 fi
 
