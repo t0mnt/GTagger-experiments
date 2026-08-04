@@ -205,12 +205,6 @@ ParT upstream. That weakens the *feasibility* half of the argument (someone has 
 and validated it) but not the *ROI* half, and their versions are standalone backbones,
 not wrapped in this repo's hybrid + LLoCa-frames machinery.
 
-**Table-wide compile policy: see `docs/cgenn-compile.md`** (dev branch) -- it lives with
-the compile plan rather than here, since this file is deleted at release. Summary: compile
-touches only the walltime column, and uniformly OFF is the cheapest uniform state (one
-override on `tag_slim`, which ships `compile: true`), because the published anchors we
-cite are uncompiled too.
-
 ## 4c. Versioning
 
 `pyproject.toml` now reads **0.9.0** — pre-release: code complete, campaign not run,
