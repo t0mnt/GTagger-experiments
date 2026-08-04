@@ -532,7 +532,8 @@ loader, model, evaluation, table row -- against an answer you already know, so a
 mismatch here is an environment or data problem, not a hypothesis about your hybrids:
 
 ```bash
-# on the LOGIN node (a full run, so submit it; ~1 day on JetClass, far less on top tagging)
+# on the LOGIN node -- a full run, so submit it rather than sitting in an interact.
+# Runtime depends on your cluster and dataset; the job prints its own estimate early on.
 sbatch -J particlenet-check train.sbatch tag_particlenet toptagging save=false
 # when it finishes: grep "table test" logs/particlenet-check-<jobid>.out
 ```

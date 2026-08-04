@@ -14,7 +14,10 @@
 #SBATCH --mem=48G                 # top-tagging: full npz in RAM + fp64 momenta -> 48G safe.
                                   # JetClass/TopTagXL (streaming, per-worker fetch buffers): 64G.
                                   # After the first run, `myjobinfo` shows MaxRSS -- trim to fit.
-#SBATCH -t 24:00:00               # raise for the heavy CGENN-GPS (~a day/trial on a top GPU)
+#SBATCH -t 24:00:00               # raise for the heavy hybrids. Any per-model hour figure in
+                                  # these docs is an ESTIMATE; the run prints its own
+                                  # "training time estimate" within the first ~1000 steps --
+                                  # size -t from that, not from the estimate.
 #SBATCH -o logs/%x-%j.out         # logs/ must exist BEFORE sbatch: SLURM opens this file
                                   # before the script runs -- missing dir = job dies, no output.
                                   # %x = job name: submit with `sbatch -J <Model> ...` and the
@@ -73,8 +76,11 @@ fi
       +slurm_job_id=${SLURM_JOB_ID:-none} $EXTRA
 "
 # -cp defaults to `config` (run.py itself defaults to the tiny config_quick tree).
-# gpus is pinned to 1: multi-GPU DDP is not supported here, so it is refused rather
-# than offered. Run one GPU per job -- four such jobs fill a 4-GPU node in parallel.
+# gpus=1 is NOT redundant: config/default.yaml ships gpus: -1, which means "use every
+# visible GPU" -- on a node where more than one is visible that spawns DDP ranks, and
+# tagging refuses DDP outright (experiments/tagging/experiment.py). Pinning 1 keeps that
+# from depending on what the allocation happens to expose. Multi-GPU is refused above for
+# the same reason; run one GPU per job, four such jobs fill a 4-GPU node in parallel.
 # +slurm_job_id records the job id INSIDE the run (config.yaml + MLflow params), and the
 # job prints its run_dir into the .out -- so either direction of jobid <-> run resolves:
 #   grep run_dir logs/<Model>-<jobid>.out          # jobid -> run
