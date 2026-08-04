@@ -6,12 +6,13 @@
 #SBATCH -p gpu                    # partition; `allq gpu` shows load. gpu-he needs High-End priority
 #SBATCH --gres=gpu:1
 #SBATCH -n 8                      # cores. jc/xl ship num_workers=2 (the published setting).
-                                  # Indirect evidence that this is enough: the published plain
-                                  # transformer moved 500M samples in 15h = ~9.3k jets/s at that
-                                  # setting, and our models are estimated slower per sample --
-                                  # but that was THEIR filesystem and OUR speeds are estimates,
-                                  # so treat it as a prior, not proof. MEASURE: if nvidia-smi
-                                  # shows the GPU idling mid-run, raise -n and
+                                  # Reason to expect that is enough: the published plain
+                                  # transformer moved 500M samples in 15h = ~9.3k jets/s at this
+                                  # setting, and every model here is slower per sample -- if the
+                                  # loader kept up with the fastest model, it keeps up with the
+                                  # slower equivariant hybrids. Caveat: their samples came off
+                                  # THEIR filesystem, not yours, so treat it as a prior. MEASURE:
+                                  # if nvidia-smi shows the GPU idling mid-run, raise -n and
                                   # jc_params.num_workers together -- and then for EVERY row,
                                   # since the table reports walltime.
 #SBATCH --mem=48G                 # top-tagging: full npz in RAM + fp64 momenta -> 48G safe.
@@ -38,34 +39,45 @@ export PYTHONUNBUFFERED=1         # live logs (batch jobs have no tty -> python 
 export PYTHONNOUSERSITE=1         # never import from ~/.local (the docs/OSCAR.md leak class);
                                   # --export=NONE strips the .bashrc copy, so set it here too
 
-MODEL=${1:?usage: sbatch train.sbatch tag_<Model> [task] [extra hydra overrides...]}
-MODEL=${MODEL#model=}             # accept either `tag_X` or the hydra-style `model=tag_X`
-shift
-# arg 2 is the task ONLY if it names one -- otherwise it's already a hydra override
-# (so `sbatch train.sbatch tag_X save=false` means toptagging + save=false, not task save=false)
-case "${1:-}" in
-  toptagging|jctagging|toptagxl) TASK=$1; shift ;;
-  *) TASK=toptagging ;;
-esac
-case "$TASK" in toptagging) P=top ;; jctagging) P=jc ;; toptagxl) P=xl ;; esac
-
-# Everything left is a hydra override, passed through verbatim. Hydra REJECTS a duplicate
-# override, so only supply our defaults for keys the caller did not set -- that way any
-# command that works with `python run.py ...` also works with train.sbatch in front.
-EXTRA="$*"
-case " $EXTRA " in *" training="*) RECIPE="" ;; *) RECIPE="training=${P}_${MODEL#tag_}" ;; esac
-case " $EXTRA " in *" gpus="*)     GPUS=""   ;; *) GPUS="gpus=1"                        ;; esac
+[ $# -gt 0 ] || { echo "usage: sbatch train.sbatch tag_<Model> [task] [hydra overrides...]
+   or: sbatch train.sbatch <any run.py argument list, verbatim>"; exit 1; }
 cd "$HOME/GTagger-experiments"
+
+# Accepts both the short form and a run.py command copied verbatim (e.g. from REPRODUCE.md):
+#   sbatch train.sbatch tag_PlainGraphGPS jctagging save=false
+#   sbatch train.sbatch -cp config -cn jctagging model=tag_particlenet
+CP=config; TASK=""; MODEL=""; RECIPE=""; EXTRA=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -cp|--config-path) CP=$2; shift 2 ;;
+    -cn|--config-name) TASK=$2; shift 2 ;;
+    model=*)    MODEL=${1#model=}; shift ;;
+    training=*) RECIPE=$1; shift ;;
+    gpus=*)     [ "${1#gpus=}" = "1" ] || { echo "refusing gpus=${1#gpus=}: this repo's DDP path is not supported -- run one GPU per job"; exit 1; }; shift ;;
+    toptagging|jctagging|toptagxl) if [ -z "$TASK" ]; then TASK=$1; else EXTRA="$EXTRA $1"; fi; shift ;;
+    tag_*)      if [ -z "$MODEL" ]; then MODEL=$1; else EXTRA="$EXTRA $1"; fi; shift ;;
+    *)          EXTRA="$EXTRA $1"; shift ;;
+  esac
+done
+TASK=${TASK:-toptagging}
+case "$TASK" in toptagging) P=top ;; jctagging) P=jc ;; toptagxl) P=xl ;; *) echo "unknown task $TASK"; exit 1 ;; esac
+[ -n "$MODEL" ] && MODELARG="model=$MODEL" || MODELARG=""
+# Derive the training recipe only when one EXISTS: the 8 hybrids ship top_/jc_/xl_ recipes,
+# but baselines like tag_MIParT-L do not and must fall back to the task config's default
+# (auto-adding training=jc_MIParT-L would fail composition).
+if [ -z "$RECIPE" ] && [ -n "$MODEL" ] && [ -f "config/training/${P}_${MODEL#tag_}.yaml" ]; then
+  RECIPE="training=${P}_${MODEL#tag_}"
+fi
+
 "$APPTAINER" exec --nv "$IMG" bash -c "
   source venv/bin/activate
-  python run.py -cp config -cn $TASK \
-      model=$MODEL $RECIPE $GPUS \
+  python run.py -cp $CP -cn $TASK \
+      $MODELARG $RECIPE gpus=1 \
       +slurm_job_id=${SLURM_JOB_ID:-none} $EXTRA
 "
-# (no data.dataset override needed: config/toptagging.yaml already defaults to the
-#  full dataset, and the jc/xl configs have no such key -- it would crash there)
-# -cp config is REQUIRED: run.py defaults to the tiny config_quick tree, which has
-# no top_<Model> recipes. Recipe names are derived (tag_X + task -> top_X/jc_X/xl_X).
+# -cp defaults to `config` (run.py itself defaults to the tiny config_quick tree).
+# gpus is pinned to 1: multi-GPU DDP is not supported here, so it is refused rather
+# than offered. Run one GPU per job -- four such jobs fill a 4-GPU node in parallel.
 # +slurm_job_id records the job id INSIDE the run (config.yaml + MLflow params), and the
 # job prints its run_dir into the .out -- so either direction of jobid <-> run resolves:
 #   grep run_dir logs/<Model>-<jobid>.out          # jobid -> run

@@ -192,6 +192,21 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
       hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
       the new path.
 
+## 4c. Versioning
+
+`pyproject.toml` now reads **0.9.0** — pre-release: code complete, campaign not run,
+lgatr 2.0 merge pending. (It previously read 1.1.0, inherited from upstream
+lloca-experiments, which described *that* project's history rather than this fork's.)
+
+- [ ] **Bump to 1.0.0 when dev merges and the campaign tables exist** — that pairing is
+      what makes the number mean something: a reader can ask "which code produced the
+      table?" and get one answer.
+- [ ] **Tag the pre-merge state before starting the campaign** (`git tag pre-lgatr2 &&
+      git push --tags`). The campaign straddles the lgatr 1.x -> 2.0 boundary, so the
+      top-tagging rows and the post-merge rows come from different code; a tag names the
+      earlier state. Runs already archive their own source zip + config.yaml, so this is
+      convenience, not the only provenance.
+
 ## 5. Paper release — branding / identity (only the maintainer has these)
 
 Critical (still point at the upstream LLoCa project):

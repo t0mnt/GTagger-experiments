@@ -493,7 +493,11 @@ apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
 # compare the printed lr against config/training/top_particlenet.yaml (1e-2)
 ```
 
-Then, one session per model you plan to train (or chain them in one longer session):
+Then, one session per model you plan to train (or chain them in one longer session).
+**`+lr_find.find_batch_size=true` is what makes it search for a batch size** — without
+that flag the finder uses whatever `training.batchsize` the recipe already holds and
+reports only an lr (which is exactly what the ParticleNet check above wants, since that
+recipe pins 512). For your own models, both numbers are `???`, so you need the flag:
 
 ```bash
 # from a LOGIN shell (prompt loginXXX; echo $SLURM_JOB_ID prints nothing -- §0)
@@ -559,9 +563,14 @@ account you add to it — physically cannot be committed to this public repo):
 # on the LOGIN node
 cd ~/GTagger-experiments
 cp docs/oscar-train.sbatch train.sbatch
-# optional, condo/priority users only: set -p <your partition> and uncomment -A in train.sbatch;
-# the template's defaults (-p gpu, no account) work as-is for everyone else
+mkdir -p logs                    # SLURM opens logs/%x-%j.out BEFORE the script runs
 ```
+
+**Do you have to edit it?** Only if you use a condo or priority account: set `-p <your
+partition>` and uncomment `-A <account>`. The shipped defaults (`-p gpu`, no account)
+submit to Oscar's general GPU partition and work unedited. Everything else in the file
+resolves at run time — `IMG` is the absolute container path, `APPTAINER` is looked up
+with a self-diagnosing guard, and the model/task/overrides all come from the command line.
 
 The template's comments explain every flag choice; the load-bearing facts:
 
