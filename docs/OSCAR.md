@@ -537,8 +537,9 @@ sbatch -J particlenet-check train.sbatch tag_particlenet toptagging save=false
 # when it finishes: grep "table test" logs/particlenet-check-<jobid>.out
 ```
 
-One parametrized sbatch file covers every model and task — the model is the argument,
-extra hydra overrides pass straight through, so no per-model payload scripts:
+One parametrized sbatch file covers every model and task. It also accepts a `run.py`
+command copied verbatim (from `REPRODUCE.md`, say) with `sbatch train.sbatch` in front —
+`python run.py`, `-cp`, `-cn` and `model=` are all understood:
 
 ```bash
 # -J <Model> names the log logs/<Model>-<jobid>.out (see "matching jobs to runs" below)

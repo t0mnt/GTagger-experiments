@@ -41,10 +41,11 @@ cd "$HOME/GTagger-experiments"
 
 # Accepts both the short form and a run.py command copied verbatim (e.g. from REPRODUCE.md):
 #   sbatch train.sbatch tag_PlainGraphGPS jctagging save=false
-#   sbatch train.sbatch -cp config -cn jctagging model=tag_particlenet
+#   sbatch train.sbatch python run.py -cp config -cn jctagging model=tag_particlenet
 CP=config; TASK=""; MODEL=""; RECIPE=""; EXTRA=""
 while [ $# -gt 0 ]; do
   case "$1" in
+    python|python3|run.py) shift ;;   # so a `python run.py ...` line pastes in verbatim
     -cp|--config-path) CP=$2; shift 2 ;;
     -cn|--config-name) TASK=$2; shift 2 ;;
     model=*)    MODEL=${1#model=}; shift ;;
