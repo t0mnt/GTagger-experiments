@@ -5,16 +5,12 @@
 #SBATCH -J gtagger
 #SBATCH -p gpu                    # partition; `allq gpu` shows load. gpu-he needs High-End priority
 #SBATCH --gres=gpu:1
-#SBATCH -n 8                      # cores. jc/xl ship num_workers=2 (the published setting).
-                                  # Reason to expect that is enough: the published plain
-                                  # transformer moved 500M samples in 15h = ~9.3k jets/s at this
-                                  # setting, and every model here is slower per sample -- if the
-                                  # loader kept up with the fastest model, it keeps up with the
-                                  # slower equivariant hybrids. Caveat: their samples came off
-                                  # THEIR filesystem, not yours, so treat it as a prior. MEASURE:
-                                  # if nvidia-smi shows the GPU idling mid-run, raise -n and
-                                  # jc_params.num_workers together -- and then for EVERY row,
-                                  # since the table reports walltime.
+#SBATCH -n 8                      # cores. jc/xl ship num_workers=2 (the published setting): it
+                                  # fed the fastest published model at ~9.3k jets/s, and every
+                                  # model here is slower -- but off THEIR filesystem, not yours.
+                                  # If nvidia-smi shows the GPU idling, raise -n and
+                                  # jc_params.num_workers together, for EVERY row (walltime is
+                                  # a reported column).
 #SBATCH --mem=48G                 # top-tagging: full npz in RAM + fp64 momenta -> 48G safe.
                                   # JetClass/TopTagXL (streaming, per-worker fetch buffers): 64G.
                                   # After the first run, `myjobinfo` shows MaxRSS -- trim to fit.

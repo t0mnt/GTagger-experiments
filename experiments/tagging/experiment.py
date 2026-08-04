@@ -560,9 +560,8 @@ class TaggingExperiment(BaseExperiment):
         if not hasattr(self, "val_selection_history"):
             self.val_selection_history = []
         self.val_selection_history.append((step, metrics["loss"], metrics["accuracy"]))
-        # Also keep the best checkpoint under the NON-selected metric, so a selection-
-        # metric doubt can be settled post-hoc by evaluating the saved file instead of
-        # re-training. One extra file, overwritten in place on each improvement.
+        # Keep the best checkpoint under the NON-selected metric too, so a selection-metric
+        # doubt is settled by evaluating a saved file rather than re-training. One extra file.
         primary_is_acc = self.cfg.training.get("best_model_metric", "loss") == "accuracy"
         secondary = metrics["loss"] if primary_is_acc else 1.0 - metrics["accuracy"]
         if not hasattr(self, "_secondary_best"):
