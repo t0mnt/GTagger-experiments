@@ -93,37 +93,37 @@ Effort: Task α ≈ one focused session; Task β ≈ one cluster hour. Log secti
 
 ---
 
-## Table-wide compile policy (decide before the results table is built)
+## Table-wide compile policy
 
-`torch.compile` never changes accuracy (numerics-preserving up to fusion-order noise)
-and never changes FLOPs, so this is purely about the **walltime column**. Two kinds of
-comparability are in tension and you cannot have both:
+`torch.compile` changes neither accuracy (numerics-preserving up to fusion order) nor
+FLOPs. It changes **walltime and nothing else** -- so the only question it raises is how
+the walltime column is read, and that question is much smaller than it first looks.
 
-- **Intra-table**: every row measured under the same setting, so the walltime column
-  ranks architectures rather than compile status.
-- **Cross-paper**: your walltimes comparable with the published LLoCa/ParT/L-GATr
-  numbers we cite as anchors — those were measured **uncompiled**.
+**Compile where it works.** Cross-paper walltime comparability is already broken and was
+never real: our own ParticleNet ran 30 h against the published 25 h, a 20% gap from
+hardware and I/O alone, which is larger than a typical compile gain. Refusing a real
+speedup to protect a comparison that hardware has already invalidated would trade days
+or weeks of GPU time on a shared 4-GPU condo for a nicety that does not exist. Don't.
 
-Compiling everything buys the first and destroys the second. Compiling nothing keeps
-both, because the published anchors are uncompiled too.
+The disclosure rule does all the work that is actually needed:
+- **FLOPs carries every efficiency claim** -- it is compile-independent by construction,
+  which is precisely why the column exists.
+- **Walltime is informational, with a per-row compile footnote.** The table has carried
+  mixed rows since before any of this work (`config/model/tag_slim.yaml:22` ships
+  `compile: true` upstream), so mixed-and-disclosed is the status quo, not a new debt.
+- A model that will not compile cleanly simply stays eager. That is the footnote doing
+  its job, not a problem to engineer around.
 
-**Therefore the cheapest uniform state is uniformly OFF, not uniformly ON.** Today the
-table would have exactly one compiled row (`config/model/tag_slim.yaml:22` ships
-`compile: true` from upstream); overriding that one flag for the headline runs makes the
-whole table uniform for free, with no compile engineering at all.
+Two real prerequisites, neither of them a reason to hold back:
+- **A correctness gate before adopting a compiled row**: fusion changes float
+  accumulation order, so verify same-model behavior at tolerance (the BIT/TOL gates in
+  this document) rather than assuming it.
+- **Ignore the first timing estimate**: compile warmup and any recompilation land in the
+  early iterations, so the run's own "training time estimate" line reads high until the
+  graph settles.
 
-Costs of the compile-everything route, for the record:
-- Compile changes the memory profile, so the batch size that fits can change -- which
-  invalidates the tuned lr that was swept at the old batch size. Compiling after the
-  sweeps means either re-sweeping or knowingly running off-optimum.
-- Warmup and recompilation pollute short runs and the early "training time estimate".
-- Fusion changes float accumulation order; harmless in expectation, but a bit-level
-  gate would be needed to claim "same model, faster".
-- Any model that will not compile cleanly (graph breaks in the GraphTrans/GPS wrapper:
-  per-batch kNN rebuild, PyG scatter, LLoCa transport) reintroduces the asymmetry the
-  exercise was meant to remove.
-
-**Recommended:** headline table uniformly uncompiled (one override on `tag_slim`);
-`torch.compile` reported as a separate efficiency study -- CGENN per this document, ParT
-and ParticleNet if cheap (weaver-core supports both upstream now), hybrids post-campaign
--- where a speedup is the *result* rather than a confound.
+Scope, in the order the work naturally falls: CGENN per this document; ParT and
+ParticleNet next (weaver-core supports both upstream now, so the risk is low); the
+GT hybrids post-campaign, measuring ParticleNetParTGraphTrans/GPS first, since graph
+breaks would come from the wrapper (per-batch kNN rebuild, PyG scatter, LLoCa transport)
+rather than the backbones.
