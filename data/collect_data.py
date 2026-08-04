@@ -21,6 +21,11 @@ DATA_DIR = "data"
 # and config/jctagging.yaml sets data.data_dir = data/JetClass/Pythia -- which is exactly
 # the layout these official tars unpack to, so no post-processing or path edits are needed.
 JETCLASS_BASE = "https://zenodo.org/record/6619768/files"
+# NB the extract subdirs below are deliberately ASYMMETRIC, and verified against the real
+# archives (Pythia/ ends up holding train_100M, val_5M and test_20M): the ten train
+# part-tars are packed FLAT, so they extract into Pythia/train_100M and merge there, while
+# the single val and test tars each carry their own directory and so extract into Pythia.
+# Do not "fix" this into a uniform mapping -- that breaks whichever half you change.
 JETCLASS = {
     # split: (extract subdir under data/JetClass, [(tar filename, md5), ...])
     "train": (

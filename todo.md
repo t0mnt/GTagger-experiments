@@ -226,6 +226,17 @@ lloca-experiments, which described *that* project's history rather than this for
       earlier state. Runs already archive their own source zip + config.yaml, so this is
       convenience, not the only provenance.
 
+## 4d. Development records to delete at release
+
+- [ ] **Delete `docs/audit-ledger.md`.** It records which audit findings were fixed and why
+      — useful while the work is in flight (and while a re-audit might re-raise a settled
+      question), useless to a reader of the published repo, whose decisions are documented
+      where they apply. Its load-bearing content is already inline: e.g. the boost_jet
+      entry's reasoning lives at `experiments/tagging/experiment.py:125-145`. Delete at
+      release, NOT before: an auditor re-reporting a settled decision is exactly what it
+      prevents, and the campaign is still running.
+- [ ] Same timing for `todo.md` itself and, if you want the release lean, `docs/diffs.md`.
+
 ## 5. Paper release — branding / identity (only the maintainer has these)
 
 Critical (still point at the upstream LLoCa project):
