@@ -567,8 +567,11 @@ cp docs/oscar-train.sbatch train.sbatch
 mkdir -p logs                    # SLURM opens logs/%x-%j.out BEFORE the script runs
 ```
 
-**Do you have to edit it?** Only if you use a condo or priority account: set `-p <your
-partition>` and uncomment `-A <account>`. The shipped defaults (`-p gpu`, no account)
+**Do you have to edit it? Check `condos` first.** If your group owns a condo partition,
+use it: condo hardware is usually newer than the general `gpu` pool (a 4x H100 condo node
+vs a mixed bag of older cards -- `nodes gpu` lists what the general partition actually
+has), and you queue only against your own group instead of the whole university. Set
+`-p <your-condo>` and uncomment `-A <account>` in your copy. The shipped defaults (`-p gpu`, no account)
 submit to Oscar's general GPU partition and work unedited. Everything else in the file
 resolves at run time — `IMG` is the absolute container path, `APPTAINER` is looked up
 with a self-diagnosing guard, and the model/task/overrides all come from the command line.

@@ -8,6 +8,11 @@ dependencies install *on top of* the container's torch instead of clobbering it.
 Replace the `<...>` placeholders with your cluster's values (module name, image
 path, partition, GPU spec, account).
 
+**On Brown's Oscar, use [`OSCAR.md`](OSCAR.md) instead** — it is this same recipe with
+the cluster's specifics already filled in (container module, `interact`, the three
+storage tiers, a ready `train.sbatch`), plus the failure modes we hit there. This file
+is the portable version: shorter, no cluster-specific workarounds, `<...>` to fill in.
+
 ## 1. One-time setup (on a login node)
 
 ```bash
@@ -47,6 +52,14 @@ Notes:
   fastest backend for ragged jets anyway, see GUIDE §7) or `=flex` (pure torch),
   and validate the override with a quick config_quick run first. If your cluster
   can build xformers against the container torch, keep the lines in instead.
+
+Verify the environment before trusting it — `utils/env_check.py` certifies interpreter
+provenance, container-vs-pip torch, CUDA, the science-stack versions and the xformers
+build in one command (`--gpu` on a GPU allocation adds real kernel tests):
+
+```bash
+apptainer exec --nv "$IMG" bash -lc 'source venv/bin/activate && python utils/env_check.py --gpu'
+```
 
 ## 2. Get the data
 

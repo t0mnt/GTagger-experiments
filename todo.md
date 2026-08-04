@@ -192,6 +192,25 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
       hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
       the new path.
 
+## 4b-bis. torch.compile scope — revisit trigger (recorded 2026-08)
+
+Current scope: compile the equivariant-heavy paths (L-GATr / CGENN stages, where many
+small kernels fuse well and the rows are the expensive ones); leave the non-equivariant
+family (Plain, ParticleNet-ParT) uncompiled, since dense matmul + SDPA already run near
+roofline and the GraphTrans/GPS wrapper adds compile-hostile structure (PyG scatter,
+per-batch kNN, ragged shapes -> graph breaks and recompiles).
+
+**New evidence**: weaver-core has since added torch.compile support for ParticleNet and
+ParT upstream. That weakens the *feasibility* half of the argument (someone has done it
+and validated it) but not the *ROI* half, and their versions are standalone backbones,
+not wrapped in this repo's hybrid + LLoCa-frames machinery.
+
+- [ ] **Post-campaign**: try compile on ParticleNetParTGraphTrans/GPS and measure. If the
+      whole table can compile, prefer UNIFORM compilation over the current split -- it
+      removes the per-row disclosure asymmetry in the walltime column. Do not attempt this
+      pre-campaign: it is scope creep against a fixed timeline, and accuracy columns are
+      unaffected either way (compile is numerics-preserving; FLOPs are compile-independent).
+
 ## 4c. Versioning
 
 `pyproject.toml` now reads **0.9.0** — pre-release: code complete, campaign not run,
