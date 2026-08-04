@@ -26,6 +26,7 @@ V_norm = importlib.import_module("experiments.baselines.cgenn.normalization")
 V_gp = importlib.import_module("experiments.baselines.cgenn.gp")
 V_fcgp = importlib.import_module("experiments.baselines.cgenn.fcgp")
 V_alg = importlib.import_module("experiments.baselines.cgenn.cliffordalgebra")
+V_cgenn = importlib.import_module("experiments.baselines.cgenn.cgenn")
 H_pn = importlib.import_module("experiments.baselines.particlenettransformer")
 V_pn = importlib.import_module("experiments.baselines.particlenet")
 
@@ -134,6 +135,92 @@ def test_cgenn_primitive_initialisation_parity(name, build_hybrid, build_vendore
             f"{name}.{pname} INITIALISES differently: max |delta| "
             f"{(a.reshape(-1) - b.reshape(-1)).abs().max():.3e}. The two copies have drifted."
         )
+
+
+@pytest.mark.parametrize("layer_type", ["fc", "gpmlp"])
+@pytest.mark.parametrize("use_invariants_to_update", [True, False])
+def test_cglayer_parity(layer_type, use_invariants_to_update):
+    """The whole message-passing layer, not just its primitives.
+
+    The primitive tests above pin MVLinear/MVSiLU/... one at a time; they would not catch a
+    rewired forward (a dropped residual, a swapped concat order, a different aggregation).
+    This builds both CGLayers at the widths the two backbones actually wire -- all-equal
+    hidden channels, node_attr from the input widths -- and demands identical outputs from
+    identical weights, for both layer types and both update modes.
+
+    The hybrid dropped the vendored `use_invariant_network` flag. That flag's False branch
+    sets in_features_h=0 and passes h=None; no config in this repo sets it, so the branch is
+    dead and the live path is the one compared here.
+    """
+    algebras = _algebras()
+    CX, CH, IN_X, IN_H = 4, 6, 2, 5
+    kwargs = dict(
+        layer_type=layer_type,
+        use_invariants_to_update=use_invariants_to_update,
+        edge_attr_x=3 * IN_X,
+        edge_attr_h=0,
+        node_attr_x=IN_X,
+        node_attr_h=IN_H,
+    )
+    torch.manual_seed(3)
+    hybrid = H.CGLayer(algebras[0], CX, CX, CX, CH, CH, CH, **kwargs)
+    torch.manual_seed(3)
+    vendored = V_cgenn.CGLayer(algebras[1], CX, CX, CX, CH, CH, CH, **kwargs)
+    torch.manual_seed(9)
+    n_nodes, n_edges = 12, 30
+    inputs = (
+        torch.randn(n_nodes, CH),
+        torch.randn(n_nodes, CX, 16),
+        torch.randint(0, n_nodes, (2, n_edges)),
+        torch.randn(n_nodes, IN_H),          # node_attr_h
+        torch.randn(n_nodes, IN_X, 16),      # node_attr_x
+        None,                                # edge_attr_h
+        torch.randn(n_edges, 3 * IN_X, 16),  # edge_attr_x
+    )
+    _assert_same_output(hybrid, vendored, inputs)
+
+
+def test_gps_hybrids_reuse_the_graphtrans_classes():
+    """Each family has TWO rows. They must share one class object, not two copies.
+
+    Every parity result here is proven on the GraphTrans module; it transfers to the GraphGPS
+    row only because the GPS file imports the same objects rather than redefining them. If a
+    GPS variant ever grows its own copy, the topology comparison stops being controlled and
+    every test in this file silently covers half the table.
+    """
+    import experiments.baselines.cgennlgatrgraphgps as cgenn_gps
+    import experiments.baselines.particlenetpartgraphgps as pn_gps
+
+    for gps, source, names in (
+        (pn_gps, H_pn, ["EdgeConvBlock", "PairEmbed"]),
+        (cgenn_gps, H, ["CGLayer", "CliffordAlgebra"]),
+    ):
+        for name in names:
+            assert getattr(gps, name) is getattr(source, name), (
+                f"{gps.__name__}.{name} is not the same object as {source.__name__}.{name}: "
+                f"the GraphGPS row has its own copy and can drift from its GraphTrans partner."
+            )
+
+
+def test_pairwise_features_are_a_permutation_of_llocas_at_the_configured_width():
+    """pair_input_dim=4 is what every config uses, and there the two orderings are the same
+    four features permuted -- identical model class ahead of BatchNorm + 1x1 Conv. At width 1
+    they differ in CONTENT (lndelta here, lnm2 in lloca), which is the trap this pins."""
+    from lloca.backbone.particletransformer import pairwise_lv_fts_pp as lloca_fts
+
+    torch.manual_seed(0)
+    xi = torch.randn(64, 4, 30).abs() + 0.1
+    xj = torch.randn(64, 4, 30).abs() + 0.1
+    hybrid = H_pn.pairwise_lv_fts(xi, xj, num_outputs=4)
+    lloca = lloca_fts(xi, xj, num_outputs=4)
+    # lloca [lnm2, lnkt, lnz, lndelta] -> hybrid [lnkt, lnz, lndelta, lnm2]
+    assert torch.equal(hybrid, lloca[:, [1, 2, 3, 0]]), (
+        f"the two ParT pairwise feature sets are no longer a pure permutation at width 4: "
+        f"max |delta| {(hybrid - lloca[:, [1, 2, 3, 0]]).abs().max():.3e}"
+    )
+    assert not torch.equal(
+        H_pn.pairwise_lv_fts(xi, xj, num_outputs=1), lloca_fts(xi, xj, num_outputs=1)
+    ), "width 1 now agrees; update the note in pairwise_lv_fts, which says it does not"
 
 
 @pytest.mark.parametrize("op", ["geometric_product", "norm", "norms", "qs", "alpha", "beta", "q"])
