@@ -153,10 +153,14 @@ inside *every* block instead of once, which is what GraphGPS is.
 Calibrating against that table's own h/GFLOP (61–210, median ~83; L-GATr improves 81 → 28 under
 lgatr 2.0), CGENN-GraphGPS lands at **~2000–5000 GPU-h** for a full-JetClass-equivalent run —
 weeks to months on one H100, and still weeks on four. **This needs a decision before the JetClass
-campaign, not during it.** Options, cheapest first: run the CGENN local branch every Nth block
-rather than all ten; shrink `cgenn_hidden_x` / `k`; compile it (Stage 3 of `docs/cgenn-compile.md`,
-post-2.0); or run that row on top tagging only and disclose the omission. Top tagging is
-unaffected — everything there is affordable at these ratios.
+campaign, not during it** — but the fix is implementation, not architecture. Measured levers, all
+of which leave the model identical (details in `docs/cgenn-compile.md`, dev branch): replace the
+`einsum` geometric product with lgatr 2.0's outer-product + matmul form (**5.2× on the GP, verified
+bit-identical**, and the GP is ~46% of runtime); the data-movement rewrites (`copy_` is **38%** of
+runtime, 2071 calls per forward); sparse-GP (the Cayley table is 6.2% dense); `torch.compile`.
+Shrinking the model — striding the local branch, cutting `k` or `cgenn_hidden_x` — is **not** on
+this list: it makes the row a smaller model racing full-depth rivals, which is an ablation, not a
+speedup. Top tagging is unaffected either way.
 
 ## 3b. Paper points (observations from the build/audit)
 
