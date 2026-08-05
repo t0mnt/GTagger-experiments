@@ -436,6 +436,15 @@ whether the build is broken; only the kernel forward/backward needs `--gpu`.
 | real (non-fallback) `memory_efficient_attention` kernels | a build whose dispatcher offers only `-pt` PyTorch fallbacks (an expensive alias for `attention_backend=native`), and forward-only builds — the F/B requirement is there because a missing backward passes setup and the first forward, then dies at the first `loss.backward()` |
 | lgatr / lloca registered the `xformers` backend | the decisive one: both libraries populate a backend registry at import, and an unusable xformers is silently omitted from it. Any config pinning `attention_backend: xformers` then crashes **in the forward, not at init** |
 
+`env_check.py` is the automated form of §2.2's flash decision tree and reads the output the
+same way, deliberately: **`-pt` is a code path, not a quality mark** (`fa2F@2.5.7-pt` is genuine
+FlashAttention-2 reached through torch's bindings), and unavailable `ck*` / `fa3*` / `*-blackwell`
+entries are benign. An earlier revision of the check treated `-pt` as a fallback and flagged a
+healthy A40 build; if the two ever disagree again, §2.2 is the authority and the check is the bug.
+The extension-load probe reads `xformers._cpp_lib._cpp_library_load_exception` — not an
+`import xformers._C`, which raises `PyInit__C` on a *healthy* build because `_C` is a torch
+library rather than a Python module.
+
 **A missing xformers is reported as INFO, not FAIL** — the image this doc builds is
 xformers-free on purpose (§2.2), and only `tag_transformer`, `tag_top_transformer`,
 `tag_lgatr`, `tag_slim` pin it. If it is absent, override those four with
