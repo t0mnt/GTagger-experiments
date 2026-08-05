@@ -19,6 +19,7 @@ Exit code 0 = certified. Any FAIL prints what broke and how it usually got that 
 
 import argparse
 import glob
+import importlib
 import os
 import sys
 
@@ -104,25 +105,60 @@ def main():
           "re-run the section-2 install block")
 
     # ---- 4. xformers --------------------------------------------------------------
+    # Absence is NOT a failure: the documented Oscar image is built xformers-free
+    # (OSCAR.md section 2 strips it), and nothing in the campaign needs it -- only the four
+    # configs that pin `attention_backend: xformers` do. Failing here would make the
+    # RECOMMENDED setup permanently "NOT CERTIFIED", which trains people to ignore the tool.
     try:
         import xformers
-        ver = xformers.__version__
-        check("xformers real build (sha-stamped)", "+" in ver, ver,
-              "a bare version = the crippled kernel-free sdist build; rebuild from the "
-              "git tag matched to the container torch (see OSCAR.md)")
-        import xformers.ops as xops  # the import that the flash chain can crash
-        check("xformers.ops imports (flash chain resolved)", True)
-        if args.gpu and torch.cuda.is_available():
-            from xformers.ops import fmha
-            q = torch.randn(1, 16, 4, 32, device="cuda", dtype=torch.float16)
-            bias = fmha.BlockDiagonalMask.from_seqlens([10, 6])
-            out = fmha.memory_efficient_attention(q.view(1, 16, 4, 32), q.view(1, 16, 4, 32),
-                                                  q.view(1, 16, 4, 32), attn_bias=bias)
-            check("memory_efficient_attention runs (BlockDiagonal, fp16)",
-                  bool(out.isfinite().all().item()))
-    except Exception as e:  # noqa: BLE001 -- certification must report, not crash
-        check("xformers usable", False, f"{type(e).__name__}: {e}",
-              "see the xformers section of docs/OSCAR.md (tag choice, flash decision tree)")
+    except ImportError:
+        print("[INFO] xformers not installed -- expected on the xformers-free image. Only "
+              "tag_transformer / tag_top_transformer / tag_lgatr / tag_slim pin it; override "
+              "with model.attention_backend=native|flex (OSCAR.md).")
+        xformers = None
+    if xformers is not None:
+        try:
+            ver = xformers.__version__
+            check("xformers real build (sha-stamped)", "+" in ver, ver,
+                  "a bare version = the crippled kernel-free sdist build; rebuild from the "
+                  "git tag matched to the container torch (see OSCAR.md)")
+            import xformers.ops as xops  # the import that the flash chain can crash
+            check("xformers.ops imports (flash chain resolved)", True)
+            if args.gpu and torch.cuda.is_available():
+                from xformers.ops import fmha
+                q = torch.randn(1, 16, 4, 32, device="cuda", dtype=torch.float16)
+                bias = fmha.BlockDiagonalMask.from_seqlens([10, 6])
+                out = fmha.memory_efficient_attention(q.view(1, 16, 4, 32), q.view(1, 16, 4, 32),
+                                                      q.view(1, 16, 4, 32), attn_bias=bias)
+                check("memory_efficient_attention runs (BlockDiagonal, fp16)",
+                      bool(out.isfinite().all().item()))
+        except Exception as e:  # noqa: BLE001 -- certification must report, not crash
+            check("xformers usable", False, f"{type(e).__name__}: {e}",
+                  "see the xformers section of docs/OSCAR.md (tag choice, flash decision tree)")
+
+    # ---- 4b. the check that actually predicts a crash -------------------------------
+    # A working `import xformers` does NOT mean a run can use it: lgatr and lloca each keep
+    # a backend REGISTRY populated at import time, and an ABI-mismatched xformers (built for
+    # a different torch) is silently omitted from both. A model with
+    # `attention_backend: xformers` then dies on its first forward -- past init, minutes or
+    # hours into a job. This asserts the registries, not the import.
+    pinned = "xformers"
+    for mod_name in ("lgatr.primitives.attention_backends", "lloca.backbone.attention_backends.mask"):
+        try:
+            registry = sorted(getattr(importlib.import_module(mod_name), "_REGISTRY", {}))
+        except Exception as e:  # noqa: BLE001
+            check(f"{mod_name} importable", False, f"{type(e).__name__}: {e}")
+            continue
+        available = pinned in registry
+        if xformers is None and not available:
+            print(f"[INFO] {mod_name.split('.')[0]} backends: {registry} (no xformers, as expected)")
+            continue
+        check(f"{mod_name.split('.')[0]} registered the '{pinned}' backend", available,
+              f"registry={registry}",
+              "xformers imports but neither library could bind it -- almost always an ABI "
+              "mismatch with the installed torch. Any config pinning attention_backend="
+              f"{pinned} will crash IN THE FORWARD, not at init. Rebuild xformers against "
+              "this torch, or override the backend to native|flex.")
 
     # ---- 5. flash-attn (informational; PT-flash floor exists regardless) ----------
     try:
