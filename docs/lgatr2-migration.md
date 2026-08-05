@@ -19,6 +19,26 @@
 4. Several feared breaks verified as **non-breaks**, most importantly the CPU attention path (the suite survives v2's CUDA gate because `experiments/misc.py` already falls back to dense masks on CPU).
 5. Scope statement: **weight transplant is a parity-verification instrument only.** Porting trained checkpoints between lgatr versions is a non-goal of this migration — no checkpoint crosses the boundary (H7).
 
+**Rev 4 (2026-08-05) — the inventory was executed against the real wheel, not only read.**
+`lgatr-2.0.0-py3-none-any.whl` was downloaded and imported side-by-side with the installed
+1.4.4 (path-injection, no environment change — Phase 0 stays capturable). Every M and S row
+below was checked by construction and by parameter inventory. Results:
+
+- **Confirmed exactly as written**: M3 (`attn_ratio`), M4 (`nonlinearity` / `mlp_ratio` /
+  `num_layers_mlp`), M5 (`SlimRMSNorm(v_channels, s_channels, ...)`), M6 (`in_s_channels: int = 0`),
+  M8 (layers are `(..., 4, channels)`, the net stays `(..., items, channels, 4)`),
+  M9 (`compile_mode` / `compile_dynamic` both raise `TypeError`), M10 (`primitives` is the
+  **third positional** on `EquiLinear` and required on `SelfAttention` / `GeoMLP`),
+  S1 (`nonlinearity_v="sigmoid"`), S5 (`bias=False` at exactly four qkv sites),
+  S6 (`0.5` at `slim_layers.py:368-369`, comment and all), and §2.1's claim that the
+  *layer-level* `EquiLayerNorm` default is `False` while nets default it `True`.
+- **S2 / S5 sharpened to exact tensors** — see the diffed parameter inventory in §2.5.
+- **One row was wrong**: M7 said `>=2.0.0`; `requirements.txt` on this branch actually pins
+  `==2.0.0`, as the header states. Corrected below.
+- **One new mechanical item**: M11, `LGATrSlim.__init__` positional order changed.
+- **External corroboration**: an independent sibling fork ported to 2.0 and its commit
+  reproduces this runbook's central prediction — see §2.6.
+
 ---
 
 ## 0. TL;DR
@@ -71,7 +91,8 @@ Execution split (Claude Code web containers are **CPU-only**):
 | M4 | `MLPConfig.activation`→`nonlinearity`, `increase_hidden_channels`→`mlp_ratio`, `num_hidden_layers`→`num_layers_mlp` (**semantics confirmed**: v2 counts all layers, `mlp.py` builds `[in] + hidden×(n−1) + [out]`, so a v1 `num_hidden_layers` value ports as `+1`; repo passes neither → defaults `1`↔`2` are equivalent) | `cgennlgatrgraphgps.py:108-109`, `CGENNLGATrGraphTransHybrid.py:1073`, `mlp:` in `tag/amp/eg_lgatr.yaml` + `framesnet/equivectors/lgatr.yaml` | rename |
 | M5 | `SlimRMSNorm` requires `(v_channels, s_channels)`; bare call breaks | `lorentznetlgatrslimgraphgps.py:91` | `SlimRMSNorm(v_channels, s_channels, elementwise_affine=False)` — affine must stay off here regardless of posture: the instance is shared across call sites, only valid stateless |
 | M6 | s-channel types `int \| None` → `int = 0` | yaml `null`s are overwritten by `init_physics`; confirm no literal `None` reaches v2 (Gate A) | grep + Gate A |
-| M7 | requirements | done on this branch: `lgatr[xformers-attention]>=2.0.0` | — |
+| M7 | requirements | done on this branch: `lgatr[xformers-attention]==2.0.0` — **exact** for the whole migration (H14(3)); relaxed to a range only in Phase 5. (`main` holds the mirror-image guard, `>=1.4.2, <2.0.0`, so a stray `pip install -r` there cannot pull v2 mid-campaign.) | — |
+| **M11** | **`LGATrSlim.__init__` positional order changed**: v1 `(in_v, out_v, hidden_v, in_s, out_s, hidden_s, num_blocks, num_heads, …)` → v2 `(num_blocks, in_v, out_v, hidden_v, in_s, out_s, hidden_s, num_heads, …)`. Every construction in this repo is by keyword (hydra + the wrappers), so this is **inert here** — recorded because it is the one break in the slim surface that a positional call would take **silently**, with plausible-looking channel counts | grep for positional `LGATrSlim(` — currently none | none needed; keep constructions keyword-only |
 | **M8** | **Slim blocks are channel-last**: `SlimLinear`/`SlimSelfAttention`/`SlimMLP`/`SlimRMSNorm` take `(..., 4, channels)`; this repo's GPS hybrid feeds `(B, P, V, 4)` | `lorentznetlgatrslimgraphgps.py` — every block call (`linear_in` :175, attention :81, mlp :86, norm/dropout :91-92) plus the spurion `cat` at dim 2; `finetuneexperiment.py:115` must match v2's *internal* layout at the `linear_out` splice point | First pass: `transpose(-1, -2)` at block boundaries (mechanical, provable). Optional later: flip the file's internal convention to channel-last as a perf follow-up (§8), separately gated |
 | M9 | v1.4.4 slim `compile_dynamic=True` default replaced by `compile_kwargs` (dynamic **no longer defaulted**) | `tag_slim.yaml` (`compile: true`) | add `compile_kwargs: {dynamic: true}` to preserve behavior — variable-length flattened batches otherwise recompile per shape |
 | **M10** | **`primitives: PrimitivesConfig` is a REQUIRED constructor arg** on directly-constructed layers: `SelfAttention(cfg, primitives)`, `GeoMLP(cfg, primitives)`, and `EquiLinear(in_mv, out_mv, primitives, ...)` — third **positional**, so it also shifts any positional args after it. (`geometric_product(x, y, *, config=...)` likewise; repo has no direct primitive callers.) | `cgennlgatrgraphgps.py` (SelfAttention/GeoMLP constructions ~:98/:108 and the second block ~:187, EquiLinear), `finetuneexperiment.py:108` (`EquiLinear` linear_out splice) | build one `PrimitivesConfig()` per model and thread it, mirroring v2's own nets; a missed site is a loud `TypeError` |
@@ -109,6 +130,61 @@ a methods sentence that the `tag_lgatr`/`tag_slim` reference rows are re-trained
 (published-paper comparisons indicative, not exact), and a one-time re-baseline of the param
 manifests in the posture-flip commit. Parity-mode verification (pins + compensations) still
 runs first, unchanged — the posture applies from the first campaign run onward.
+
+### 2.5 The parameter inventory, diffed (evidence for S2 and S5)
+
+Same slim config built on both versions (`hidden_v=8, hidden_s=16, num_blocks=1, num_heads=4`).
+Only three lines differ, and they are S2 and S5 exactly:
+
+| | tensor | shape |
+|---|---|---|
+| **added by v2** (S2) | `blocks.N.norm1.weight_v`, `norm1.weight_s`, `norm2.weight_v`, `norm2.weight_s` | `(v_channels,)`, `(s_channels,)` — four per block |
+| **removed by v2** (S5) | `blocks.N.attention.linear_in.linear_s.bias` | `(3 · attn_ratio · s_channels,)` — one per block |
+
+Everything else matches name-for-name and shape-for-shape.
+
+**Read the S5 row carefully before Phase 0 record.** The tensor v2 drops is the one under
+**`blocks.*.attention.`** — the qkv projection. The net *also* has a top-level `linear_in`
+whose `linear_s.bias` **survives in v2** and must NOT be zeroed. The §2.3 procedure is already
+scoped correctly ("locate each attention layer's qkv projection module"), but the earlier
+shorthand "slim's `linear_in.linear_s`" reads as if it named the net-level module. Zeroing that
+one would silently move the reference model *outside* the intersection of the two architectures
+and quietly weaken Gate C. Use the fully-qualified prefix `blocks.*.attention.linear_in.` in the
+record script, and assert the count of zeroed tensors equals `num_blocks`.
+
+The `norm` → `norm1`/`norm2` split (§2.1) is visible here too, and is free while affine is off:
+v1's shared norm held no parameters, so KEY_MAP has nothing to map for it.
+
+### 2.6 External corroboration: the sibling fork's port
+
+`heidelberg-hepml/tagger-quantization@bead965` ("Update to LGATr 2.0") ports a repo with the
+same lineage — its `config/model/tag_slim.yaml` is byte-identical to ours except for the
+`_target_` line. Six files, +13/−11. What it changed maps onto **M1, M2, M7** and (via its
+`parq.py` quantization-group fix) the S2 consequence. What it did **not** change is the point:
+
+- **It is a renames-only port**, which is exactly this runbook's §3 thesis — the official
+  `v1_to_v2.rst` documents renames; every behavior change lives in the CHANGELOG. Their slim
+  model silently acquires `nonlinearity_v="sigmoid"` (S1), affine norm gains (S2), loses its
+  qkv scalar biases (S5) and gains the `0.5` gate scale (S6). Their `parq.py` change — collect
+  the four quantizable groups, then take `params_noq` by exclusion — is S2 arriving as a
+  symptom (new norm params needing a home) and being handled without being named.
+- **`compile: true` with no `compile_kwargs`** (M9): v1 defaulted `compile_dynamic=True`, v2
+  does not. Variable-length jet batches recompile per shape unless it is passed back.
+- **One outright break, verified by running their code against the real 2.0.0 wheel**: their
+  `finetuneexperiment.py` `LGATrWrapper` branch still calls
+  `EquiLinear(in_mv_channels=…, out_mv_channels=…, in_s_channels=…, out_s_channels=…)`.
+  On 2.0.0 that raises `TypeError: EquiLinear.__init__() missing 1 required positional
+  argument: 'primitives'` (M10). Their `SlimLinear` splice, by contrast, is correct — v2's
+  `SlimLinear.__init__` signature is identical to v1's `Linear.__init__`, so the rename alone
+  sufficed there. The full-LGATr warm-start path is presumably untested in their workflow.
+  Ours is the same code: `finetuneexperiment.py:108` (EquiLinear) is an **M10** site and
+  needs a `primitives` argument; `:115` (slim) is **M1 only**, a pure rename. Do not let the
+  slim site's simplicity suggest the other one is also rename-only — that is precisely the
+  inference their commit made.
+
+Two of their choices differ from ours but are equally valid: `_target_: lgatr.nets.LGATrSlim`
+(we specify `lgatr.LGATrSlim`) and `from lgatr.layers.slim_layers import …` (we specify the
+shallow `lgatr.layers`). Both paths exist in 2.0.0 — verified.
 
 ## 3. Why neither the test suite nor the official doc is enough
 
