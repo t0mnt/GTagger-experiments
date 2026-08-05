@@ -112,7 +112,8 @@ DEFAULTS = dict(
     diverge=5.0,
     skip_start=10,
     skip_end=5,
-    output="lr_finder.png",
+    output="lr_finder.png",  # default is REPLACED below by lr_finder/<model>_bs<N>_lr<lr>.png
+    outdir="lr_finder",  # where auto-named plots + npz land (created if absent)
     # pin the kNN graph metric for the sweep when the model exposes a `knn_metric` choice
     # (no-op for models without one). The lr SCALE is fixed by the optimizer/batchsize/amp,
     # not the graph metric, so pinning one metric only makes the suggested lr comparable
@@ -405,12 +406,9 @@ def main(cfg):
         exp.model.to(exp.device)
         exp._init_dataloader()
 
-    # name the plot/npz after the model + batchsize so repeated sweeps don't clobber each other
     model_name = (OmegaConf.select(cfg, "model.net._target_", default="") or "").rsplit(".", 1)[
         -1
     ] or "model"
-    if params["output"] == DEFAULTS["output"]:
-        params["output"] = f"lr_finder_{model_name}_bs{cfg.training.batchsize}.png"
 
     LOGGER.info(
         f"Running LR range test: {params['start_lr']:.1e} -> {params['end_lr']:.1e} "
@@ -439,20 +437,34 @@ def main(cfg):
         skip_end=params["skip_end"],
         beta=params["beta"],
     )
+    # loss-min/10 is the robust recommendation (peak lr for an annealed schedule);
+    # the steepest-descent point is reported as a usually-similar lower bound.
+    suggested = min_loss_lr / 10.0
+    bs = cfg.training.batchsize
+
+    # Auto-name the artifacts after MODEL + BATCHSIZE + SUGGESTED LR, in their own directory.
+    # A chained family sweep writes 8 plots in one session; a fixed name would leave one, and a
+    # name without the numbers would leave you matching images to log lines by timestamp.
+    if params["output"] == DEFAULTS["output"]:
+        os.makedirs(params["outdir"], exist_ok=True)
+        stem = f"{model_name}_bs{bs}_lr{suggested:.2e}"
+        params["output"] = os.path.join(params["outdir"], f"lr_finder_{stem}.png")
     make_plot(
         lrs,
         losses,
         steepest,
         min_loss_lr,
         params["output"],
-        title=f"LR range test - {model_name} (bs={cfg.training.batchsize})",
+        title=f"LR range test - {model_name} (bs={bs}, suggested lr {suggested:.2e})",
     )
     np.savez(os.path.splitext(params["output"])[0] + ".npz", lr=lrs, loss=losses)
 
-    # loss-min/10 is the robust recommendation (peak lr for an annealed schedule);
-    # the steepest-descent point is reported as a usually-similar lower bound.
-    suggested = min_loss_lr / 10.0
-    bs = cfg.training.batchsize
+    # The recipe these numbers belong in, so a chained sweep's log says where each pair goes.
+    prefix = {"toptagging": "top", "jctagging": "jc", "toptagxl": "xl"}.get(cfg.exp_type)
+    recipe = f"config/training/{prefix}_{model_name}.yaml" if prefix else None
+    if recipe and not os.path.isfile(recipe):
+        recipe = None
+
     LOGGER.info("=" * 64)
     if params["find_batch_size"]:
         LOGGER.info(f"Batchsize (fit to GPU):          {bs}")
@@ -462,6 +474,13 @@ def main(cfg):
     if params["find_batch_size"]:
         reuse = f"training.batchsize={bs} " + reuse
     LOGGER.info(f"  ->  reuse with:  {reuse}")
+    LOGGER.info(f"  ->  plot:        {params['output']}")
+    # One greppable line per model: `grep FIND_LR <log>` turns a chained family sweep into the
+    # table you actually have to transcribe, in order, without scrolling.
+    LOGGER.info(
+        f"FIND_LR  model={model_name}  batchsize={bs}  lr={suggested:.2e}"
+        + (f"  ->  {recipe}" if recipe else "")
+    )
     LOGGER.info("=" * 64)
 
 

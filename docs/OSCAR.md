@@ -569,11 +569,27 @@ cd ~/GTagger-experiments
 apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
   source venv/bin/activate
   for M in tag_{Plain,ParticleNetParT,CGENNLGATr,LorentzNetLGATrSlim}{GraphTrans,GraphGPS}; do
-    echo "=== $M"
     python utils/find_lr.py -cn toptagging model=$M +lr_find.find_batch_size=true
   done
-'
+' 2>&1 | tee lr_sweep.log
 ```
+
+Sequential by construction: one allocation, one GPU, one model at a time — no queueing, and no
+eight separate waits for a scheduler slot. Each sweep is a batch-size probe plus a ~300-batch
+range test, so budget minutes per model, not hours.
+
+Every model prints one greppable summary line, so the whole family collapses to the table you
+have to transcribe:
+
+```bash
+grep FIND_LR lr_sweep.log
+# FIND_LR  model=PlainGraphTrans  batchsize=2048  lr=3.10e-04  ->  config/training/top_PlainGraphTrans.yaml
+```
+
+Plots and their raw curves land in `lr_finder/`, named after what produced them —
+`lr_finder_<Model>_bs<N>_lr<lr>.png` plus a matching `.npz` — so an image never needs to be
+matched to a log line by timestamp, and a re-sweep at a different batch size sits beside the old
+one instead of overwriting it. Copy that directory somewhere permanent before scratch purges it.
 
 Fill each printed pair into that model's `config/training/top_<Model>.yaml` — `batchsize` and
 `lr` are the only `???` keys (the shared recipe pins epochs=20, AdamW, warmup-cosine; GUIDE §5–6),
