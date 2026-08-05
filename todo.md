@@ -133,12 +133,47 @@ exposed above. If a reviewer wants the negative result demonstrated, run PlainGr
 `model.net.use_lappe=true` (the toggle is implemented; sign-flip augmentation handles the
 eigenvector ambiguity) — expected to show it doesn't help, per the argument above.
 
+## 3a-bis. JetClass cost: CGENN-GraphGPS dominates the campaign
+
+Forward FLOPs/jet at P=50, measured by `tests/experiments/test_tag_flops.py` (same convention
+as Table 2 of arXiv:2512.17011 — five of its rows reproduce exactly, e.g. ParT 211M,
+ParticleNet 413M, LorentzNet 676M, L-GATr 2060M):
+
+| model | GFLOPs/jet | | model | GFLOPs/jet |
+|---|---|---|---|---|
+| LorentzNet-slim GraphTrans | 0.36 | | PlainGraphGPS | 0.97 |
+| PlainGraphTrans | 0.42 | | LorentzNet-slim GraphGPS | 1.00 |
+| ParticleNet-ParT GraphTrans | 0.65 | | ParticleNet-ParT GraphGPS | 1.22 |
+| CGENN GraphTrans | 6.97 | | **CGENN GraphGPS** | **62.9** |
+
+**CGENN-GraphGPS alone is ~84% of the eight-model total.** Not a misconfiguration — both CGENN
+configs are identical (k=16, num_blocks=10, same widths); GPS runs the Clifford-algebra MPNN
+inside *every* block instead of once, which is what GraphGPS is.
+
+Calibrating against that table's own h/GFLOP (61–210, median ~83; L-GATr improves 81 → 28 under
+lgatr 2.0), CGENN-GraphGPS lands at **~2000–5000 GPU-h** for a full-JetClass-equivalent run —
+weeks to months on one H100, and still weeks on four. **This needs a decision before the JetClass
+campaign, not during it** — but the fix is implementation, not architecture. Measured levers, all
+of which leave the model identical (details in `docs/cgenn-compile.md`, dev branch): replace the
+`einsum` geometric product with lgatr 2.0's outer-product + matmul form (**5.2× on the GP, verified
+bit-identical**, and the GP is ~46% of runtime); the data-movement rewrites (`copy_` is **38%** of
+runtime, 2071 calls per forward); sparse-GP (the Cayley table is 6.2% dense); `torch.compile`.
+Shrinking the model — striding the local branch, cutting `k` or `cgenn_hidden_x` — is **not** on
+this list: it makes the row a smaller model racing full-depth rivals, which is an ablation, not a
+speedup. Top tagging is unaffected either way.
+
 ## 3b. Paper points (observations from the build/audit)
 
 - GPS attention *rescues* a symmetry-breaking local graph: spurions off (float64, Lorentz),
   deltaR-vs-minkowski kNN breaks invariance ~14× more in GraphTrans (3.9e-3) than GraphGPS
   (2.8e-4; minkowski ≈ machine-exact both) — the invariant global L-GATr branch runs parallel
   in GPS and absorbs a non-invariant metric.
+  **Scope, state it when the claim is made:** spurions-off is the *correct* isolation, not a
+  convenience — with the shipped spurions on, the model breaks the symmetry deliberately and
+  by far more than the metric does, so the metric's contribution could not be attributed. The
+  consequence is that 14× is a statement about the MECHANISM (a parallel invariant branch
+  absorbs a non-invariant graph), not about the shipped models' invariance, which is broken on
+  purpose. Do not quote the ratio as a property of a campaign row.
 - ParticleNeXt edge features vs ParT pairwise bias = same encoding at two sites; in GPS one is
   likely redundant, and which one localizes the pairwise signal (per Spinner). See ablations.md.
 - Directed kNN for message passing, symmetrized graph for RWSE/LapPE — the GraphGPS/MNIST
