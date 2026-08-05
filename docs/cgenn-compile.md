@@ -80,14 +80,31 @@ settles for us:
    `PrimitivesConfig(sparse_gp=True, sparse_linear=False)`. Take them as shipped for GPU
    training; the only reason to touch either is a CPU-inference study.
 
-2. **Sparse jet representations are worth ~2×**, independent of everything above: concatenate a
-   batch's particles with a ptr instead of zero-padding. The gain scales with
-   `r = N_mean/N_max` — which is the ratio §2.5 measures for our data (49/110.6 ≈ 0.44 at batch
-   512). That is a much larger lever than anything in this document, and it applies to the CGENN
-   stack directly, which currently flattens over `B × P_max` **including padded slots**. It needs
-   a block-diagonal attention kernel (flash-attn, xformers, or recent native PyTorch), and
-   **cannot** be used with ParT-style learnable attention bias — so our ParticleNet-ParT hybrids
-   inherit that exclusion, exactly as ParT does in their table.
+2. **Sparse jet representations are worth ~2× for THEM and much less for our GNN branches.**
+   Concatenating a batch's particles behind a ptr instead of zero-padding saves work in
+   proportion to `r = N_mean/N_max`, but only on the ops that actually run over padded slots.
+   Measured on our top-tagging multiplicities at batch 512 (`E[P_max]=110.3`, `E[n]=49.2`,
+   `E[n²]=2718`):
+
+   | op class | padded | packed | saving |
+   |---|---|---|---|
+   | attention (quadratic) | 12156 | 2718 | **4.47×** |
+   | per-node / per-token (linear) | 110.3 | 49.2 | **2.24×** |
+   | kNN edges | — | — | **1.00×** (already built on real nodes only) |
+
+   Their Table 2 rows are transformers, where attention plus per-token MLPs are the whole model —
+   hence ~2× overall. **Our GNN branches are already edge-sparse**, so the same change buys them
+   almost nothing: a CGENN block runs ~787 edge-ops against ~110 node-ops per jet, so node ops are
+   12% of the block and packing them saves **7%**, not 2×. An earlier revision of this note claimed
+   ~2× for the CGENN stack; that was wrong.
+
+   The payoff is therefore in the *global attention stage*, which needs a block-diagonal attention
+   kernel (flash-attn, xformers, or recent native PyTorch) and **cannot** be used with ParT-style
+   learnable attention bias. Two of our eight rows carry exactly that bias
+   (`tag_ParticleNetParTGraph{Trans,GPS}`: `bias: true`, `pair_input_dim: 4`), so the family that
+   would gain most is the family excluded — while CGENN-GraphGPS, the row that actually needs the
+   time, gains least because its cost is the Clifford MPNN, not attention. That inversion is the
+   argument for leaving sparse representations out of scope, not the refactor size.
 
 3. **AMP is off the table for the equivariant rows.** "For the Lorentz-equivariant
    LLoCa-Transformer, L-GATr-slim, and L-GATr, training with AMP reduces performance at a rate
