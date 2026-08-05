@@ -35,8 +35,10 @@ environment Phase 0 needs stays intact) and, as a committed script under tests/:
      and record which raise on 2.0.0;
   b. diff named_parameters() name-and-shape between 1.4.4 and 2.0.0 for the reduced configs;
   c. report every M-row and S-row of section 2 as CONFIRMED / WRONG / MISSING against what you
-     observed. Reading v1_to_v2.rst is not evidence -- it documents renames only, and the
-     runbook's own corrections (M7 wrong, M11 missing, S5 mis-scoped) were all found this way.
+     observed. Read v1_to_v2.rst and the CHANGELOG first -- they are accurate and they tell you
+     where to look -- but they are not COMPLETE evidence: the doc covers renames only, and the
+     runbook's own corrections (M7 wrong, M11 missing, S5 mis-scoped) were all found by running
+     2.0.0, not by reading about it. Documentation orients the search; the wheel settles it.
 If any row comes back WRONG or MISSING, STOP and report before recording fixtures: Phase -1
 exists to change what Phase 0 records, and Phase 0 is the perishable step.
 Deliverables, committed to dev:

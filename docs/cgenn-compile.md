@@ -5,6 +5,28 @@
 - **Independent of the lgatr migration** and can run before, after, or in parallel with it: the `experiments/baselines/cgenn/` package imports no lgatr (verified); `CGENNWrapper`'s only lgatr symbol is `embed_vector` (interface-stable across 1.4.4/2.0.0) and the wrapper stays eager anyway.
 - Scope: **Stage 1 = the baseline** (`experiments/baselines/cgenn/` + a `compile` knob on `CGENNWrapper`/`tag_cgenn.yaml`). Stage 2 (optional) = `tag_lorentznet` by the identical recipe. **Not here:** the hybrids' CGENN branch (whole-block compile couples to lgatr 2.0's compiled attention — post-migration task; note both hybrids share ONE stack via `CGENNLGATrGraphTransHybrid.py`, import-verified), the sparse-GP rewrite (changes numerics at tolerance level → its own workflow, only if profiling justifies), and the non-equivariant family (out of scope for THIS task per the migration runbook §8 — deferred, not rejected: no forcing event, fused-kernel profiles, uniform-or-disclosed walltime rule).
 
+### Scope policy: if the baseline gets compile, the GT hybrids get it too
+
+Stage 1 deliberately starts at the `tag_cgenn` baseline, but **shipping compile there and not on
+the eight GT hybrids is not a stable end state.** The hybrids are the study's primary rows; a
+walltime table where the reference row is compiled and the rows under test are not is a table
+about compilers, not architectures. So the ordering is a sequencing decision, not a scope
+decision:
+
+1. **Stage 1** — `tag_cgenn` baseline (this document). Proves the rewrite recipe and the gates.
+2. **Stage 3, post-lgatr-2.0** — the CGENN branch of the two CGENN hybrids. Deferred only because
+   whole-block compile couples to v2's compiled attention; both hybrids share ONE stack
+   (`CGENNLGATrGraphTransHybrid.py`, import-verified), so this is one port, not two.
+3. **Stage 4** — the remaining six hybrids. Materially easier than either of the above: the
+   Plain / ParticleNet-ParT / LorentzNet-slim stacks are dense, static-shaped and free of the
+   data-dependent control flow that forced the §2 rewrites. Upstream weaver already ships
+   compile support for ParT and ParticleNet, so the work there is mostly `dynamic=True` and
+   confirming the RECOMP gate, not rewriting ops.
+
+The same `dynamic=True` requirement applies at every stage and for the same reason (§2): `N`
+and `E` vary per batch. The uniform-or-disclosed walltime rule from the migration runbook §8
+governs what may be published from a partially-compiled table in the meantime.
+
 ## 1. Verification regimes — where "bit-identical" is true and where it is not
 
 The premise "forward results are bit-identical, unlike lgatr 2.0" is right in the two places that matter and wrong in one, and the gates are shaped accordingly:

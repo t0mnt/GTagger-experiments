@@ -186,8 +186,10 @@ running it). Their `SlimLinear` splice right below is fine, because that signatu
 
 ### Phase −1 — side-load the wheel and re-verify §2 (BEFORE Phase 0, no environment change)
 
-**Do not port from `v1_to_v2.rst` and hope.** The wheel can be read while 1.4.4 is still the
-installed package, so every claim in §2 is checkable *before* anything becomes irreversible:
+**Read `v1_to_v2.rst` and the CHANGELOG first — then confirm against the wheel.** The docs are
+accurate and they point you at the right rows; they are simply not complete (renames only,
+§2.3) and not empirical. The wheel can be read while 1.4.4 is still the installed package, so
+every claim in §2 is checkable *before* anything becomes irreversible:
 
 ```bash
 pip download lgatr==2.0.0 --no-deps -d /tmp/lgatr2 && unzip -q /tmp/lgatr2/lgatr-2.0.0-*.whl -d /tmp/lgatr2x
