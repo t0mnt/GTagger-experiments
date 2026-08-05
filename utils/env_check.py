@@ -116,6 +116,13 @@ def main():
               "tag_transformer / tag_top_transformer / tag_lgatr / tag_slim pin it; override "
               "with model.attention_backend=native|flex (OSCAR.md).")
         xformers = None
+    except Exception as e:  # noqa: BLE001 -- e.g. OSError from a broken .so, or xformers'
+        # own version-gate RuntimeError. Reported as a FAIL, never as a traceback that would
+        # kill the run before the summary line.
+        check("xformers imports at all", False, f"{type(e).__name__}: {e}",
+              "xformers is installed but its import raises. See the flash decision tree in "
+              "docs/OSCAR.md section 2.2 -- an unimportable flash_attn crashes ALL of xformers.")
+        xformers = None
     if xformers is not None:
         try:
             ver = xformers.__version__
