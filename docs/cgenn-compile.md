@@ -27,6 +27,31 @@ The same `dynamic=True` requirement applies at every stage and for the same reas
 and `E` vary per batch. The uniform-or-disclosed walltime rule from the migration runbook §8
 governs what may be published from a partially-compiled table in the meantime.
 
+### Profile: the §2 rewrites are the biggest single item, ahead of the geometric product
+
+CPU profile (4 threads, B=4, P=64, `torch.profiler`, self time). Not GPU wall-clock — but the
+op MIX and the call counts are what matter here, and both transfer:
+
+| op | CGENN-GraphTrans | CGENN-GraphGPS | calls (GPS) |
+|---|---|---|---|
+| `aten::copy_` | 38.5% | **38.4%** | **2071** |
+| `aten::mul` | 23.0% | 24.2% | 496 |
+| `aten::bmm` | 18.9% | 21.7% | 460 |
+| `aten::einsum` | 4.8% | 5.1% | 336 |
+| forward | 812 ms | 4082 ms | |
+
+**Nearly 40% of the time is `copy_` — data movement, not arithmetic** — and it is precisely the two
+patterns §2 already lists: the `weight[:, :, product_paths] = self.weight` boolean-mask assignment
+rebuilt every forward, and the tensor-valued `repeat_interleave`. Those rewrites are pure data
+movement, so they are gated by **BIT** (zero tolerance, no numerics review), which makes them both
+the largest and the safest item. Do them first; they were already first in §2, and this is why.
+
+2071 `copy_` calls in one forward at B=4 also says the GPU path is launch-bound, so compile's
+fusion should pay more here than on any other model in the repo.
+
+The actual geometric-product math (`mul` + `bmm` ≈ 46%) is what the sparse-GP rewrite below
+targets. The two are independent and multiply.
+
 ### The sparse-GP rewrite is no longer optional-looking
 
 `CliffordAlgebra.cayley` is stored **dense** at `(16, 16, 16)` and only **256 of its 4096
