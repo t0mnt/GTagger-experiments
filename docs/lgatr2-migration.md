@@ -178,6 +178,30 @@ running it). Their `SlimLinear` splice right below is fine, because that signatu
 
 ## 4. The workflow
 
+### Phase −1 — side-load the wheel and re-verify §2 (BEFORE Phase 0, no environment change)
+
+**Do not port from `v1_to_v2.rst` and hope.** The wheel can be read while 1.4.4 is still the
+installed package, so every claim in §2 is checkable *before* anything becomes irreversible:
+
+```bash
+pip download lgatr==2.0.0 --no-deps -d /tmp/lgatr2 && unzip -q /tmp/lgatr2/lgatr-2.0.0-*.whl -d /tmp/lgatr2x
+python -c "import sys; sys.path.insert(0, '/tmp/lgatr2x'); import lgatr; print(lgatr.__version__)"
+```
+
+`sys.path.insert` makes v2 win over the installed 1.4.4 **inside that one process only** — nothing
+on disk changes, the venv is untouched, and Phase 0 can still record on 1.4.4 afterwards. Run the
+whole Phase 1a checklist here, and additionally:
+
+- **Diff the parameter inventory**, not just the signatures: build the same reduced config on both
+  versions and compare `named_parameters()` name-and-shape. This is what produced §2.5 and it is
+  the only step that finds an S-row you did not know to look for — a signature diff cannot see a
+  norm gaining gains or a qkv losing a bias.
+- **Instantiate every construction this repo actually performs**, verbatim from the call sites
+  (not simplified), and record which raise. Rev 4 found M7 wrong and M11 missing this way.
+
+Phase 1a then repeats the checklist against the *installed* release, which is cheap once written
+as a script and guards against "the wheel I read is not the wheel pip resolved."
+
 ### Phase 0 — capture on 1.4.4 (BEFORE any install or edit)
 
 `tests/experiments/test_lgatr_migration_parity.py` (sketch: Appendix B), two modes (`LGATR_PARITY=record` / default check, which **skips cleanly when fixtures are absent**). Two fixture families, split to keep git small:
@@ -192,6 +216,9 @@ Scope note: the transplant exists to *verify the port*, nothing else — migrati
 Commit script + fixtures to this branch.
 
 ### Phase 1 — environment swap + Phase 1a re-verification
+
+(Phase −1 has already answered every §2 question; Phase 1a re-runs the same script against the
+installed release, so a resolution surprise cannot slip through.)
 
 1. Fresh session/venv: `pip install "lloca[xformers-attention]==1.3.6" "lgatr[xformers-attention]==2.0.0"`.
 2. **Phase 1a (~15 min, non-negotiable):** re-verify §2 against the installed release — read `v1_to_v2.rst` **and** CHANGELOG `[2.0.0]`; run the import one-liners (`from lgatr.layers import SlimMLP, ...`; top-level symbols); confirm `SelfAttentionConfig(increase_hidden_channels=2)` raises `TypeError`; confirm M10 (`SelfAttention(cfg)` / `GeoMLP(cfg)` / `EquiLinear(i, o)` without `primitives` raise `TypeError`); confirm `import lloca.equivectors.lgatr` works; confirm `embed_vector` slots 1:4; diff `SlimMLP`/`SlimSelfAttention`/`SlimLinear` signatures against `lorentznetlgatrslimgraphgps.py` call sites; confirm block channel-last docstrings and the net-level channel-first interface; run `torch.autograd.gradcheck` on `geometric_product` with `sparse_gp=True` in fp64 (custom-backward assurance, §4); dump v2 state_dict key lists for the reduced fixture configs and build+commit KEY_MAP (Phase 0 note).
