@@ -126,38 +126,46 @@ def main():
             check("xformers.ops imports (flash chain resolved)", True)
 
             # Present != functional, and the difference is invisible from `import xformers`.
-            # The compiled extension is where a build meets reality: linked against the wrong
-            # CUDA runtime or a different torch ABI, `xformers._C` is the thing that fails
-            # (here: "libcudart.so.12: cannot open shared object file"). Works on CPU, so a
-            # login-node run already tells you whether the build is real.
+            # `xformers._cpp_lib` records the load result of the compiled extension: None when
+            # the C++/CUDA kernels bound to this torch, an exception object when they did not.
+            # That is the authoritative signal and it works on CPU, so a login-node run already
+            # tells you whether the build is real.
+            # (Do NOT test this by importing `xformers._C`: it is a torch library loaded via
+            # torch.ops, not a Python extension module, so a healthy build raises
+            # "does not define module export function (PyInit__C)" -- a false alarm.)
             try:
-                importlib.import_module("xformers._C")
-                check("xformers._C loads (compiled kernels linked)", True)
+                from xformers import _cpp_lib
+                exc = _cpp_lib._cpp_library_load_exception
+                check("xformers C++/CUDA extensions loaded", exc is None,
+                      "clean" if exc is None else f"{type(exc).__name__}: {str(exc)[:120]}",
+                      "the wheel's kernels cannot bind to this torch -- an ABI or CUDA-runtime "
+                      "mismatch. This is the state where `import xformers` still succeeds and "
+                      "every attention_backend=xformers run dies in the forward.")
             except Exception as e:  # noqa: BLE001
-                check("xformers._C loads (compiled kernels linked)", False,
-                      f"{type(e).__name__}: {e}",
-                      "the wheel's kernels cannot link against this stack -- a CUDA-runtime or "
-                      "torch-ABI mismatch. This is the state where `import xformers` still "
-                      "succeeds and every attention_backend=xformers run dies in the forward.")
+                check("xformers C++/CUDA extension status readable", False, f"{type(e).__name__}: {e}")
 
-            # Op-level truth: xformers ships a dispatcher whose entries each report
-            # available/unavailable. A build can link and still have no real kernel -- the
-            # `-pt` entries are PyTorch fallbacks, so xformers would be an expensive alias for
-            # native attention. Require at least one non-fallback forward AND backward op:
-            # half-built wheels routinely have the forward and not the backward, which fails
-            # only once training reaches loss.backward().
+            # Op-level truth: a build can load and still be missing the kernel a run needs.
+            # Require at least one AVAILABLE forward (F) and one backward (B) among the
+            # memory_efficient_attention ops -- half-built wheels routinely have the forward and
+            # not the backward, which passes training setup and dies at the first loss.backward().
+            # Suffixes are NOT quality marks: `-pt` means the op is reached through PyTorch's own
+            # bindings (e.g. `fa2F@2.5.7-pt` is genuine FlashAttention-2), and current xformers
+            # deliberately routes there instead of shipping duplicate kernels. Unavailable `ck*`
+            # (ROCm) and `fa3*` (Hopper-only) entries on an NVIDIA Ampere box are expected.
             try:
                 from xformers.info import get_features_status
                 mea = {k.split(".", 1)[1]: v for k, v in get_features_status().items()
                        if k.startswith("memory_efficient_attention.")}
-                real = [k for k, v in mea.items() if v == "available" and not k.endswith("-pt")]
-                check("xformers has real (non-fallback) memory_efficient_attention kernels",
-                      any(k.endswith("F") for k in real) and any(k.endswith("B") for k in real),
-                      f"available={sorted(real) or 'none'} of {len(mea)} ops",
-                      "only `-pt` fallbacks are available: this build dispatches to plain torch, "
-                      "so it buys nothing over attention_backend=native. Need one F (forward) "
-                      "and one B (backward) real kernel -- a forward-only build passes training "
-                      "setup and dies at the first loss.backward().")
+                avail = [k for k, v in mea.items() if v == "available"]
+                fwd = [k for k in avail if k.split("@")[0].removesuffix("-pt").endswith("F")]
+                bwd = [k for k in avail if k.split("@")[0].removesuffix("-pt").endswith("B")]
+                check("xformers memory_efficient_attention has a forward AND a backward kernel",
+                      bool(fwd) and bool(bwd),
+                      f"forward={sorted(fwd) or 'none'}; backward={sorted(bwd) or 'none'} "
+                      f"({len(avail)}/{len(mea)} ops available)",
+                      "a forward-only build passes training setup and the first forward, then "
+                      "dies at the first loss.backward(). Rebuild against this torch, or use "
+                      "attention_backend=native|flex|flash.")
             except Exception as e:  # noqa: BLE001
                 check("xformers op dispatcher readable", False, f"{type(e).__name__}: {e}")
 
