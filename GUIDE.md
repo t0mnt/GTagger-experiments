@@ -259,6 +259,15 @@ the family (the LR scale is metric-independent — the model still *trains* unde
 configured metric); pass `+lr_find.force_knn_metric=keep` to sweep each model's own metric
 instead (or `=minkowski` to pin that).
 
+**Number or graph?** Take the printed `loss-min/10` — it is the value the recipes are meant to
+carry, and it is stable in `num_iter` in a way the steepest-descent point is not. Use the plot
+(`lr_finder.png`) as a veto, not as a second opinion: you want one clean descent into a single
+minimum before the divergence. If the curve is flat, double-dips, or is still falling when the
+sweep ends, the printed number is summarising a curve that has no well-defined minimum and
+should not be trusted — fix the sweep (shorter `num_iter`, higher `end_lr`, larger batch) rather
+than eyeballing an lr off the graph. When the shape is clean the two agree anyway, which is the
+only case where reading the graph would have told you something new.
+
 **Weight decay.** No automated finder — it can't be range-tested like the LR (its
 effect emerges over a full run), so sweep `weight_decay=0,0.01,0.05` (Hydra multirun)
 on one model and apply the winner to all. The GT hybrids ship a shared

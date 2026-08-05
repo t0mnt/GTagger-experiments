@@ -354,10 +354,15 @@ def make_plot(lrs, losses, steepest, min_loss_lr, output, title="LR range test")
 # pass `-cp config_quick ... data.dataset=mini` for a fast smoke test of the finder itself.
 @hydra.main(config_path="../config", config_name="toptagging", version_base=None)
 def main(cfg):
-    # LR finding is single-process and never trains / evaluates / saves a model
+    # LR finding is single-process and never trains / evaluates / saves a model.
+    # `save` is forced here rather than left to the CLI: a forgotten `save=false` would mint a
+    # run directory that looks like a training run in `runs/` -- discoverable by a later
+    # `-cn config` warm start and by anyone reading the tree -- for a process that never
+    # trained. The flag stays accepted on the CLI (harmless, and the docs still show it).
     cfg.train = False
     cfg.evaluate = False
     cfg.plot = False
+    cfg.save = False
 
     params = dict(DEFAULTS)
     lr_find = OmegaConf.select(cfg, "lr_find", default=None)

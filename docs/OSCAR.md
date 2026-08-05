@@ -559,10 +559,32 @@ apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
 #  ->  reuse with:  training.batchsize=<N> training.lr=<lr>
 ```
 
-(`exit` when done — or stay in the session and chain the next model's sweep.)
+(`exit` when done — or stay in the session and chain the rest. All eight hybrids fit one
+brace expansion, so the whole sweep is one paste — `echo` it first if you want to see the
+names it makes:)
 
-Fill each printed pair into that model's `config/training/top_<Model>.yaml` (they are the
-only `???` keys — the shared recipe pins epochs=20, AdamW, warmup-cosine; GUIDE §5–6).
+```bash
+# on the GPU COMPUTE node -- all 8 GT hybrids, one allocation
+cd ~/GTagger-experiments
+apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
+  source venv/bin/activate
+  for M in tag_{Plain,ParticleNetParT,CGENNLGATr,LorentzNetLGATrSlim}{GraphTrans,GraphGPS}; do
+    echo "=== $M"
+    python utils/find_lr.py -cn toptagging model=$M +lr_find.find_batch_size=true
+  done
+'
+```
+
+Fill each printed pair into that model's `config/training/top_<Model>.yaml` — `batchsize` and
+`lr` are the only `???` keys (the shared recipe pins epochs=20, AdamW, warmup-cosine; GUIDE §5–6),
+and a run that starts with one still unfilled says so in its first lines.
+
+> **Once the recipes carry real numbers, this step is optional.** They ship filled after the
+> first campaign, and the values are then a sane default for any similar GPU. Re-sweep when you
+> have a reason: a different card (the batch size is measured on *your* memory, so it does not
+> transfer), a changed optimizer, or a knob that moves the loss-vs-lr curve (`num_blocks`, widths,
+> `knn_k`). Re-sweeping without one of those just adds variance between your table and the
+> shipped one.
 
 ## 5. Submit the real training
 
@@ -588,6 +610,12 @@ command copied verbatim (from `REPRODUCE.md`, say) with `sbatch train.sbatch` in
 sbatch -J PlainGraphGPS train.sbatch tag_PlainGraphGPS     # top-tagging, that model's recipe
 sbatch train.sbatch tag_CGENNLGATrGraphGPS save=false      # throwaway (no weights, no table row)
 sbatch train.sbatch tag_PlainGraphGPS warm_start_idx=0 warm_start_load=false   # fresh-trial seed (§6)
+
+# the whole family, same brace expansion as the sweep above; -J strips the tag_ prefix so the
+# log is logs/<Model>-<jobid>.out. Check `squeue -u $USER` before pasting -- this is 8 jobs.
+for M in tag_{Plain,ParticleNetParT,CGENNLGATr,LorentzNetLGATrSlim}{GraphTrans,GraphGPS}; do
+    sbatch -J "${M#tag_}" train.sbatch "$M"
+done
 ```
 
 One-time before the first submission (SLURM opens the `-o` log file BEFORE your script
