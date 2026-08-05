@@ -95,9 +95,25 @@ settles for us:
    This is a stronger statement than the migration runbook's S8 row, which only flagged that v2
    changed the AMP strategy — the answer is not to enable it.
 
-4. **The LLoCa row gains the most of any baseline (28h → 12h, 2.3×)**, which is a measured
-   answer to "what does the LLoCa overhead cost once optimized" and is better than the 1.3–1.4×
-   this repo estimated from FLOPs ratios alone.
+4. **The LLoCa row's 28h → 12h is not a lloca-2.0 number** and must not be quoted as one. The
+   caption attributes the `→` to compile + sparse GP + micro-optimizations, and notes that every
+   row but ParT also uses sparse jet representations. For LLoCa-Transformer the sparse GP does
+   not apply (no geometric algebra), leaving three contributors the paper does not decompose:
+   `torch.compile` (**already available in lloca 1.3.6** — `compile`/`compile_mode`/
+   `compile_dynamic` on `backbone/{particletransformer,transformer_v2}.py` and on
+   `framesnet/equi_frames.py`), sparse jet representations (a data-path change this repo does not
+   have — our wrappers `to_dense_batch`), and the 2.0 micro-optimizations proper (~10× frame-to-
+   frame transforms, device-sync removal, `num_items`/`num_graphs`). So the earlier 1.3–1.4×
+   FLOPs-based estimate of the *lloca-2.0 share* is not refuted by this row; the row measures
+   all three together.
+
+5. **lloca 2.0 carries an accuracy-changing default of its own.** §2.1: "We improve the original
+   LLoCa implementation with a new variance-preserving rescaling in the attention mechanism",
+   derived in their Appendix A — the frame transformation is rescaled to `2L/‖L‖_F` so the latent
+   variance is preserved (‖L‖_F = 2γ for a boost; pure rotations need no scaling), fixing
+   instability on highly boosted objects. That is the `preserve_variance` option on lloca's dev
+   branch, **defaulting to true**. Same class as lgatr's S1/S2: a silent default that changes
+   results, now with a paper section explaining why. Treat it as an S-row when lloca is migrated.
 
 ### Top lever, measured and bit-identical: drop `einsum` for outer-product + matmul
 
