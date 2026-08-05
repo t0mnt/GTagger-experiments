@@ -133,6 +133,31 @@ exposed above. If a reviewer wants the negative result demonstrated, run PlainGr
 `model.net.use_lappe=true` (the toggle is implemented; sign-flip augmentation handles the
 eigenvector ambiguity) — expected to show it doesn't help, per the argument above.
 
+## 3a-bis. JetClass cost: CGENN-GraphGPS dominates the campaign
+
+Forward FLOPs/jet at P=50, measured by `tests/experiments/test_tag_flops.py` (same convention
+as Table 2 of arXiv:2512.17011 — five of its rows reproduce exactly, e.g. ParT 211M,
+ParticleNet 413M, LorentzNet 676M, L-GATr 2060M):
+
+| model | GFLOPs/jet | | model | GFLOPs/jet |
+|---|---|---|---|---|
+| LorentzNet-slim GraphTrans | 0.36 | | PlainGraphGPS | 0.97 |
+| PlainGraphTrans | 0.42 | | LorentzNet-slim GraphGPS | 1.00 |
+| ParticleNet-ParT GraphTrans | 0.65 | | ParticleNet-ParT GraphGPS | 1.22 |
+| CGENN GraphTrans | 6.97 | | **CGENN GraphGPS** | **62.9** |
+
+**CGENN-GraphGPS alone is ~84% of the eight-model total.** Not a misconfiguration — both CGENN
+configs are identical (k=16, num_blocks=10, same widths); GPS runs the Clifford-algebra MPNN
+inside *every* block instead of once, which is what GraphGPS is.
+
+Calibrating against that table's own h/GFLOP (61–210, median ~83; L-GATr improves 81 → 28 under
+lgatr 2.0), CGENN-GraphGPS lands at **~2000–5000 GPU-h** for a full-JetClass-equivalent run —
+weeks to months on one H100, and still weeks on four. **This needs a decision before the JetClass
+campaign, not during it.** Options, cheapest first: run the CGENN local branch every Nth block
+rather than all ten; shrink `cgenn_hidden_x` / `k`; compile it (Stage 3 of `docs/cgenn-compile.md`,
+post-2.0); or run that row on top tagging only and disclose the omission. Top tagging is
+unaffected — everything there is affordable at these ratios.
+
 ## 3b. Paper points (observations from the build/audit)
 
 - GPS attention *rescues* a symmetry-breaking local graph: spurions off (float64, Lorentz),
