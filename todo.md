@@ -139,6 +139,12 @@ eigenvector ambiguity) — expected to show it doesn't help, per the argument ab
   deltaR-vs-minkowski kNN breaks invariance ~14× more in GraphTrans (3.9e-3) than GraphGPS
   (2.8e-4; minkowski ≈ machine-exact both) — the invariant global L-GATr branch runs parallel
   in GPS and absorbs a non-invariant metric.
+  **Scope, state it when the claim is made:** spurions-off is the *correct* isolation, not a
+  convenience — with the shipped spurions on, the model breaks the symmetry deliberately and
+  by far more than the metric does, so the metric's contribution could not be attributed. The
+  consequence is that 14× is a statement about the MECHANISM (a parallel invariant branch
+  absorbs a non-invariant graph), not about the shipped models' invariance, which is broken on
+  purpose. Do not quote the ratio as a property of a campaign row.
 - ParticleNeXt edge features vs ParT pairwise bias = same encoding at two sites; in GPS one is
   likely redundant, and which one localizes the pairwise signal (per Spinner). See ablations.md.
 - Directed kNN for message passing, symmetrized graph for RWSE/LapPE — the GraphGPS/MNIST
