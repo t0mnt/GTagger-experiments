@@ -550,13 +550,35 @@ interact -q gpu -g 1 -n 8 -m 48g -t 02:00:00        # general pool; add -f to pi
 # interact -q <group>-gcondo -g 1 -n 8 -m 48g -t 02:00:00   # condo (add -A <account> if required)
 ```
 
-Confirm what you actually landed on before sweeping — the batch size is measured against *this*
-card's memory and does not transfer to another:
+**Reading what a condo actually holds**, from a login shell, before you ask for it:
+
+```bash
+sinfo -p <group>-gcondo -o "%P %G %N"
+# <group>-gcondo  gpu:nvidia_h100_nvl:4(S:0-1)  gpu1234
+```
+
+`gpu:<type>:<count>` is the GRES: **four separate physical cards** of that type on node
+`gpu1234` — not one card partitioned four ways (MIG shards appear as `nvidia_h100_80gb_mig`-style
+profiles, not as a plain count). `(S:0-1)` is only NUMA affinity — the GPUs are reachable from
+both CPU sockets. So `-g 1` gets you one whole card and `-g 4` the node's four.
+
+Sweep with `-g 1`: the finder measures one card, and that is the regime a single-GPU run trains
+in. Ask for `-g 4` only if the run itself will be multi-GPU — and set `gpus=` explicitly when it
+is, because the config default (`-1` = "every visible GPU") silently selects the refused DDP path.
+
+Then confirm what you actually landed on — the batch size is measured against *this* card's
+memory and does not transfer to another (an H100 NVL carries ~94 GB against an A40's 48, so a
+number found on `gpu-debug` will be far too small):
 
 ```bash
 # on the GPU COMPUTE node
 nvidia-smi -L
 ```
+
+> **An H100 is `sm_90`, an A40 is `sm_86`.** A source-built xformers only contains the
+> architectures it was built for, so re-run `python utils/env_check.py --gpu` (§2.9) the first
+> time you land on the condo. The GPU leg runs a real kernel, which is the only thing that
+> settles it.
 
 On the GPU node:
 
