@@ -24,11 +24,24 @@ Before step 1, record the starting point: `PRE=$(git rev-parse origin/dev)` — 
 ## Step 1 — L-A: lgatr fixtures on 1.4.4
 
 ```text
-On branch dev, execute Phase 0 of docs/lgatr2-migration.md exactly.
+On branch dev, execute Phase -1 and then Phase 0 of docs/lgatr2-migration.md exactly.
 Precondition: `python -c "import lgatr; print(lgatr.__version__)"` must print 1.4.4. If the
 session auto-installed dev's requirements (lgatr==2.0.0), first run
 `pip install "lgatr[xformers-attention]==1.4.4" "lloca[xformers-attention]==1.3.6"` and re-verify.
+Phase -1 FIRST, and do it by RUNNING 2.0.0, not by reading its docs: side-load the wheel
+(pip download + unzip + sys.path.insert -- this changes nothing on disk, so the 1.4.4
+environment Phase 0 needs stays intact) and, as a committed script under tests/:
+  a. instantiate every lgatr construction this repo performs, VERBATIM from the call sites,
+     and record which raise on 2.0.0;
+  b. diff named_parameters() name-and-shape between 1.4.4 and 2.0.0 for the reduced configs;
+  c. report every M-row and S-row of section 2 as CONFIRMED / WRONG / MISSING against what you
+     observed. Reading v1_to_v2.rst is not evidence -- it documents renames only, and the
+     runbook's own corrections (M7 wrong, M11 missing, S5 mis-scoped) were all found this way.
+If any row comes back WRONG or MISSING, STOP and report before recording fixtures: Phase -1
+exists to change what Phase 0 records, and Phase 0 is the perishable step.
 Deliverables, committed to dev:
+0. tests/experiments/test_lgatr_v2_inventory.py (the Phase -1 script) + its output pasted in
+   your report, row by row.
 1. tests/experiments/test_lgatr_migration_parity.py per Appendix B + Phase 0: record/check
    modes; record hard-asserts lgatr==1.4.4; check skips cleanly when fixtures are absent.
 2. tests/fixtures/lgatr144/: production manifests (shape + requires_grad) for the six
@@ -43,6 +56,9 @@ the model list to make recording pass.
 ```
 
 **Your checks before step 2:**
+0. Read the Phase -1 row-by-row report FIRST. If any section-2 row is reported WRONG or MISSING
+   and the session recorded fixtures anyway, reject: the fixtures may encode the wrong
+   normalization and Phase 0 cannot be re-run once the environment moves.
 1. Check scope via `git fetch && git diff --stat $PRE..origin/dev` — every path under `tests/`; any `experiments/` or `config/` line = reject the task.
 2. Check fixture weight via `du -sh tests/fixtures/lgatr144/` — MBs, not tens of MBs.
 3. Ensure gate integrity by `grep -n '1\.4\.4\|1e-10\|1e-8\|1e-6' tests/experiments/test_lgatr_migration_parity.py` — the version hard-assert and all three bars present — and by reading the waiver function once: it must *compute* the allowed set from the recorded state_dict, not list keys.

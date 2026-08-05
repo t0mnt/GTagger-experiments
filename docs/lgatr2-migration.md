@@ -95,7 +95,7 @@ Execution split (Claude Code web containers are **CPU-only**):
 | M7 | requirements | done on this branch: `lgatr[xformers-attention]==2.0.0` — **exact** for the whole migration (H14(3)); relaxed to a range only in Phase 5. (`main` holds the mirror-image guard, `>=1.4.2, <2.0.0`, so a stray `pip install -r` there cannot pull v2 mid-campaign.) | — |
 | **M8** | **Slim blocks are channel-last**: `SlimLinear`/`SlimSelfAttention`/`SlimMLP`/`SlimRMSNorm` take `(..., 4, channels)`; this repo's GPS hybrid feeds `(B, P, V, 4)` | `lorentznetlgatrslimgraphgps.py` — every block call (`linear_in` :175, attention :81, mlp :86, norm/dropout :91-92) plus the spurion `cat` at dim 2; `finetuneexperiment.py:115` must match v2's *internal* layout at the `linear_out` splice point | First pass: `transpose(-1, -2)` at block boundaries (mechanical, provable). Optional later: flip the file's internal convention to channel-last as a perf follow-up (§8), separately gated |
 | M9 | v1.4.4 slim `compile_dynamic=True` default replaced by `compile_kwargs` (dynamic **no longer defaulted**) | `tag_slim.yaml` (`compile: true`) | add `compile_kwargs: {dynamic: true}` to preserve behavior — variable-length flattened batches otherwise recompile per shape |
-| **M10** | **`primitives: PrimitivesConfig` is a REQUIRED constructor arg** on directly-constructed layers: `SelfAttention(cfg, primitives)`, `GeoMLP(cfg, primitives)`, and `EquiLinear(in_mv, out_mv, primitives, ...)` — third **positional**, so it also shifts any positional args after it. (`geometric_product(x, y, *, config=...)` likewise; repo has no direct primitive callers.) | `cgennlgatrgraphgps.py` (SelfAttention/GeoMLP constructions ~:98/:108 and the second block ~:187, EquiLinear), `finetuneexperiment.py:108` (`EquiLinear` linear_out splice) | build one `PrimitivesConfig()` per model and thread it, mirroring v2's own nets; a missed site is a loud `TypeError` |
+| **M10** | **`primitives: PrimitivesConfig` is a REQUIRED constructor arg** on directly-constructed layers: `SelfAttention(cfg, primitives)`, `GeoMLP(cfg, primitives)`, and `EquiLinear(in_mv, out_mv, primitives, ...)` — third **positional**, so it also shifts any positional args after it. (`geometric_product(x, y, *, config=...)` likewise; repo has no direct primitive callers.) | `cgennlgatrgraphgps.py` (SelfAttention/GeoMLP constructions ~:98/:108 and the second block ~:187, EquiLinear), `finetuneexperiment.py:108` (`EquiLinear` linear_out splice) | build one `PrimitivesConfig()` per model and thread it, mirroring v2's own nets; a missed site is a loud `TypeError`. **Also search for code that RECONSTRUCTS a layer from an existing one** (warm-start splices, quantization/pruning passes that walk `named_modules()` and swap children): those construct an `EquiLinear` without ever naming it in an import line, and the right argument there is `child.primitives` (v2 stores it, `layers/linear.py:79`) -- taking it from the layer being replaced is correct by construction |
 
 All current v-channel widths are ≠ 4, so a missed M8 transpose **crashes loudly** (channel-dim mismatch). Keep it that way: never write fixtures or tests with `v_channels == 4`, the one width where a layout error becomes a silent transpose-alias (H13).
 
@@ -162,7 +162,13 @@ v1's shared norm held no parameters, so KEY_MAP has nothing to map for it.
 nothing else — a renames-only port, so S1, S2, S5, S6 and M9 all land on it unflagged. That is
 §3's thesis observed rather than argued, and it is the whole reason to mention it.
 
-The actionable part: their `finetuneexperiment.py` `LGATrWrapper` branch still calls
+The actionable part, and it is two sites not one. `inputquant.py` walks the model swapping each
+`EquiLinear` for a `QuantEquiLinear(QuantLayer, EquiLinear)` and forwards `**kwargs` to
+`EquiLinear.__init__` with no `primitives` — so their *main* quantization path for any full-LGATr
+model raises on 2.0.0, not just a warm-start branch. Their `parq.py` grouping, by contrast,
+survives: it selects by module attribute (`net.linear_in`, `block.attention`, `block.mlp`), and
+every one of those attribute names is unchanged in v2. And their `finetuneexperiment.py`
+`LGATrWrapper` branch still calls
 `EquiLinear(in_mv_channels=…, out_mv_channels=…, in_s_channels=…, out_s_channels=…)`, which on
 2.0.0 raises `TypeError: ... missing 1 required positional argument: 'primitives'` (verified by
 running it). Their `SlimLinear` splice right below is fine, because that signature is unchanged.
