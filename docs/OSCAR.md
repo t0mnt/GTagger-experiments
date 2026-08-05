@@ -625,39 +625,6 @@ Plots and their raw curves land in `lr_finder/`, named after what produced them 
 matched to a log line by timestamp, and a re-sweep at a different batch size sits beside the old
 one instead of overwriting it. Copy that directory somewhere permanent before scratch purges it.
 
-**Sweep the batch size once, for the family — not once per model.** The finder reports the
-largest batch that *fits*, which is an upper bound rather than a recommendation, and letting each
-model pick its own maximum makes batch size a second independent variable: at the shared
-`epochs=20`, a model at 4096 takes 8× fewer optimizer steps than one at 512 over identical data.
-Wall time barely argues either way — padding to the batch's longest jet makes epoch compute rise
-about 14% from batch 512 to 4096 (GUIDE §6 has the measured table), so this is a fairness call,
-not a speed one.
-
-So run the batch-size probe **once**, on the model that constrains the family
-(`tag_CGENNLGATrGraphGPS` — the largest memory footprint), take that number as the family batch
-size, and sweep every model's lr pinned to it:
-
-```bash
-# on the GPU COMPUTE node -- step 1: what does the hungriest model fit?
-apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
-  source venv/bin/activate
-  python utils/find_lr.py -cn toptagging model=tag_CGENNLGATrGraphGPS \
-      +lr_find.find_batch_size=true
-'
-
-# step 2: every model's lr at that ONE batch size (substitute the number from step 1)
-BS=2048
-apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc "
-  source venv/bin/activate
-  for M in tag_{Plain,ParticleNetParT,CGENNLGATr,LorentzNetLGATrSlim}{GraphTrans,GraphGPS}; do
-    python utils/find_lr.py -cn toptagging model=\$M training.batchsize=$BS
-  done
-" 2>&1 | tee lr_sweep.log
-```
-
-This is also *cheaper* than probing all eight: one batch-size search instead of eight, and every
-recipe ends up with the same `batchsize` and its own tuned `lr`.
-
 Fill each printed pair into that model's `config/training/top_<Model>.yaml` — `batchsize` and
 `lr` are the only `???` keys (the shared recipe pins epochs=20, AdamW, warmup-cosine; GUIDE §5–6),
 and a run that starts with one still unfilled says so in its first lines.
