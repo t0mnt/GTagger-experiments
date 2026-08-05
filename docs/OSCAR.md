@@ -519,8 +519,9 @@ which) — the torch build itself comes from the NGC image and is known-good.
 ## 4. Find batch size + LR per model (GPU interactive)
 
 **First, sanity-check the finder itself on a published baseline.** ParticleNet has a
-known recipe (`lr: 1e-2`, `batchsize: 512`; ParT's own is `lr: 1e-3`, Ranger), so running
-the finder against it at that
+known recipe, and this repo found it trains better under **ParT's** settings (`top_particlenet`
+inherits `top_ParT`: `batchsize: 512`, Ranger, keeping ParticleNet's own `lr: 1e-2` and
+`weight_decay: 0`; ParT itself uses `lr: 1e-3`). Running the finder against it at that
 fixed batch size tells you whether the tool lands in the right neighbourhood before you
 trust it for eight unpublished models. Order-of-magnitude agreement is the pass
 criterion -- the finder reports loss-min/10, not the authors' tuned value:

@@ -104,7 +104,10 @@ per-run `table …:` log line that the regex reads.
         the primary runs — Plain-GPS ± RWSE (k=8) at tuned lr/batch on top tagging; if RWSE
         wins meaningfully, port it to the other three GPS models (item above) BEFORE the
         campaign; if null/negative, keep off and report as the ablation. LapPE stays post-hoc
-        only (expected negative, O(P^3) — never gates the campaign).
+        only (expected negative, O(P^3) — never gates the campaign). A Plain-GPS result
+        transfers to the other **static-graph** GPS models (CGENN, LorentzNet); ParticleNet-ParT
+        GPS rebuilds its kNN per layer, so a static structural encoding means something else
+        there — test it separately or leave it off.
 - **Depth (transformer / GPS blocks).** `model.net.num_layers=N` (Plain, ParticleNet-ParT) /
   `model.net.num_blocks=N` (CGENN, LorentzNet). The depth curve is the "can the transformer
   compensate for a weaker GNN" story → a performance/efficiency section (room to discuss BigBird /
