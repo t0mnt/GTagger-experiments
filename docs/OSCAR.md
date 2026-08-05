@@ -403,9 +403,9 @@ it costs ~3% of training compute).
 One command certifies the whole stack — interpreter provenance, user-site leak sentinels,
 container-torch identity, CUDA, science-stack versions, lgatr provenance, xformers build
 quality, and (with `--gpu`) real GPU kernels including a `memory_efficient_attention`
-forward. It encodes every failure class this doc's warnings came from, with per-check
-hints. Run it after: fresh setup, `git pull`, an xformers rebuild, a cluster upgrade —
-and always once before a campaign:
+forward **and backward**. It encodes every failure class this doc's warnings came from,
+with per-check hints. Run it after: fresh setup, `git pull`, an xformers rebuild, a
+cluster upgrade — and always once before a campaign:
 
 ```bash
 # on the LOGIN node (CPU context: provenance + stack checks)
@@ -422,6 +422,28 @@ apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python utils/env_check.py --gpu'
 # exit 0 + "CERTIFIED" = proceed; any FAIL names the fix section
 ```
+
+### What the xformers checks actually establish (and what a missing xformers means)
+
+`import xformers` succeeding says nothing about whether a run can use it, so the tool
+separates four states. **The first three run on CPU** — a login-node run already tells you
+whether the build is broken; only the kernel forward/backward needs `--gpu`.
+
+| check | catches |
+|---|---|
+| `xformers real build (sha-stamped)` | the kernel-free sdist build (a bare version with no `+sha`) |
+| `xformers._C loads` | the compiled extension failing to link — wrong CUDA runtime or torch ABI (e.g. `libcudart.so.12: cannot open shared object file`). **This is the state where `import xformers` still succeeds** and the run dies in the forward, hours in |
+| real (non-fallback) `memory_efficient_attention` kernels | a build whose dispatcher offers only `-pt` PyTorch fallbacks (an expensive alias for `attention_backend=native`), and forward-only builds — the F/B requirement is there because a missing backward passes setup and the first forward, then dies at the first `loss.backward()` |
+| lgatr / lloca registered the `xformers` backend | the decisive one: both libraries populate a backend registry at import, and an unusable xformers is silently omitted from it. Any config pinning `attention_backend: xformers` then crashes **in the forward, not at init** |
+
+**A missing xformers is reported as INFO, not FAIL** — the image this doc builds is
+xformers-free on purpose (§2.2), and only `tag_transformer`, `tag_top_transformer`,
+`tag_lgatr`, `tag_slim` pin it. If it is absent, override those four with
+`model.attention_backend=native|flex` and the certification still passes.
+
+When xformers *is* present and usable, you do not choose a kernel: lgatr calls
+`memory_efficient_attention(q, k, v, **kwargs)` with no `op=`, so xformers' own dispatcher
+picks among cutlass / flash / triton / ck per call from the shapes, dtype and device.
 
 ## 3. Smoke-test on a compute node
 

@@ -55,11 +55,21 @@ Notes:
 
 Verify the environment before trusting it — `utils/env_check.py` certifies interpreter
 provenance, container-vs-pip torch, CUDA, the science-stack versions and the xformers
-build in one command (`--gpu` on a GPU allocation adds real kernel tests):
+build in one command (`--gpu` on a GPU allocation adds real kernel forward+backward tests):
 
 ```bash
 apptainer exec --nv "$IMG" bash -lc 'source venv/bin/activate && python utils/env_check.py --gpu'
 ```
+
+The xformers section is worth knowing about because `import xformers` succeeding does not
+mean a run can use it: the tool separately checks that the compiled extension links
+(`xformers._C`), that the dispatcher offers real non-fallback forward **and** backward
+kernels, and that lgatr and lloca actually registered the backend — the last being what
+decides whether `attention_backend: xformers` crashes in the forward. All three run on
+CPU, so a login-node run already diagnoses a broken build. A *missing* xformers is
+reported as INFO rather than FAIL: override the four configs that pin it with
+`model.attention_backend=native|flex` and certification still passes. See
+`docs/OSCAR.md` §2.9 for the table.
 
 ## 2. Get the data
 
