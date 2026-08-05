@@ -542,8 +542,20 @@ recipe pins 512). For your own models, both numbers are `???`, so you need the f
 
 ```bash
 # from a LOGIN shell (prompt loginXXX; echo $SLURM_JOB_ID prints nothing -- §0)
-# add -f <feature> to pin a GPU type; `nodes gpu` lists them
-interact -q gpu -g 1 -n 8 -m 48g -t 02:00:00
+# `-q` is the partition. The general `gpu` pool is MIXED hardware, so it does not give you a
+# particular card: add `-f <feature>` to pin one (`nodes gpu` lists what the pool holds).
+# If your group has a condo (`condos` names it), ask for it instead -- an all-H100 condo needs
+# no feature flag, and you queue only against your own group.
+interact -q gpu -g 1 -n 8 -m 48g -t 02:00:00        # general pool; add -f to pin the card
+# interact -q <group>-gcondo -g 1 -n 8 -m 48g -t 02:00:00   # condo (add -A <account> if required)
+```
+
+Confirm what you actually landed on before sweeping — the batch size is measured against *this*
+card's memory and does not transfer to another:
+
+```bash
+# on the GPU COMPUTE node
+nvidia-smi -L
 ```
 
 On the GPU node:

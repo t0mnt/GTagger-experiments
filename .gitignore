@@ -24,7 +24,9 @@ data/toptagxl/
 *.npz
 *.ipynb_checkpoint*
 
-# utils/find_lr.py default outputs (plot; the .npz is already covered above)
+# utils/find_lr.py outputs. The directory is the current default; the flat pattern still
+# covers older checkouts and any custom `+lr_find.output=` path (.npz is covered by *.npz).
+lr_finder/
 lr_finder_*.png
 
 
