@@ -3,7 +3,7 @@
 **Status: PLANNED — no work done. Companion to `docs/lgatr2-migration.md` (same record→change→prove discipline), scoped to the regular CGENN baseline.**
 
 - **Independent of the lgatr migration** and can run before, after, or in parallel with it: the `experiments/baselines/cgenn/` package imports no lgatr (verified); `CGENNWrapper`'s only lgatr symbol is `embed_vector` (interface-stable across 1.4.4/2.0.0) and the wrapper stays eager anyway.
-- Scope: **Stage 1 = the baseline** (`experiments/baselines/cgenn/` + a `compile` knob on `CGENNWrapper`/`tag_cgenn.yaml`). Stage 2 (optional) = `tag_lorentznet` by the identical recipe. **Not here:** the hybrids' CGENN branch (whole-block compile couples to lgatr 2.0's compiled attention — post-migration task; note both hybrids share ONE stack via `CGENNLGATrGraphTransHybrid.py`, import-verified), the sparse-GP rewrite (changes numerics at tolerance level → its own workflow, only if profiling justifies), and the non-equivariant family (out of scope for THIS task per the migration runbook §8 — deferred, not rejected: no forcing event, fused-kernel profiles, uniform-or-disclosed walltime rule).
+- Scope: **Stage 1 = the baseline** (`experiments/baselines/cgenn/` + a `compile` knob on `CGENNWrapper`/`tag_cgenn.yaml`). Stage 2 (optional) = `tag_lorentznet` by the identical recipe. **Not here:** the hybrids' CGENN branch (whole-block compile couples to lgatr 2.0's compiled attention — post-migration task; note both hybrids share ONE stack via `CGENNLGATrGraphTransHybrid.py`, import-verified), the sparse-GP rewrite (changes numerics at tolerance level → its own workflow; **the profiling now justifies it — see the note below**), and the non-equivariant family (out of scope for THIS task per the migration runbook §8 — deferred, not rejected: no forcing event, fused-kernel profiles, uniform-or-disclosed walltime rule).
 
 ### Scope policy: if the baseline gets compile, the GT hybrids get it too
 
@@ -26,6 +26,29 @@ decision:
 The same `dynamic=True` requirement applies at every stage and for the same reason (§2): `N`
 and `E` vary per batch. The uniform-or-disclosed walltime rule from the migration runbook §8
 governs what may be published from a partially-compiled table in the meantime.
+
+### The sparse-GP rewrite is no longer optional-looking
+
+`CliffordAlgebra.cayley` is stored **dense** at `(16, 16, 16)` and only **256 of its 4096
+entries are nonzero (6.2%)** — each product of two basis blades lands on exactly one blade. So
+every geometric product in the CGENN stack, baseline and hybrid alike, does **16× the necessary
+arithmetic**, and the geometric product is what CGENN spends its time on.
+
+That is the leading term behind the measured 62.9 GFLOPs/jet for CGENN-GraphGPS (todo.md
+§3a-bis) — ~30× L-GATr and ~84% of the eight-model JetClass campaign. lgatr 2.0 reached the same
+conclusion independently and shipped `sparse_gp=True` as its **default**, replacing the dense
+contraction with a gather-reduce.
+
+Expect well under 16× in wall-clock — a gather-reduce has worse locality than a dense einsum that
+maps onto a GEMM — but lgatr making it the default is evidence the win is real; 3–8× on the
+GP-dominated parts is the plausible band. Gate it under R2 (TOL, not BIT): upstream's own
+docstring says the reordering is not bit-identical, so this rewrite is the one exception to §1's
+BIT rule and needs its own fixtures recorded before it lands.
+
+Cheaper levers on the same row, for comparison: striding the GPS local branch (run the CGENN
+MPNN every Nth block instead of all ten) is near-linear and needs no numerics review; `k` 16→8
+halves the edges; `cgenn_hidden_x` 8→4 cuts the GP channel product ~4×. Take the architectural
+ones first — they are decisions, not rewrites.
 
 ## 1. Verification regimes — where "bit-identical" is true and where it is not
 
