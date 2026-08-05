@@ -52,6 +52,53 @@ fusion should pay more here than on any other model in the repo.
 The actual geometric-product math (`mul` + `bmm` ≈ 46%) is what the sparse-GP rewrite below
 targets. The two are independent and multiply.
 
+### Upstream's own numbers (arXiv:2608.02735, *Virtues and Vices of Equivariant Transformers*)
+
+Favaro, Plehn, Qu & Spinner benchmark exactly these optimizations on a **H100**, JetClass, 1M
+iterations at batchsize 512. Their Table 2 — the `→` is torch.compile + the sparse geometric
+product + micro-optimizations, all without AMP, all but ParT using sparse jet representations:
+
+| architecture | acc | AUC | time | FLOPs | memory |
+|---|---|---|---|---|---|
+| Baseline transformer | 0.855 | 0.9867 | 15h → **9h** | 210M | 2.3G |
+| ParT | 0.861 | 0.9878 | 33h → **19h** | 211M | 13.3G → 7.2G |
+| L-GATr sparse | 0.865 | 0.9885 | 166h → **63h** | 2060M → 352M | 19.0G → 16.8G |
+| L-GATr dense | 0.865 | 0.9885 | 166h → **57h** | 2060M → 1999M | 19.0G → 14.3G |
+| L-GATr-slim | 0.866 | 0.9885 | 27h → **16h** | 329M | 8.1G |
+| LLoCa transformer | 0.864 | 0.9882 | 28h → **12h** | 219M | 4.1G |
+
+"The training time of all networks is reduced by values between 40% and 70%." Four things this
+settles for us:
+
+1. **Sparse vs dense is per-operation, not per-model.** Quoting §2.2: the original dense
+   implementation "is faster than a sparse implementation on GPUs because of the efficiency of
+   the GEMM matrix multiplication kernels. With our new L-GATr implementation, **the sparse
+   variant is faster on geometric product operations. For linear operations, the dense approach
+   is still faster on a GPU** but uses fewer FLOPs and runs faster on a CPU." Hence
+   `L-GATr_dense` vs `L-GATr_sparse` differ *only* in the linear layer, and dense wins on GPU
+   (57h vs 63h) while sparse wins on CPU. **lgatr 2.0's defaults already encode this**:
+   `PrimitivesConfig(sparse_gp=True, sparse_linear=False)`. Take them as shipped for GPU
+   training; the only reason to touch either is a CPU-inference study.
+
+2. **Sparse jet representations are worth ~2×**, independent of everything above: concatenate a
+   batch's particles with a ptr instead of zero-padding. The gain scales with
+   `r = N_mean/N_max` — which is the ratio §2.5 measures for our data (49/110.6 ≈ 0.44 at batch
+   512). That is a much larger lever than anything in this document, and it applies to the CGENN
+   stack directly, which currently flattens over `B × P_max` **including padded slots**. It needs
+   a block-diagonal attention kernel (flash-attn, xformers, or recent native PyTorch), and
+   **cannot** be used with ParT-style learnable attention bias — so our ParticleNet-ParT hybrids
+   inherit that exclusion, exactly as ParT does in their table.
+
+3. **AMP is off the table for the equivariant rows.** "For the Lorentz-equivariant
+   LLoCa-Transformer, L-GATr-slim, and L-GATr, training with AMP reduces performance at a rate
+   that renders it impractical, so we stick to float32." Their Table 2 runs without AMP entirely.
+   This is a stronger statement than the migration runbook's S8 row, which only flagged that v2
+   changed the AMP strategy — the answer is not to enable it.
+
+4. **The LLoCa row gains the most of any baseline (28h → 12h, 2.3×)**, which is a measured
+   answer to "what does the LLoCa overhead cost once optimized" and is better than the 1.3–1.4×
+   this repo estimated from FLOPs ratios alone.
+
 ### Top lever, measured and bit-identical: drop `einsum` for outer-product + matmul
 
 lgatr 2.0 removed almost all of its `einsum` calls (17 → 4; `utils/einsum.py` and the whole
