@@ -423,6 +423,16 @@ apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc \
 # exit 0 + "CERTIFIED" = proceed; any FAIL names the fix section
 ```
 
+> **Certification is per-GPU-architecture.** A source-built xformers compiles for the arch list
+> it saw at build time — build on a `gpu-debug` A40 (sm86) and the kernels may simply not exist
+> for an H100 (sm90), which surfaces as `no kernel image is available for execution on the
+> device` at the first attention call, minutes into a real job. The `--gpu` leg already tests
+> this the only way that matters, by running a real kernel forward and backward — but only on
+> the card it is running on. **Re-run `--gpu` on the GPU class you will actually train on**
+> (condo H100s, not `gpu-debug`) before the campaign; a green A40 run certifies A40s. The same
+> allocation is also where throughput and the `find_lr` batch-size finding must be measured —
+> an A40 number will size the campaign against the wrong machine.
+
 ### What the xformers checks actually establish (and what a missing xformers means)
 
 `import xformers` succeeding says nothing about whether a run can use it, so the tool
