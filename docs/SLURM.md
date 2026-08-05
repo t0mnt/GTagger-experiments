@@ -115,6 +115,8 @@ apptainer exec --nv "$IMG" bash -lc '
   python utils/find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
       save=false +lr_find.find_batch_size=true
 '   # prints:  ->  reuse with:  training.batchsize=<N> training.lr=<lr>
+    #     and:  FIND_LR  model=<Model>  batchsize=<N>  lr=<lr>  ->  config/training/<recipe>.yaml
+    #           (one line per model -- `grep FIND_LR` a chained sweep's log to transcribe it)
 ```
 
 Fill those into `config/training/top_<Model>.yaml`, then save the following as the
