@@ -259,6 +259,24 @@ the family (the LR scale is metric-independent — the model still *trains* unde
 configured metric); pass `+lr_find.force_knn_metric=keep` to sweep each model's own metric
 instead (or `=minkowski` to pin that).
 
+**Is the largest fitting batch size the right one?** The finder reports the largest that
+*fits*, which is an upper bound, not a recommendation. Two reasons to sit below it:
+
+- **Padding waste grows with the batch.** Jets are padded to the longest one in the batch
+  (`to_dense_batch`), so cost scales as `B × P_max`, and `P_max` climbs toward the global
+  maximum as `B` grows. A batch of 128 jets might pad to ~90 constituents; a batch of 4096
+  almost certainly pads to the full ~128. Past some size you are buying padding, not throughput —
+  which is why the published wall-clock table's H100 runs sit well below what an H100 could hold.
+- **Equal epochs means unequal updates.** The shared budget is `epochs=20`, so doubling the
+  batch halves the optimizer steps. `find_lr` re-tunes the LR at the chosen size, which handles
+  the step-size question but not the step-*count* one; a family whose batch sizes span 8×
+  spans 8× in updates too. Keeping the spread narrow (or capping the family at a common size)
+  makes the architecture comparison cleaner than maximizing each model independently.
+
+Throughput does rise with batch size until the GPU is compute-bound and then flattens, so the
+practical choice is the knee, not the ceiling: sweep a couple of sizes on one model, take the
+smallest that is within a few percent of peak throughput, and keep the family near it.
+
 **Number or graph?** Take the printed `loss-min/10` — it is the value the recipes are meant to
 carry, and it is stable in `num_iter` in a way the steepest-descent point is not. Use the plot
 (`lr_finder.png`) as a veto, not as a second opinion: you want one clean descent into a single
