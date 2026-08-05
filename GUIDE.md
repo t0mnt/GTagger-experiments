@@ -259,31 +259,6 @@ the family (the LR scale is metric-independent — the model still *trains* unde
 configured metric); pass `+lr_find.force_knn_metric=keep` to sweep each model's own metric
 instead (or `=minkowski` to pin that).
 
-**Is the largest fitting batch size the right one?** Mostly yes for wall time, and the reason
-to sit below it is not speed. Measured on the top-tagging train set (20k jets, mean multiplicity
-49, max 135), padding to the batch's longest jet costs:
-
-| batch | E[P_max] | padded waste | relative epoch compute |
-|---|---|---|---|
-| 32 | 89.8 | 45% | 1.00× |
-| 512 | 110.6 | 56% | 1.23× |
-| 2048 | 120.9 | 59% | 1.35× |
-| 8192 | 130.0 | 62% | 1.45× |
-
-An epoch runs `N/B` batches of cost `∝ B·P_max`, so epoch compute `∝ P_max(B)` once the GPU is
-compute-bound — it *rises* with batch size, but slowly: **~14% from 512 to 4096**, not a factor.
-Below the compute-bound point the `1/B` saving dominates and bigger is clearly better. So the
-throughput optimum is the smallest batch that saturates the GPU, and overshooting it costs ten
-percent, not a rerun.
-
-The real reason to fix the batch size across the family is the **comparison**, not the clock. The
-shared budget is `epochs=20`, so batch size sets the update count: a model at 4096 takes 8× fewer
-optimizer steps than one at 512 over the same data. `find_lr` re-tunes the step *size* at each
-batch but nothing re-tunes the step *count*, so per-model batch maximization quietly turns the
-architecture table into an architecture-plus-batch-size table. **Pick one batch size for all
-eight** — the largest the most memory-hungry model (CGENN-GraphGPS) fits — and epochs and
-iterations become the same axis, with no confound to disclose.
-
 **Number or graph?** Take the printed `loss-min/10` — it is the value the recipes are meant to
 carry, and it is stable in `num_iter` in a way the steepest-descent point is not. Use the plot
 (`lr_finder.png`) as a veto, not as a second opinion: you want one clean descent into a single
