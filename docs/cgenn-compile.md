@@ -52,6 +52,35 @@ fusion should pay more here than on any other model in the repo.
 The actual geometric-product math (`mul` + `bmm` ≈ 46%) is what the sparse-GP rewrite below
 targets. The two are independent and multiply.
 
+### Top lever, measured and bit-identical: drop `einsum` for outer-product + matmul
+
+lgatr 2.0 removed almost all of its `einsum` calls (17 → 4; `utils/einsum.py` and the whole
+bilinear einsum path are gone). Its dense geometric product is now:
+
+```python
+outer = x.unsqueeze(-1) * y.unsqueeze(-2)
+return outer.flatten(-2, -1) @ gp.flatten(1, 2).T
+```
+
+CGENN's is still `torch.einsum("...i,ijk,...k->...j", x, cayley, y)`. Benchmarked at realistic
+size (N = 4·64·16 edges, C = 8 channels, CPU 4 threads):
+
+| form | time | output |
+|---|---|---|
+| `einsum` (CGENN today) | 76.1 ms | — |
+| outer + matmul (lgatr 2.0 dense) | **14.6 ms** | `torch.allclose` exact, **max abs diff 0.0** |
+
+**5.2×, and bit-identical on this input** — the contraction order happens to agree, so this is a
+BIT-gated rewrite like the §2 ones, not a TOL one. (Verify that claim on the real fixtures and on
+GPU before relying on it; if it ever fails BIT, it becomes a TOL item, not a relaxed gate.)
+
+The mapping is `M[(i, k), j] = cayley[i, j, k]`, i.e. `cayley.permute(0, 2, 1).reshape(256, 16)`,
+precomputed once at init. The geometric product is `mul` + `bmm` ≈ 46% of CGENN's runtime, so a 5×
+there is ~1.6–1.8× on the whole model, before compile and before sparse-GP.
+
+**This does NOT explain the 38% `copy_`** — the einsum benchmark shows a 0.1% copy/permute share,
+so einsum is not marshalling operands here. The `copy_` is the §2 patterns, independently.
+
 ### The sparse-GP rewrite is no longer optional-looking
 
 `CliffordAlgebra.cayley` is stored **dense** at `(16, 16, 16)` and only **256 of its 4096
@@ -70,10 +99,13 @@ GP-dominated parts is the plausible band. Gate it under R2 (TOL, not BIT): upstr
 docstring says the reordering is not bit-identical, so this rewrite is the one exception to §1's
 BIT rule and needs its own fixtures recorded before it lands.
 
-Cheaper levers on the same row, for comparison: striding the GPS local branch (run the CGENN
-MPNN every Nth block instead of all ten) is near-linear and needs no numerics review; `k` 16→8
-halves the edges; `cgenn_hidden_x` 8→4 cuts the GP channel product ~4×. Take the architectural
-ones first — they are decisions, not rewrites.
+**Not a lever: striding the GPS local branch.** Running the CGENN MPNN every Nth block is
+near-linear in cost, but it *removes parameters and capacity* — the row stops being the model the
+table claims to compare and becomes a smaller one, tested against full-depth rivals. That is a
+different experiment, not a faster implementation of this one. Same objection, in weaker form, to
+`k` 16→8 and `cgenn_hidden_x` 8→4: they are legitimate ABLATIONS (and belong in ablations.md), not
+ways to make the headline row affordable. **Everything in this document must leave the model
+identical up to its stated gate.**
 
 ## 1. Verification regimes — where "bit-identical" is true and where it is not
 
