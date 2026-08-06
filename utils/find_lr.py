@@ -312,10 +312,19 @@ def suggest_lr(lrs, losses, skip_start, skip_end, beta=0.98):
     lr_trim = lrs[skip_start:end]
     loss_trim = losses[skip_start:end]
 
-    # steepest descent, ignoring the EMA warmup transient
+    # steepest descent, ignoring the EMA warmup transient AND everything at or past the loss
+    # minimum. Past the minimum the curve is rising into divergence, where the per-step loss is
+    # chaotic: a single downward blip between adjacent steps at large lr yields a gradient far
+    # more negative than anything in the honest falling region, and argmin(gradients) takes it.
+    # Measured (ParticleNet, top tagging): an unrestricted search returned 2.42e+00 on a curve
+    # whose real steepest descent is 1.32e-3 -- the same value the other reruns found. skip_end
+    # alone does not remove this; divergence detection stops only a few steps into the blow-up.
     warmup = min(int(round(1.0 / (1.0 - beta))), max(0, (end - skip_start) // 3))
-    lr_grad = lrs[skip_start + warmup : end]
-    loss_grad = losses[skip_start + warmup : end]
+    grad_start = skip_start + warmup
+    argmin_full = grad_start + int(np.argmin(losses[grad_start:end])) if end > grad_start else end
+    grad_end = max(grad_start + 2, argmin_full + 1)  # inclusive of the minimum, never past it
+    lr_grad = lrs[grad_start:grad_end]
+    loss_grad = losses[grad_start:grad_end]
     if len(lr_grad) >= 2:
         gradients = np.gradient(loss_grad, np.log(lr_grad))
         steepest = float(lr_grad[int(np.argmin(gradients))])
