@@ -322,8 +322,21 @@ def suggest_lr(lrs, losses, skip_start, skip_end, beta=0.98):
     else:
         steepest = float(lr_trim[int(np.argmin(loss_trim))])
 
-    min_loss_lr = float(lr_trim[int(np.argmin(loss_trim))])
-    return steepest, min_loss_lr, lr_trim, loss_trim
+    argmin = int(np.argmin(loss_trim))
+    min_loss_lr = float(lr_trim[argmin])
+
+    # Is the minimum INTERIOR, or is the loss still falling when the sweep ends?
+    # `loss-min/10` assumes a well-defined trough before divergence. On models whose loss
+    # decreases monotonically into the blow-up (measured: ParticleNet on top tagging) the
+    # argmin instead lands in the last few points, where run-to-run noise of ~1e-4 in the
+    # smoothed loss flips it between grid points a factor ~2.5 apart -- three unseeded runs
+    # gave 1.39e-1 / 3.82e-2 / 2.64e-2, a 5x spread, against a published 1e-2. The
+    # steepest-descent point sits in the well-conditioned part of the same curves and gave
+    # 1.91e-3 / 1.32e-3 / 1.91e-3, a 1.4x spread. So: when the minimum is not interior, the
+    # loss-min heuristic is inapplicable, not merely noisy.
+    tail = max(3, int(round(0.15 * len(loss_trim))))
+    interior_min = argmin < len(loss_trim) - tail
+    return steepest, min_loss_lr, lr_trim, loss_trim, interior_min
 
 
 def make_plot(lrs, losses, steepest, min_loss_lr, output, title="LR range test"):
@@ -430,7 +443,7 @@ def main(cfg):
         )
         return
 
-    steepest, min_loss_lr, _, _ = suggest_lr(
+    steepest, min_loss_lr, _, _, interior_min = suggest_lr(
         lrs,
         losses,
         skip_start=params["skip_start"],
@@ -468,8 +481,23 @@ def main(cfg):
     LOGGER.info("=" * 64)
     if params["find_batch_size"]:
         LOGGER.info(f"Batchsize (fit to GPU):          {bs}")
-    LOGGER.info(f"Suggested lr (loss-min / 10):    {suggested:.2e}   [recommended]")
-    LOGGER.info(f"Suggested lr (steepest descent): {steepest:.2e}")
+    if interior_min:
+        LOGGER.info(f"Suggested lr (loss-min / 10):    {suggested:.2e}   [recommended]")
+        LOGGER.info(f"Suggested lr (steepest descent): {steepest:.2e}")
+    else:
+        # The loss was still falling when the sweep ended, so the argmin sits in the
+        # near-divergence tail where it is noise-dominated: loss-min/10 is inapplicable here,
+        # not merely uncertain. Recommend the steepest-descent point, which lies in the
+        # well-conditioned part of the same curve.
+        LOGGER.warning(
+            "No INTERIOR loss minimum: the loss was still falling when the sweep ended, so "
+            "the argmin sits in the near-divergence tail and loss-min/10 is unstable there "
+            "(it moves by several x between reruns). Recommending steepest-descent instead. "
+            "Check the plot: if the curve has no trough before the blow-up, that is this case."
+        )
+        LOGGER.info(f"Suggested lr (steepest descent): {steepest:.2e}   [recommended]")
+        LOGGER.info(f"Suggested lr (loss-min / 10):    {suggested:.2e}   [NOT reliable here]")
+        suggested = steepest
     reuse = f"training.lr={suggested:.2e}"
     if params["find_batch_size"]:
         reuse = f"training.batchsize={bs} " + reuse
