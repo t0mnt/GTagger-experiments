@@ -266,7 +266,17 @@ Measured on ParticleNet / top tagging, three unseeded reruns of the same command
 **1.39e-1 / 3.82e-2 / 2.64e-2** — a 5x spread against a published `lr: 1e-2` — while
 steepest-descent on the same three curves gave **1.91e-3 / 1.32e-3 / 1.91e-3**, a 1.4x spread that
 brackets ParT's `1e-3`. `find_lr` now detects a non-interior minimum, warns, and recommends
-steepest-descent in that case. Where a trough does exist, `loss-min/10` remains the recommendation
+steepest-descent in that case — and searches for steepest-descent **only before the loss
+minimum**, because past it the curve is diverging and one chaotic downward blip yields a
+gradient more negative than the honest falling region (measured: an unrestricted search returned
+`2.42e+00` on a curve whose real answer was `1.32e-3`).
+
+Across six ParticleNet reruns, steepest-descent returned `1.91e-3 / 1.32e-3 / 1.91e-3 / 1.32e-3 /
+1.32e-3` (excluding the one unrestricted-search artefact) — stable to 1.4x and sitting between
+ParT's `1e-3` and ParticleNet's `1e-2` — while `loss-min/10` returned `1.39e-1 / 3.82e-2 /
+2.64e-2 / 3.38e-2 / 9.05e-2 / 7.07e-2`, a 5x spread every value of which is above the published
+`1e-2`. On this repo's models, treat steepest-descent as the number to trust and `loss-min/10`
+as the upper bracket, whichever the tool labels. Where a trough does exist, `loss-min/10` remains the recommendation
 for the reason below.
 
 **Number or graph?** Take the printed `loss-min/10` — it is the value the recipes are meant to
