@@ -288,6 +288,19 @@ class BaseExperiment:
     def _init_directory(self):
         if not self.cfg.save:
             LOGGER.info("Running with save=False, i.e. no outputs will be saved")
+            if self.cfg.training.es_load_best_model:
+                # save=False makes _save_model a no-op, so the best-validation checkpoint is
+                # never written and the restore at the end of training fails. Training is
+                # unaffected, but EVALUATION THEN REPORTS THE FINAL ITERATE, not the
+                # best-validation model the published protocol selects. Say so here rather
+                # than only in the FileNotFoundError warning an hour later, so a number is
+                # never compared against a table it was not produced under.
+                LOGGER.warning(
+                    "save=False with es_load_best_model=True: the best-validation checkpoint "
+                    "cannot be written, so the reported accuracy/AUC/rejection will come from "
+                    "the FINAL iterate, not the best-validation model. Use save=true for any "
+                    "run whose numbers you intend to compare against published results."
+                )
             return
 
         # create experiment directory
