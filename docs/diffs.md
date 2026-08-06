@@ -52,9 +52,17 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
 
 ## Fixed here, offered upstream (post-audit round)
 - `for_inference` single-logit heads use sigmoid (softmax over a 1-wide dim is constant 1.0);
-  guard/softmax on dim 1 (segmentation-safe). `pairwise_lv_fts` clamps delta_r2 BEFORE the
-  sqrt (sqrt(0) backward is NaN -> poisoned learned-frames grads on bit-identical pairs).
-  `boost_jet` forced off for pure-rotation frames (LearnedSO3/SO2; measured set).
+  guard/softmax on dim 1 (segmentation-safe). **On `main` this landed only in the hybrid
+  `particlenetpartgraphgps.py`** -- the `original-repo-fixes` branch carries it for
+  `mipart.py` / `particlenet.py` / `particletransformer.py`, `main` does not. `particlenet.py`
+  and `particletransformer.py` are dead here (the configs instantiate the lloca package), but
+  **`mipart.py` is live via `tag_MIParT`**; latent only because nothing sets `for_inference=true`.
+- `boost_jet` forced off for pure-rotation frames (LearnedSO3/SO2; measured set).
+- `pairwise_lv_fts` clamping delta_r2 before the sqrt (sqrt(0) backward is NaN -> poisoned
+  learned-frames grads on bit-identical pairs) is **NOT in the tree**: applied on
+  `original-repo-fixes` as 7b40292, reverted there by 198eba7 with no stated reason, and never
+  on `main`. `mipart.py:259` still does an unclamped `.sqrt()`. Decide and record before the
+  MIParT row is trained under learned frames.
 - Embedding order: tagging features (deta/dphi/dr, log pt) are computed BEFORE the optional
   jet-rest-frame boost. Post-boost the jet has pt~0, so pt_jet clamps and eta_jet/phi_jet read
   off a numerically-zero vector -> dphi/deta rotation-unstable, breaking even SO(2) invariance
