@@ -275,8 +275,12 @@ Across six ParticleNet reruns, steepest-descent returned `1.91e-3 / 1.32e-3 / 1.
 1.32e-3` (excluding the one unrestricted-search artefact) — stable to 1.4x and sitting between
 ParT's `1e-3` and ParticleNet's `1e-2` — while `loss-min/10` returned `1.39e-1 / 3.82e-2 /
 2.64e-2 / 3.38e-2 / 9.05e-2 / 7.07e-2`, a 5x spread every value of which is above the published
-`1e-2`. On this repo's models, treat steepest-descent as the number to trust and `loss-min/10`
-as the upper bracket, whichever the tool labels. Where a trough does exist, `loss-min/10` remains the recommendation
+`1e-2`. **`find_lr` therefore recommends steepest-descent**, with `loss-min/10` kept as the upper
+bracket. That reverses the original preference, on evidence rather than theory — and note the
+split held in **both** branches of the interior test, so the curve shape does not rescue
+`loss-min/10` here: its trough is shallow and sits just before divergence, where "the minimum"
+is only where the fall stops, not an optimum. Revisit if a hybrid disagrees; it is one model on
+one dataset, and flipping back is one block in `suggest_lr`'s caller. Where a trough does exist, `loss-min/10` remains the recommendation
 for the reason below.
 
 **Number or graph?** Take the printed `loss-min/10` — it is the value the recipes are meant to
