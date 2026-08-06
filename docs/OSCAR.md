@@ -640,6 +640,30 @@ and a run that starts with one still unfilled says so in its first lines.
 
 ## 5. Submit the real training
 
+**Do this once, before the first `sbatch` below.** Every submission in this section runs
+`train.sbatch`, which is *your working copy* of the repo's `docs/oscar-train.sbatch`
+template — the repo ships the template, not the copy, because root-level `*.sbatch` is
+gitignored so the partition or account you put in it physically cannot reach this public
+repo:
+
+```bash
+# on the LOGIN node
+cd ~/GTagger-experiments
+cp docs/oscar-train.sbatch train.sbatch
+mkdir -p logs                    # SLURM opens logs/%x-%j.out BEFORE the script runs, so a
+                                 # missing logs/ kills the job with no output at all --
+                                 # no `mkdir` inside the script can save you
+```
+
+**What you fill in.** The template opens with a marked `FILL THESE IN` block — three
+lines, and only the first is mandatory:
+
+| line | when you need it |
+|---|---|
+| `-p <partition>` | always. `condos` shows a group condo if you have one — prefer it: newer cards than the general `gpu` pool (`nodes gpu` lists what that pool actually holds), and you queue only against your own group |
+| `-A <account>` | only if your partition requires one (condo/priority accounts usually do) |
+| `--mail-user` + `--mail-type=FAIL,TIME_LIMIT` | optional, recommended for multi-day runs: you get an email when a job fails or is killed at its walltime, instead of discovering it days later |
+
 **Before the first real submission, reproduce a known result.** Train ParticleNet under
 its published recipe with `save=false` (no weights, no table row) and check its test
 accuracy/AUC against the published numbers. This exercises the whole path -- data,
@@ -669,34 +693,6 @@ for M in tag_{Plain,ParticleNetParT,CGENNLGATr,LorentzNetLGATrSlim}{GraphTrans,G
     sbatch -J "${M#tag_}" train.sbatch "$M"
 done
 ```
-
-One-time before the first submission (SLURM opens the `-o` log file BEFORE your script
-runs — a missing `logs/` dir kills the job with no output at all, so no `mkdir` inside
-the script can save you):
-
-```bash
-mkdir -p ~/GTagger-experiments/logs
-```
-
-The script is the repo's `docs/oscar-train.sbatch` template — one-time, copy it to the
-working file (root-level `*.sbatch` is gitignored, so the copy — and any partition or
-account you add to it — physically cannot be committed to this public repo):
-
-```bash
-# on the LOGIN node
-cd ~/GTagger-experiments
-cp docs/oscar-train.sbatch train.sbatch
-mkdir -p logs                    # SLURM opens logs/%x-%j.out BEFORE the script runs
-```
-
-**What you fill in.** The template opens with a marked `FILL THESE IN` block — three
-lines, and only the first is mandatory:
-
-| line | when you need it |
-|---|---|
-| `-p <partition>` | always. `condos` shows a group condo if you have one — prefer it: newer cards than the general `gpu` pool (`nodes gpu` lists what that pool actually holds), and you queue only against your own group |
-| `-A <account>` | only if your partition requires one (condo/priority accounts usually do) |
-| `--mail-user` + `--mail-type=FAIL,TIME_LIMIT` | optional, recommended for multi-day runs: you get an email when a job fails or is killed at its walltime, instead of discovering it days later |
 
 Everything else resolves at run time — the container path is absolute, `apptainer` is
 looked up with a self-diagnosing guard, and model/task/overrides come from the command line. The shipped defaults (`-p gpu`, no account)

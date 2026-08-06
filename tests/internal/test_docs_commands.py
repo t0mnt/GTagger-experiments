@@ -87,3 +87,37 @@ def test_sbatch_template_shifts_are_arity_guarded():
 def test_sbatch_template_parses():
     proc = subprocess.run(["bash", "-n", str(REPO / "docs" / "oscar-train.sbatch")], capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
+
+
+def test_sbatch_targets_are_created_before_first_use():
+    """A file you are told to `sbatch` must be created earlier in the same document.
+
+    `train.sbatch` is not in the repo -- it is a working copy the reader makes from
+    `docs/oscar-train.sbatch`, gitignored on purpose so a partition or account can never reach
+    this public repo. The copy step is therefore a PREREQUISITE and must appear above the first
+    submission. It did not: OSCAR section 5 opened with the ParticleNet reproduction
+    `sbatch ... train.sbatch ...` and put `cp docs/oscar-train.sbatch train.sbatch` (and
+    `mkdir -p logs`) thirty lines later, so following the document top-to-bottom produced
+    `sbatch: error: Unable to open file train.sbatch`.
+
+    The rule: before the first submission, the filename must appear on some earlier line that is
+    NOT itself an sbatch invocation -- i.e. somewhere it is being created or described, whether by
+    `cp` (OSCAR) or by prose plus a file block ("save the following as the FILE ...", SLURM).
+
+    `test_referenced_scripts_exist` does not cover this: it only checks `python <path>.py`.
+    """
+    for doc in DOCS:
+        text = (REPO / doc).read_text()
+        for m in re.finditer(r"^[ ]*sbatch\b[^\n]*?(\S+\.sbatch)\b", text, re.M):
+            target, at = m.group(1), m.start()
+            if (REPO / target).is_file():
+                continue  # shipped in the repo; nothing for the reader to create
+            earlier = [
+                ln for ln in text[:at].splitlines() if target in ln and "sbatch " not in ln
+            ]
+            assert earlier, (
+                f"{doc} line {text[:at].count(chr(10)) + 1}: `sbatch ... {target}` names a file "
+                f"that is not in the repo and is never created earlier in the document. Move the "
+                f"step that creates it above the first submission -- a reader pasting in order "
+                f"gets 'Unable to open file'."
+            )
