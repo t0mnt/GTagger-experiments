@@ -665,26 +665,24 @@ lines, and only the first is mandatory:
 | `--mail-user` + `--mail-type=FAIL,TIME_LIMIT` | optional, recommended for multi-day runs: you get an email when a job fails or is killed at its walltime, instead of discovering it days later |
 
 **Before the first real submission, reproduce a known result.** Train ParticleNet under
-its published recipe and check its test accuracy/AUC against the published numbers. This
-exercises the whole path -- data, loader, model, evaluation, table row -- against an answer
-you already know, so a mismatch here is an environment or data problem, not a hypothesis
-about your hybrids:
+its published recipe with `save=false` (no weights, no table row) and check its test
+accuracy/AUC against the published numbers. This exercises the whole path -- data,
+loader, model, evaluation, table row -- against an answer you already know, so a
+mismatch here is an environment or data problem, not a hypothesis about your hybrids:
 
 ```bash
 # on the LOGIN node -- a full run, so submit it rather than sitting in an interact.
 # Runtime depends on your cluster and dataset; the job prints its own estimate early on.
-sbatch -J particlenet-check train.sbatch tag_particlenet toptagging
+sbatch -J particlenet-check train.sbatch tag_particlenet toptagging save=false
 # when it finishes: grep "table test" logs/particlenet-check-<jobid>.out
 ```
 
-> **Run this gate with `save=true` (the default) -- do NOT add `save=false`.** `save=false`
-> makes `_save_model` a no-op, so the best-validation checkpoint is never written and the
-> restore at the end of training fails (`Cannot load best model ...`). Training is
-> unaffected, but the evaluation then reports the **final iterate**, not the
-> best-validation model the published protocol selects -- so the number you compare
-> against the table was not produced under the table's protocol. The run warns about this
-> at startup and again at restore time. `save=false` is right for throwaways and for
-> `find_lr` (§4); it is wrong for anything you intend to compare.
+> `save=false` writes nothing to disk but still follows the full protocol: the
+> best-validation checkpoint is held in RAM and restored before evaluation, so a dry run
+> reports the same model a `save=true` run would. (Before this was fixed, `_save_model`
+> returned early under `save=false`, the end-of-training restore failed with
+> `Cannot load best model ...`, and the evaluation silently reported the **final iterate**
+> instead. If you see that warning in an old log, its table line is a final-iterate number.)
 
 One parametrized sbatch file covers every model and task. It also accepts a `run.py`
 command copied verbatim (from `REPRODUCE.md`, say) with `sbatch train.sbatch` in front —
