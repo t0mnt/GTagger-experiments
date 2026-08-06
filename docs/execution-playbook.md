@@ -131,8 +131,16 @@ On branch dev, execute Stage 1 of docs/cgenn-compile.md.
 0. FIRST COMMIT, before any code edit: record fixtures — eager outputs of the tag_cgenn net on
    the fixed seeded batch (fp32 and fp64) under tests/fixtures/cgenn_compile/ with sha256s,
    plus the recording script/test (record/check modes, check skips when fixtures absent).
-1. Mechanical rewrites per §2 (bool-mask scatter -> precomputed integer indices; tensor-repeats
-   repeat_interleave -> precomputed gather). No arithmetic change of any kind.
+1. Mechanical rewrites, all three, in this order (§2 + the einsum note above it):
+   a. the geometric-product `einsum` -> outer-product + matmul in lgatr 2.0's shape
+      (`M[(i,k), j] = cayley[i,j,k]`, precomputed at init). Measured 76.1 ms -> 14.6 ms at
+      realistic size and BIT-identical there, and the GP is ~46% of runtime -- do it FIRST,
+      it is the largest single lever. If it fails BIT on the real fixtures it becomes a TOL
+      item: stop and report, do not relax the gate.
+   b. bool-mask scatter -> precomputed integer indices;
+   c. tensor-valued repeat_interleave -> precomputed gather.
+   (b) and (c) are pure data movement -- together they are the 38% of runtime the profile
+   attributes to `aten::copy_`. No arithmetic change of any kind in any of the three.
 2. `compile: false` knob in config/model/tag_cgenn.yaml + CGENNWrapper: when true,
    torch.compile(self.net, dynamic=True); wrapper stays eager; skip compiling on CPU test runs
    except the dedicated smoke test.
