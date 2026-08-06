@@ -20,6 +20,9 @@ from experiments.logger import LOGGER
 from experiments.misc import get_attention_mask
 from experiments.tagging.embedding import get_tagging_features
 
+# every to_dense_batch below is deliberate: this repo uses zero padding over sparse jet
+# representations, as the MPNN portion of the GNNs is currently not shaped for the latter
+
 
 class TaggerWrapper(nn.Module):
     def __init__(
