@@ -105,7 +105,13 @@ def pairwise_lv_fts_pp(xi, xj, num_outputs=4, eps=1e-8):
         outputs = [lnm2]
 
     if num_outputs > 1:
-        delta = delta_r2(rapi, phii, rapj, phij).sqrt()
+        # clamp BEFORE the sqrt: delta_r2 is exactly 0 for bit-identical pairs (padded
+        # constituents, and the diagonal when self-pairs are kept), and sqrt'(0) = inf, so the
+        # backward is 0 * inf = NaN -- which the existing clamp inside the log cannot undo.
+        # eps**2 (not eps) is deliberate: it floors delta at eps, so lndelta below is
+        # bit-identical to the unclamped version, as is lnkt wherever ptmin <= 1 (all padded
+        # pairs, whose pt is itself clamped to sqrt(eps)).
+        delta = delta_r2(rapi, phii, rapj, phij).clamp(min=eps**2).sqrt()
         lndelta = torch.log(delta.clamp(min=eps))
         ptmin = torch.minimum(pti, ptj)
         lnkt = torch.log((ptmin * delta).clamp(min=eps))
@@ -1034,7 +1040,11 @@ class ParticleTransformer(nn.Module):
                 # x: (P, N, C) -> output: (N, C, P)
                 output = x.transpose(1, 2).contiguous()
                 if self.for_inference:
-                    output = torch.softmax(output, dim=1)
+                    # single-logit heads (top-tagging here: out_channels=1, BCE) must use sigmoid --
+                    # softmax over a 1-wide dim is identically 1.0, silently making every score
+                    # constant (AUC 0.5). Multi-class (JetClass) is unchanged.
+                    output = (torch.sigmoid(output) if output.shape[1] == 1
+                              else torch.softmax(output, dim=1))
                 # print('output:\n', output)
                 return output
 
@@ -1045,7 +1055,11 @@ class ParticleTransformer(nn.Module):
             # fc
             output = self.fc(x_cls)
             if self.for_inference:
-                output = torch.softmax(output, dim=1)
+                # single-logit heads (top-tagging here: out_channels=1, BCE) must use sigmoid --
+                # softmax over a 1-wide dim is identically 1.0, silently making every score
+                # constant (AUC 0.5). Multi-class (JetClass) is unchanged.
+                output = (torch.sigmoid(output) if output.shape[1] == 1
+                          else torch.softmax(output, dim=1))
             # print('output:\n', output)
             return output
 
