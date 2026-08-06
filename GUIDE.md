@@ -259,6 +259,16 @@ the family (the LR scale is metric-independent — the model still *trains* unde
 configured metric); pass `+lr_find.force_knn_metric=keep` to sweep each model's own metric
 instead (or `=minkowski` to pin that).
 
+**When `loss-min/10` does not apply.** The heuristic assumes a trough *before* the blow-up. On a
+model whose loss falls monotonically into divergence the argmin lands in the near-divergence tail,
+where noise of ~1e-4 in the smoothed loss flips it between grid points a factor ~2.5 apart.
+Measured on ParticleNet / top tagging, three unseeded reruns of the same command gave
+**1.39e-1 / 3.82e-2 / 2.64e-2** — a 5x spread against a published `lr: 1e-2` — while
+steepest-descent on the same three curves gave **1.91e-3 / 1.32e-3 / 1.91e-3**, a 1.4x spread that
+brackets ParT's `1e-3`. `find_lr` now detects a non-interior minimum, warns, and recommends
+steepest-descent in that case. Where a trough does exist, `loss-min/10` remains the recommendation
+for the reason below.
+
 **Number or graph?** Take the printed `loss-min/10` — it is the value the recipes are meant to
 carry, and it is stable in `num_iter` in a way the steepest-descent point is not. Use the plot
 (`lr_finder.png`) as a veto, not as a second opinion: you want one clean descent into a single
