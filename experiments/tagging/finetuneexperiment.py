@@ -165,7 +165,10 @@ class TopTaggingFineTuneExperiment(TopTaggingExperiment):
                 if (
                     len(param.shape) == 1
                     or name.endswith(".bias")
-                    or (hasattr(self.model.net, "no_weight_decay") and name in {"cls_token"})
+                    or (
+                        hasattr(self.model.net, "no_weight_decay")
+                        and name in self.model.net.no_weight_decay()
+                    )
                 ):
                     if name.startswith("fc."):
                         head_nodecay[name] = param
