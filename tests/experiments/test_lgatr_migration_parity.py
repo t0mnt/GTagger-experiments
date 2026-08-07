@@ -381,11 +381,40 @@ def _transplant_check(name, overrides):
         f"missing={sorted(missing)} unexpected={sorted(set(unexpected) - expected_extra)}")
     tier1 = os.environ.get("LGATR_PARITY_TIER", "1") == "1"
     tol = 1e-10 if tier1 else 1e-8
-    tol = 1e-10 if tier1 else 1e-8
     mode = _grad_mode(name)
+    learned_frames = any("framesnet=learned" in o for o in overrides)
     for tag in ("main", "edge"):
         data = _rebuild_batch(ref[f"batch_{tag}"])
+        # S10 (operator ruling 2026-08-07): a multiplicity-1 jet degenerates the LEARNED-frames
+        # path, and its conditioning amplifies the fp64 cross-version reassociation baseline
+        # (decision-log evidence: the n=1 jet alone at 2.8e-9 tier-1 / 6.3e-6 tier-2 at the
+        # output, peaking at 6.9e-4 inside the frames net's block 0; every n>=2 jet at
+        # <= 4.6e-14). No campaign jet has multiplicity 1, so degenerate-frame inputs are out
+        # of scope for the strict bar. The rule is derived, not listed: it fires only for a
+        # learned-frames composition on a batch actually containing an n=1 jet.
+        degenerate = learned_frames and int(data.ptr.diff().min()) == 1
         pack = _forward_pack(exp, data, mode)
+        if degenerate:
+            trip = 1e-6 if tier1 else 1e-4
+            keep = data.ptr.diff() >= 2
+            y, yr = pack["y"], ref[tag]["y"]
+            rel_keep = (y[keep] - yr[keep]).abs().max() / (1 + yr[keep].abs().max())
+            rel_deg = (y[~keep] - yr[~keep]).abs().max() / (1 + yr[~keep].abs().max())
+            print(f"GATE-C {name}/{tag} tier{1 if tier1 else 2} forward rel(n>=2)="
+                  f"{rel_keep:.3e} rel(n=1)={rel_deg:.3e} (S10 tripwire {trip:.0e})")
+            assert rel_keep < tol, (f"{name}/{tag}: n>=2 jets must meet the strict bar even "
+                                    f"in the degenerate batch: {rel_keep:.3e} >= {tol}")
+            # the tripwire sits 2-4 orders below mistake scale O(1e-2..1): frames-path
+            # breakage still fails loudly, here AND via the strict n>=2 assert above.
+            assert rel_deg < trip, (f"{name}/{tag}: degenerate n=1 jet beyond the S10 "
+                                    f"tripwire: {rel_deg:.3e} >= {trip}")
+            # Per-block activations of the degenerate batch are diagnostic, not gate-bearing:
+            # the n=1 jet's particle rows thread every block tensor, and masking jets inside
+            # arbitrary per-block shapes is exactly where silent-alias mistakes live (H13).
+            # Full per-block strictness is retained on the main batch. (continue also skips
+            # the input-grad check -- no learned-frames fixture records one; flex has no CPU
+            # backward.)
+            continue
         rel = (pack["y"] - ref[tag]["y"]).abs().max() / (1 + ref[tag]["y"].abs().max())
         print(f"GATE-C {name}/{tag} tier{1 if tier1 else 2} forward rel={rel:.3e}")
         assert rel < tol, f"{name}/{tag}: forward parity {rel:.3e} >= {tol}"

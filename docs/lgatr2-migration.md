@@ -109,8 +109,9 @@ All current v-channel widths are ≠ 4, so a missed M8 transpose **crashes loudl
 | **S5** | **qkv scalar bias removed** from q/k/v linears in *all* models ("because redundant") — v2 `qkv.py` passes `bias=False` at all four construction sites. v1 defaulted `bias=True` with **nonzero** uniform init: slim's `linear_in.linear_s.bias` (plain `nn.Linear` default; v2's zero-init of it is listed as *new*), full model's biases inside EquiLinear's internal `s2mvs`/`mvs2s` Linears (+ the standalone scalar-slot bias when a layer has no s-inputs) | v1 state_dicts contain qkv bias values with no v2 slot, and they contribute nonzero terms to v1 outputs | **Normalize-at-record**: walk `named_modules()`, locate each attention layer's qkv projection module (slim `linear_in`; full-model qkv EquiLinear), and zero **every** `*.bias` tensor beneath it, *before* recording (a zero-bias v1 model is still a valid v1 model — the reference moves into the intersection of both architectures). Gate B: waiver for the missing params |
 | **S6** | **Slim GLU vector-gate scale**: v2 multiplies the gate inner product by `0.5 = 1/sqrt(4)` (`slim_layers.py:368-369`). **No flag.** | Every slim model's forward differs even with identical weights and S1 pinned | **Exact compensation in transplant**: scale the two vector-gate chunks (`v_gates_1`, `v_gates_2` rows of each GLU's fused linear `weight_v`) by `sqrt(2)` each ⇒ inner product ×2 ⇒ cancels the 0.5 exactly. Scalar-gate path is unscaled in v2 — do not touch it. Vector path has no bias — nothing else to compensate |
 | S7 | Slim init/scaling refinements (`linear_s` bias→0 at init, plus "micro speed/memory optimizations") | Same-seed fresh-init models are not comparable across versions — at all | This is *why* verification is transplant-based. Init-distribution changes are an accepted training-dynamics delta of v2 (no eval-parity impact once weights are transplanted) |
-| **S9** | **GeLU flavor changed: exact (erf) → `approximate="tanh"`** via the unified `get_nonlinearity`. Found by Gate C tier-1, localized by the per-block fixtures to `ScalarGatedNonlinearity`'s scalar stream (mv exact, s off by 1.3e-4 with zero-parameter module and bit-equal inputs); v1's `gated_gelu` used erf. Affects every gelu-using path (full-LGATr GeoMLPs, slim MLP gates) at ~1e-4 relative | Tier-1 parity would cap at ~1e-4 without compensation | Shipped: accept tanh-gelu (Posture B — it is upstream's speed choice). Verification: tier-1 monkeypatches the v2 build's gelu back to exact erf (instrument-only, like the S6 rescale), keeping the 1e-10 bar meaningful |
+| **S9** | **GeLU flavor changed: exact (erf) → `approximate="tanh"`** via the unified `get_nonlinearity`. Found by Gate C tier-1, localized by the per-block fixtures to `ScalarGatedNonlinearity`'s scalar stream (mv exact, s off by 1.3e-4 with zero-parameter module and bit-equal inputs); v1's `gated_gelu` used erf. Affects every gelu-using path (full-LGATr GeoMLPs, slim MLP gates) at ~1e-4 relative | Tier-1 parity would cap at ~1e-4 without compensation | Shipped: accept tanh-gelu (Posture B — it is upstream's speed choice). Verification: the transplant check monkeypatches the v2 build's gelu back to v1's exact split (instrument-only, like the S6 rescale) in BOTH tiers — keeping the 1e-10 bar meaningful and letting tier 2 isolate the S3 reorder alone |
 | S8 | AMP strategy changed (vector/multivector path fp32, scalar path in autocast; `naive_amp` bypass added) | Inert today: every wrapper runs `use_amp: false` | Note in decision log; re-read this row before ever enabling amp |
+| S10 | **Not a library delta — a verification-scope ruling** (operator, 2026-08-07). A multiplicity-1 jet degenerates the learned-frames path; its conditioning amplifies the fp64 cross-version reassociation baseline (measured, `equivectors_lgatr` edge fixture: the n=1 jet alone at 2.8e-9 tier-1 / 6.3e-6 tier-2; every n≥2 jet ≤ 4.6e-14; bit-deterministic across runs and seeds) | Only the `equivectors_lgatr` edge batch is affected — no campaign jet has multiplicity 1 (dataset floor ≥ 4), and the equivectors-lgatr composition is not used by this repo's campaign | Rule-derived handling in `_transplant_check`, firing only for a **learned-frames** composition on a batch actually **containing an n=1 jet**: the output is compared per-jet — n≥2 jets keep the **strict** bar; the n=1 jet is held to a tripwire (1e-6 tier 1 / 1e-4 tier 2, 2–4 orders below mistake scale O(1e-2..1) so frames-path breakage stays loud). Per-block activations of that batch are diagnostic-only (the degenerate jet's particle rows thread every block tensor — measured peak 6.9e-4 inside the frames net's block 0 at tier 2 — and masking jets inside arbitrary block shapes is H13 territory); full per-block strictness is retained on the main batch. Identity-frames fixtures untouched; the bars themselves unchanged |
 
 (S4 from rev 1 — MLP depth semantics — is resolved and folded into M4.)
 
@@ -535,15 +536,24 @@ in-place ops block input-leaf backward; `equivectors_lgatr` has no CPU flex back
 | tag_CGENNLGATrGraphGPS | 0.0 / 3.972e-17 | 1.971e-16 / 4.481e-17 | 0.0 / 0.0 | 6.042e-16 / 6.016e-16 |
 | tag_LorentzNetLGATrSlimGraphTrans | 1.381e-16 / 1.375e-16 | 1.946e-18 / 1.731e-18 | 1.381e-16 / 1.375e-16 | 1.946e-18 / 1.731e-18 |
 | tag_LorentzNetLGATrSlimGraphGPS | 0.0 / 0.0 | 2.168e-19 / 2.710e-19 | 0.0 / 0.0 | 2.168e-19 / 2.710e-19 |
-| equivectors_lgatr | 1.919e-13 / **1.529e-9 FAIL** | (no pack) | 9.863e-14 / **6.281e-6 FAIL** | (no pack) |
+| equivectors_lgatr | 1.919e-13 / 1.529e-9 † | (no pack) | 9.863e-14 / 6.281e-6 † | (no pack) |
+
+† the n=1-jet degenerate-frames case: originally **FAIL** against the strict bars, then ruled
+out of scope by the operator (S10) after the characterization below. Post-ruling the edge
+batch is compared per-jet (subset-normalized): n≥2 jets strict (2.455e-14 tier 1 / 4.463e-13
+tier 2, PASS), the n=1 jet against its documented tripwire (1.736e-9 vs 1e-6; 7.132e-6 vs
+1e-4, PASS); its per-block activations are diagnostic-only (peak 6.937e-4 inside the frames
+net, see ruling). The whole-batch values shown above are the pre-ruling measurements,
+unchanged.
 
 Slim-only models (`tag_slim`, both LorentzNet hybrids) have no geometric product, so their
 tier-2 build is the tier-1 build; the bit-identical numbers across tiers are the expected
 consistency check, not a copy-paste. For the full-LGATr models the tier-1→tier-2 movement
 (≤6e-16) is the S3 reorder itself — at these widths it is invisible, exactly as argued in §4.
 
-**The one red case — `equivectors_lgatr` edge batch (OPEN, operator call).** Characterized,
-per instruction, not decided; the tier-2 edge failure is the same item, not a second finding.
+**The `equivectors_lgatr` edge batch — characterized, then ruled out of scope (S10).**
+Characterized first, decided by the operator after; the tier-2 edge failure is the same item,
+not a second finding.
 The edge batch truncates jets to multiplicities [1, 3, 30, 49]; per-jet decomposition of the
 tier-1 deviation: the n=1 jet carries **2.848e-9** while the n=3 / n=30 / n=49 jets sit at
 4.574e-14 / 1.188e-14 / 6.661e-16 — and every jet of the main batch (natural multiplicities)
@@ -555,13 +565,27 @@ reproduce both batches to max|Δ| = 0.0, so this is a fixed arithmetic differenc
 here (varlen is CUDA-only; xformers/flash are CUDA-gated by lloca's registry). Consistent
 interpretation (not a ruling): a 1-particle jet degenerates the learned-frames path, whose
 conditioning amplifies the ~1e-13 cross-version reassociation baseline into the 1e-9 (dense)
-and 1e-6 (sparse_gp) range. Whether a degenerate 1-particle jet is in scope for a 1e-10
-transplant bar is the operator's call; the bar was not widened and the test stays red until
-that call is made.
+and 1e-6 (sparse_gp) range.
+
+**Ruling (operator, 2026-08-07): out of scope.** Grounds: the equivectors-lgatr composition
+is not used by this repo's campaign, and no campaign jet has multiplicity 1 (dataset floor
+≥ 4) — the degenerate input exists only in the synthetic edge-batch truncation. Implemented
+as S10 (§2.3), rule-derived (learned-frames composition AND an n=1 jet actually present),
+not a bar change: the degenerate batch's output is compared per-jet — its n≥2 jets stay at
+the **strict** bar (gate-measured, subset-normalized: 2.455e-14 tier 1 / 4.463e-13 tier 2)
+while the n=1 jet is held to a 1e-6 / 1e-4 tripwire (measured 1.736e-9 / 7.132e-6; 2–4
+orders of margin below mistake scale remain). That batch's per-block activations become diagnostic-only: implementing the
+ruling exposed that the degenerate rows thread the intermediate tensors at up to **6.937e-4**
+(tier 2, `framesnet.equivectors.net.blocks.0.mlp.layers.0` — the amplification peaks inside
+the frames net and attenuates to 6.3e-6 by the output, consistent with the conditioning
+mechanism), and masking jets inside arbitrary block shapes is H13 territory; the main batch
+keeps full per-block strictness. With S10, Gate C is 7/7 green in both tiers.
 
 **Gate D — full suite on v2: 611 passed, 17 failed, 39 skipped** (667 collected; the "64/64"
-criterion line predates the suite's growth). The 17 decompose exactly into three known
-classes, none an unexplained migration break:
+criterion line predates the suite's growth; counts are as-run during Task B, pre-S10 — after
+the S10 ruling the transplant member is green by direct re-run, and the H15 member goes green
+with the Task C flip commit, leaving exactly the 15 environment-class failures). The 17
+decompose exactly into three known classes, none an unexplained migration break:
 
 - **15 × pelican-FLOPs environment class**: every `*-learnedpd-pelican` parametrization of
   `test_tag_flops`/`test_amp_flops` plus `test_tagging[tag_pelican_fair-identity]`. The
@@ -572,7 +596,8 @@ classes, none an unexplained migration break:
   `learnedpd-lgatr` equivectors FLOPs rows all PASS on v2. Same environment-only family as
   the container FLOPs failures already in `docs/audit-ledger.md`.
 - **1 × `test_transplant_parity[equivectors_lgatr]`** — the flagged item above appearing
-  under its default tier-1 invocation; red is its honest state pending the operator call.
+  under its default tier-1 invocation; it stayed red until the operator's S10 ruling and is
+  green under it (per-jet: strict for n≥2, tripwire for the n=1 jet).
 - **1 × `test_weight_decay_grouping[tag_CGENNLGATrGraphTrans-tag_CGENNLGATrGraphGPS]`** —
   **H15 firing, on schedule**: under Posture B the GraphTrans hybrid's LGATr nets now carry
   affine gains (net-level v2 default passed through) and those `weight_mv` gains land in the
@@ -605,7 +630,8 @@ compensation now spans BOTH tiers (`_transplant_check`; previously tier-1-only �
 entry for why tier 2 is wrong without it); (2) the Gate B 2.x branch replaced its skip
 (`_manifest_check_v2` + `_expected_frozen`, rule-derived as specified in §Phase 4); (3)
 `test_blade_table_gate_f` added. No tolerance, waiver derivation, or existing assertion was
-edited; the flagged case stays red.
+edited; the flagged case stayed red until the operator's S10 ruling landed in its own commit
+(the only edit that touched a comparison bound, and it is the S-item-documented one).
 
 ### Per-S-item entries (what changed, which posture shipped, why)
 
