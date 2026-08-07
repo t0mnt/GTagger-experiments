@@ -1,0 +1,10 @@
+{
+ "equivectors_lgatr.pt": "38f4d25e162f663ad6c70d3498e41654713d7063655b9c280b129196758437cc",
+ "production_manifests.json": "49c6ac202e15ca5ccc41a658fb906bea2d1886e728da4a67d63ab254fac7eb21",
+ "tag_CGENNLGATrGraphGPS.pt": "6c51551565fed4ca46d46d390f83c770a8c474b50f50c66ce043f9ef80c00946",
+ "tag_CGENNLGATrGraphTrans.pt": "b2622c79ac6eb475a43d4783c643e30b5e3297fd5dd9f21dbb60d9029321ad4b",
+ "tag_LorentzNetLGATrSlimGraphGPS.pt": "f7ce1632557bc381fc5e610b41a09588c853c23de37d8e886bf15c38b94084ad",
+ "tag_LorentzNetLGATrSlimGraphTrans.pt": "f571c194e5bcfa532d1b13afcbedfda5034c09f7e7d3674628b2ff366c300ea6",
+ "tag_lgatr.pt": "0901100542a67c32e797f62487253bd8b33142df575fa27fef56d99976fbd7d8",
+ "tag_slim.pt": "9c923b26f7d1d5b74bb816d4506b1ea66f638e741c29170ae486602069b733c4"
+}

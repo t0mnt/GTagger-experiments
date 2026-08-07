@@ -50,7 +50,7 @@ Deliverables, committed to dev:
    lgatr-touching tagging configs + the equivectors composition; reduced-config transplant
    packs (qkv-bias-normalized state_dict, outputs, per-block activations, gradient pack,
    resolved-config snapshot).
-3. Record mode run TWICE; show the byte-identical hash comparison in your report.
+3. Record orchestrator run TWICE; show the identical content_hashes.json comparison in your report.
 4. Existing test suite still 64/64 with the new file present.
 Constraints: do NOT install lgatr 2.0. Do NOT modify anything under experiments/ or config/ —
 Phase 0 touches tests/ only. If a fixture cannot be recorded, stop and report; never shrink
