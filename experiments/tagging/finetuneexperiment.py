@@ -3,7 +3,7 @@ import os
 import torch
 from hydra.core.hydra_config import HydraConfig
 from lgatr.layers.linear import EquiLinear
-from lgatr.nets.lgatr_slim import Linear as LorentzLinear
+from lgatr.layers import SlimLinear as LorentzLinear
 from omegaconf import OmegaConf, open_dict
 from torch_ema import ExponentialMovingAverage
 

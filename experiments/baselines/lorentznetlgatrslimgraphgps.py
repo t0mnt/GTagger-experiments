@@ -47,11 +47,13 @@ Input convention (set by the wrapper, channels-first, four-momenta (px, py, pz, 
 
 import torch
 import torch.nn as nn
-from lgatr.nets.lgatr_slim import MLP as SlimMLP
-from lgatr.nets.lgatr_slim import Dropout as SlimDropout
-from lgatr.nets.lgatr_slim import Linear as SlimLinear
-from lgatr.nets.lgatr_slim import RMSNorm as SlimRMSNorm
-from lgatr.nets.lgatr_slim import SelfAttention as SlimSelfAttention
+from lgatr.layers import (  # shallow public path (M1: survived v2's own module moves)
+    SlimDropout,
+    SlimLinear,
+    SlimMLP,
+    SlimRMSNorm,
+    SlimSelfAttention,
+)
 
 from experiments.baselines.lorentznetlgatrslimgraphtrans import (
     LorentzNetKNNBlock,
