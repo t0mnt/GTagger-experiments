@@ -42,6 +42,37 @@ def unsorted_segment_mean(data, segment_ids, num_segments):
     return result / count.clamp(min=1)
 
 
+def cgenn_gain_and_bias_names(module):
+    """Fully-qualified names of CGENN's activation/normalization gains and biases.
+
+    These are identity-initialised shape parameters of a nonlinearity or a norm -- MVSiLU's
+    ``sigmoid(a * norms + b)`` gate (a=1, b=0) and the two normalization gains -- not weights.
+    Decaying them expresses a prior toward deleting the nonlinearity rather than toward a
+    simpler function: at a=0 the MVSiLU gate collapses to the constant sigmoid(b). They are
+    missed by both of the optimizer's structural rules (ndim>1, and named ``.a``/``.b`` rather
+    than ``.bias``), so they are declared here instead. The official CGENN top-tagging recipe
+    runs Adam with no weight decay at all, so exempting them restores the reference behaviour
+    for exactly these parameters while this repo's weight_decay still applies to real weights.
+
+    Computed by walking the module tree, never hardcoded, so adding a block cannot silently
+    drop a parameter from the exemption.
+    """
+    names = set()
+    for mod_name, mod in module.named_modules():
+        cls = type(mod).__name__
+        if cls == "MVSiLU":
+            attrs = ("a", "b")
+        elif cls in ("NormalizationLayer", "MVLayerNorm"):
+            attrs = ("a",)
+        else:
+            continue
+        for attr in attrs:
+            param = getattr(mod, attr, None)
+            if param is not None:
+                names.add(f"{mod_name}.{attr}" if mod_name else attr)
+    return names
+
+
 class CGLayer(nn.Module):
     def __init__(
         self,
@@ -334,6 +365,10 @@ class CGENN(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(decoder_features, n_outputs),
         )  # head network
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        return cgenn_gain_and_bias_names(self)
 
     def forward(
         self,
