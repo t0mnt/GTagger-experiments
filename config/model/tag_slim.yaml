@@ -20,6 +20,8 @@ net:
  mlp_ratio: 4
  attn_ratio: 1
  compile: true
+ compile_kwargs:
+  dynamic: true  # M9: v1.4.4 defaulted compile_dynamic=True; v2 defaults dynamic off -> variable-length batches would recompile per shape
 
 defaults:
  - framesnet: identity
