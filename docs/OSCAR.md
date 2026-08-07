@@ -728,7 +728,7 @@ The template's comments explain every flag choice; the load-bearing facts:
   uses the task config's default, which is `tag_gts_and_friends_default` — *the hybrid
   family recipe* (AdamW, lr 1e-3, batchsize 512, weight_decay 0.01, 20 epochs, cosine).
   That is a considered recipe for the eight hybrids and an arbitrary one for anything else.
-  Models with no top-tagging recipe today: `tag_cgenn`, `tag_MIParT-L`, `tag_graphnet`,
+  Models with no top-tagging recipe today: `tag_MIParT-L`, `tag_graphnet`,
   `tag_top_transformer`, and the five `tag_pelican*` variants. Note also that this fork
   *changed* the fallback: upstream's task default is `top_transformer` (Lion, lr 3e-5,
   weight_decay 2), ours is `tag_gts_and_friends_default` (AdamW, lr 1e-3, weight_decay

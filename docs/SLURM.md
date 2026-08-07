@@ -151,7 +151,7 @@ srun apptainer exec --nv --bind "$PWD:$PWD" --pwd "$PWD" "$IMG" bash -lc '
 # NB the reverse trap: a model with no top_<Model> recipe does NOT fail -- it silently
 # inherits the task default, which is the HYBRID FAMILY recipe (tag_gts_and_friends_default:
 # lr 1e-3, batchsize 512, weight_decay 0.01), not that model's published setting. Affects
-# tag_cgenn, tag_MIParT-L, tag_graphnet, tag_top_transformer, tag_pelican*. Pass
+# tag_MIParT-L, tag_graphnet, tag_top_transformer, tag_pelican*. Pass
 # training=<recipe> explicitly for those.
 ```
 

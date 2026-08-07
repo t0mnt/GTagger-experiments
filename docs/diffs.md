@@ -95,6 +95,16 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   hybrid-vs-lloca (the third edge, so a change moving both in-repo files together still
   fails).
 
+- `config/training/top_cgenn.yaml`: the CGENN baseline now names its recipe explicitly
+  (`??? ` lr/batchsize over `tag_gts_and_friends_default`) instead of inheriting the task
+  default by accident. The effective recipe is unchanged -- the task default IS that same
+  base -- but the reference row for both CGENN hybrids no longer silently tracks any
+  future change to it, and `sbatch train.sbatch tag_cgenn` derives it by name. The
+  unswept-fallback guardrail was extended to fire for CGENN too, since the file ships the
+  same `???` placeholders as the hybrid recipes and omegaconf resolves an unfilled `???`
+  to the parent's value rather than raising. Differences from the official CGENN recipe
+  (Adam / wd 0 / batch 32 / ~8.8 epochs) are enumerated in the file's header.
+
 ## Fixed here (input pipeline & training robustness)
 - CGENN `MVLayerNorm` gain reshaped (1, C) -> (C,) so it falls under the optimizer's ndim<=1
   weight-decay exemption like every other norm gain; the official 2-d shape was silently
