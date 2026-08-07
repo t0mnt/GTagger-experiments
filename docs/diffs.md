@@ -76,6 +76,17 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   (`& ~is_spurion`), so a spacelike beam spurion (m^2=-1) is not forced lightlike (which would
   void the spacelike-beam ablation).
 
+- `tag_particlenet` gains a `knn_metric` option (`experiments/baselines/particlenet_lloca.py`,
+  a subclass of lloca's ParticleNet). lloca's backbone seeds layer-0 kNN with a plain
+  squared-L2 on `points` and never receives the four-momenta, so `minkowski` -- available
+  on all eight hybrids -- was not expressible for the baseline row. `ParticleNetWrapper`
+  now also passes `v` (dense `(B, 4, P)` local four-momenta), consumed only by layer 0 and
+  only when `knn_metric=minkowski`. **`deltaR` still calls lloca's own `knn`, so the
+  default path is bit-identical**; routing it through the hybrid's helper would have
+  changed the published-reproduction row, because the hybrid wraps `dphi` into `[0, pi]`
+  before the L2 (azimuth is periodic) and lloca does not. That baseline-vs-hybrid
+  difference is pre-existing and is left alone.
+
 ## Fixed here (input pipeline & training robustness)
 - CGENN `MVLayerNorm` gain reshaped (1, C) -> (C,) so it falls under the optimizer's ndim<=1
   weight-decay exemption like every other norm gain; the official 2-d shape was silently

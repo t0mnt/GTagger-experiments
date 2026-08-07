@@ -436,7 +436,7 @@ class ParticleNetWrapper(AggregatedTaggerWrapper):
     def forward(self, embedding):
         (
             features_local,
-            _,
+            fourmomenta_local,
             frames,
             _,
             batch,
@@ -454,6 +454,10 @@ class ParticleNetWrapper(AggregatedTaggerWrapper):
         features_local, _ = to_dense_batch(features_local, batch)
         phieta_local = phieta_local.transpose(1, 2)
         features_local = features_local.transpose(1, 2)
+        # four-momenta reach the backbone only so layer-0 kNN can rank on the Minkowski
+        # interval; unused when knn_metric=deltaR (the default), which stays bit-identical
+        fourmomenta_local, _ = to_dense_batch(fourmomenta_local, batch)
+        fourmomenta_local = fourmomenta_local.transpose(1, 2).contiguous()  # (B, 4, P)
         dense_frames, _ = to_dense_batch(frames.matrices, batch)
         dense_frames[~mask] = (
             torch.eye(4, device=dense_frames.device, dtype=dense_frames.dtype)
@@ -477,6 +481,7 @@ class ParticleNetWrapper(AggregatedTaggerWrapper):
             features=features_local,
             frames=frames,
             mask=mask,
+            v=fourmomenta_local,
         )
         return score, tracker, frames
 
