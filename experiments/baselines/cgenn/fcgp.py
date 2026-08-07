@@ -33,6 +33,11 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
             self.linear_left = MVLinear(algebra, in_features, out_features, bias=True)
 
         self.product_paths = algebra.geometric_product_paths
+        # integer indices of the allowed grade paths: index_put with these is the same values
+        # in the same order as the boolean-mask assignment, without rebuilding a mask each
+        # forward (and without the runtime nonzero() a bool mask implies under compile)
+        self.register_buffer("_path_idx", self.product_paths.nonzero().T.contiguous(),
+                             persistent=False)
         self.weight = nn.Parameter(torch.empty(out_features, in_features, self.product_paths.sum()))
 
         self.reset_parameters()
@@ -51,12 +56,10 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
             dtype=self.weight.dtype,
             device=self.weight.device,
         )
-        weight[:, :, self.product_paths] = self.weight
-        subspaces = self.algebra.subspaces
+        weight[:, :, self._path_idx[0], self._path_idx[1], self._path_idx[2]] = self.weight
+        bsi = self.algebra.blade_subspace_idx
         weight_repeated = (
-            weight.repeat_interleave(subspaces, dim=-3)
-            .repeat_interleave(subspaces, dim=-2)
-            .repeat_interleave(subspaces, dim=-1)
+            weight.index_select(-3, bsi).index_select(-2, bsi).index_select(-1, bsi)
         )
         return self.algebra.cayley * weight_repeated
 

@@ -265,7 +265,7 @@ class CGLayer(nn.Module):
 
         if self.use_invariants_to_update:
             weights = self.psi_x(m_h).view(len(m_h), self.out_features_x, self.algebra.n_subspaces)
-            weights = torch.repeat_interleave(weights, self.algebra.subspaces, dim=2)
+            weights = weights.index_select(2, self.algebra.blade_subspace_idx)
             m_x = m_x * torch.sigmoid(weights)
 
         x_red = self.reduce(m_x.flatten(1), i, num_segments=x.size(0)).view(len(x), *m_x.shape[1:])
@@ -284,7 +284,7 @@ class CGLayer(nn.Module):
         if self.use_invariants_to_update:
             weights = self.chi_x(h_u).view(len(h_u), self.out_features_x, self.algebra.n_subspaces)
 
-            weights = torch.repeat_interleave(weights, self.algebra.subspaces, dim=2)
+            weights = weights.index_select(2, self.algebra.blade_subspace_idx)
             x_u = x_u * torch.sigmoid(weights)
 
         if self.residual and self.in_features_h == self.out_features_h:

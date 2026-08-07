@@ -39,6 +39,16 @@ class CliffordAlgebra(nn.Module):
         self.register_buffer("even_grades", self.bbo_grades % 2 == 0)
         self.register_buffer("odd_grades", ~self.even_grades)
         self.register_buffer("cayley", cayley)
+        # blade index -> subspace(grade) index, e.g. [0,1,1,1,1,2,...,4]: index_select with
+        # this replaces every tensor-valued repeat_interleave over the blade dimension
+        # (pure data movement -> bit-identical; tensor-valued repeats are also a dynamo
+        # graph-break hazard). Non-persistent: derived data, state_dict unchanged.
+        self.register_buffer(
+            "blade_subspace_idx",
+            torch.arange(self.n_subspaces).repeat_interleave(
+                torch.tensor(tuple(math.comb(self.dim, g) for g in self.grades))),
+            persistent=False,
+        )
 
     def geometric_product(self, a, b, blades=None):
         cayley = self.cayley
