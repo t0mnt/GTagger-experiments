@@ -714,7 +714,25 @@ The template's comments explain every flag choice; the load-bearing facts:
   env (stale lmod `module` function) nor `module load` the mislabeled container module —
   the §2 container-guard story, solved inside the script.
 - Recipe names are derived (`tag_X` + task → `top_X`/`jc_X`/`xl_X`), and `-cp config` is
-  pinned there because `run.py` defaults to the tiny `config_quick` tree.
+  pinned there because `run.py` defaults to the tiny `config_quick` tree. So
+  `sbatch train.sbatch tag_particlenet toptagging save=false` runs
+  `python run.py -cp config -cn toptagging model=tag_particlenet training=top_particlenet
+  gpus=1 save=false` — you do **not** pass `training=` yourself, and nothing runs on
+  `config_quick`. Check the derivation in any log: `top_ParT` (which `top_particlenet`
+  inherits) pins `iterations: 48000` and `validate_every_n_steps: 2400`, whereas the task
+  default is epoch-based (`epochs: 20` → 47320 iterations at 2366 batches/epoch, validating
+  every 2366) — so the two are distinguishable from the "Starting to train for N iterations"
+  line alone.
+- **When no recipe file exists, the fallback is not neutral.** The derivation is
+  conditional on `config/training/<prefix>_<X>.yaml` being present; when it is not, hydra
+  uses the task config's default, which is `tag_gts_and_friends_default` — *the hybrid
+  family recipe* (AdamW, lr 1e-3, batchsize 512, weight_decay 0.01, 20 epochs, cosine).
+  That is a considered recipe for the eight hybrids and an arbitrary one for anything else.
+  Models with no top-tagging recipe today: `tag_cgenn`, `tag_MIParT-L`, `tag_graphnet`,
+  `tag_top_transformer`, and the five `tag_pelican*` variants. `tag_cgenn` is the one that
+  bites — it is the reference row for both CGENN hybrids, and official CGENN top-tagging is
+  Adam / lr 1e-3 / **weight_decay 0** / batch 32. Pass `training=<recipe>` explicitly, or
+  add the recipe file, before treating any of those as a published-number reproduction.
 - Arg 2 is the task only if it names one (`toptagging|jctagging|toptagxl`); anything else
   is passed through as a hydra override, as in the examples above.
 

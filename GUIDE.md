@@ -122,6 +122,16 @@ correctly with no `training=` at all (you just fill `lr`/`batchsize` from
 `utils/find_lr.py`). Pass `training=top_<baseline>` to run a baseline under its own tuned
 recipe (e.g. `top_transformer` = Lion, lr=3e-5, 300k iters) — see §7.
 
+> **A baseline with no recipe file does not fail — it inherits the hybrid recipe.** The
+> default above applies to *anything* that does not pass `training=`, so a baseline whose
+> `config/training/top_<X>.yaml` is missing trains at AdamW / lr 1e-3 / batchsize 512 /
+> wd 0.01 rather than its published setting, silently. Missing today: `tag_cgenn`,
+> `tag_MIParT-L`, `tag_graphnet`, `tag_top_transformer`, `tag_pelican*`. `tag_cgenn` is the
+> one to watch — it is the reference row for both CGENN hybrids, and official CGENN
+> top-tagging is Adam / lr 1e-3 / **weight_decay 0** / batch 32. (The cluster wrappers
+> derive `training=top_<X>` automatically *when the file exists*, so this is the same trap
+> whether you use `run.py` or `sbatch train.sbatch`.)
+
 The 8 GT hybrids share one recipe: each `config/training/top_<hybrid>.yaml`
 `defaults: [tag_gts_and_friends_default]` (AdamW, **epochs=20**,
 CosineAnnealingWarmup, shared `weight_decay=0.01`, validate once/epoch) and only fills
