@@ -104,6 +104,36 @@ def main():
           "a non-venv path means a shadowing copy (the leak carried an older lgatr); "
           "re-run the section-2 install block")
 
+    # ---- 3b. storage layout ---------------------------------------------------------
+    # `runs/` and the full dataset must live OUTSIDE home. Home is 100 GB with an inode
+    # quota shared with the venv, and it is snapshotted -- so deleting an overflowing runs/
+    # does not free the quota immediately. The failure mode is a campaign that dies days in
+    # with "Disk quota exceeded" and takes git and the venv down with it.
+    #
+    # This is checked because the documented `ln -sfn <target> runs` SILENTLY does the wrong
+    # thing when `runs` already exists as a real directory: it creates `runs/<basename>`
+    # INSIDE it and exits 0, leaving output in home. `data/toptagging_full.npz` is a file, so
+    # its `ln -sfn` is unaffected -- which is why one of the two usually looks right.
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    home = os.path.realpath(os.path.expanduser("~"))
+    for rel in ("runs", "data/toptagging_full.npz", "data/JetClass", "data/toptagxl"):
+        path = os.path.join(repo, rel)
+        if not os.path.exists(path) and not os.path.islink(path):
+            continue  # not set up yet (JetClass/TopTagXL are optional) -- nothing to judge
+        is_link = os.path.islink(path)
+        target = os.path.realpath(path)
+        outside_home = not target.startswith(home + os.sep)
+        nested = is_link is False and os.path.isdir(path) and any(
+            os.path.islink(os.path.join(path, e)) for e in os.listdir(path)
+        )
+        check(f"{rel} lives outside home", is_link and outside_home,
+              f"{'symlink -> ' if is_link else 'REAL DIRECTORY in home: '}{target}"
+              + ("  (contains a nested symlink -- the `ln -sfn` footgun)" if nested else ""),
+              "fix: mkdir -p <target>; "
+              "find " + rel + " -mindepth 1 -maxdepth 1 -exec mv -t <target> {} + ; "
+              "rmdir " + rel + " ; ln -sfn <target> " + rel + " ; then `ls -ld " + rel + "` "
+              "MUST print an arrow. See docs/OSCAR.md section 2.")
+
     # ---- 4. xformers --------------------------------------------------------------
     # Absence is NOT a failure: the documented Oscar image is built xformers-free
     # (OSCAR.md section 2 strips it), and nothing in the campaign needs it -- only the four

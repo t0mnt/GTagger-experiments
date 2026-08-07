@@ -305,9 +305,22 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
 mv -n data/toptagging_full.npz ~/data/$GROUP/$USER/gtagger/
 ln -sfn ~/data/$GROUP/$USER/gtagger/toptagging_full.npz data/toptagging_full.npz
 
-# run output -> ~/scratch (fast, purged; we copy keepers back at the end)
-mkdir -p ~/scratch/gtagger_runs
-ln -sfn ~/scratch/gtagger_runs runs
+# run output -> ~/scratch (fast, purged; we copy keepers back at the end).
+# link_dir, not a bare `ln -sfn`: when the link name already exists as a REAL directory,
+# `ln -sfn target dir` creates dir/<basename> INSIDE it and exits 0. The link looks made,
+# `ls -ld runs` shows a plain directory, and every run then writes into HOME -- 100 GB,
+# shared with the venv, inode-quota'd and snapshotted, so a mid-campaign overflow takes git
+# and the venv with it and deleting the files does not free the quota until snapshots age out.
+link_dir() {                      # link_dir <target> <link>
+    mkdir -p "$1"
+    if [ -d "$2" ] && [ ! -L "$2" ]; then           # real dir in the way -> drain and remove
+        find "$2" -mindepth 1 -maxdepth 1 -exec mv -t "$1" {} +
+        rmdir "$2" || { echo "ERROR: $2 not empty after move"; return 1; }
+    fi
+    ln -sfn "$1" "$2"
+    [ -L "$2" ] && ls -ld "$2" || { echo "ERROR: $2 is still not a symlink"; return 1; }
+}
+link_dir ~/scratch/gtagger_runs runs
 ```
 
 **Dataset placement rule of thumb** — three tiers by size and replaceability: the
@@ -348,7 +361,7 @@ Wait for the prompt to change to a compute node, then paste the work:
 
 ```bash
 # on the COMPUTE node the interact above landed you on
-mkdir -p ~/scratch/jetclass && ln -sfn ~/scratch/jetclass ~/GTagger-experiments/data/JetClass
+link_dir ~/scratch/jetclass ~/GTagger-experiments/data/JetClass   # see link_dir in section 2
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python data/collect_data.py jetclass' \
@@ -383,7 +396,7 @@ Wait for the compute-node prompt, then:
 
 ```bash
 # on the COMPUTE node
-mkdir -p ~/scratch/toptagxl && ln -sfn ~/scratch/toptagxl ~/GTagger-experiments/data/toptagxl
+link_dir ~/scratch/toptagxl ~/GTagger-experiments/data/toptagxl   # see link_dir in section 2
 cd ~/GTagger-experiments
 apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
   'source venv/bin/activate && python data/collect_data.py toptagxl' \
