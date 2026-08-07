@@ -90,7 +90,8 @@ settles for us:
    |---|---|---|---|
    | attention (quadratic) | 12156 | 2718 | **4.47×** |
    | per-node / per-token (linear) | 110.3 | 49.2 | **2.24×** |
-   | kNN edges | — | — | **1.00×** (already built on real nodes only) |
+   | kNN edges | — | — | **1.00×** (the edge *list* is built on real nodes only) |
+   | kNN edge *construction* | 12156 | 2718 | **4.47×** — `generate_edges_vectorized` forms a dense `(B, P, P)` distance matrix and masks it; only its output is packed |
 
    Their Table 2 rows are transformers, where attention plus per-token MLPs are the whole model —
    hence ~2× overall. **Our GNN branches are already edge-sparse**, so the same change buys them
