@@ -1,0 +1,42 @@
+# Training recipe for tag_cgenn -- fill in the REQUIRED (???) keys, then:
+#   python run.py model=tag_cgenn training=top_cgenn data.dataset=full gpus=1
+#
+#   lr         <- utils/find_lr.py                                   (reported loss-min / 10)
+#   batchsize  <- utils/find_lr.py +lr_find.find_batch_size=true     (the GPU-fit size)
+#   (epochs=20 + CosineAnnealingWarmup are shared in tag_gts_and_friends_default; iterations auto-derived)
+#
+# WHY THIS FILE EXISTS. Without it tag_cgenn had no top_* recipe, so it silently inherited the
+# task default -- which IS tag_gts_and_friends_default, the same base this file uses, so the
+# effective recipe is unchanged. What changes is that the choice is now explicit and tunable
+# instead of accidental, and `sbatch train.sbatch tag_cgenn` derives it by name like every other
+# row. It also stops the CGENN baseline from silently tracking any future change to the task
+# default: the hybrids' shared recipe is a deliberate object, and CGENN is their REFERENCE row.
+#
+# HOW THIS COMPARES TO THE OFFICIAL CGENN RECIPE
+# (github.com/DavidRuhe/clifford-group-equivariant-neural-networks, README top-tagging command
+#  + top_tagging.py): Adam, one flat param group, lr 1e-3, weight_decay 0 (not passed -> Adam's
+#  default; their nbody command DOES pass 1e-4, so the omission is a choice), batch 32,
+#  331126 steps (~8.8 epochs), cosine with warmup=steps/64.
+#
+#   - optimizer  AdamW vs Adam: decoupled decay, and with weight_decay left at the shared 0.01
+#     this is a real but conventional difference -- and a smaller one since the CGENN gain/bias
+#     exemption landed, which removed decay from MVSiLU.a/.b, NormalizationLayer.a and
+#     MVLayerNorm.a (the parameters where it was doing something qualitatively wrong). What is
+#     still decayed here and not there is the actual weights.
+#   - lr 1e-3 at THEIR batch 32 is not the same operating point as 1e-3 at a batch chosen by
+#     find_lr; that is the main reason this file leaves lr blank rather than copying theirs.
+#   - exposure 20 epochs here vs ~8.8 there.
+#
+# The row this produces is "CGENN under this study's shared recipe", not "CGENN as published".
+# Both are legitimate; only one of them is comparable to the eight hybrids it is the reference
+# for, which is why the shared recipe wins here. Say so in the methods section rather than
+# implying the two agree.
+defaults:
+  - tag_gts_and_friends_default
+
+# found using utils/find_lr.py
+batchsize: ???
+lr: ???
+
+# weight_decay: 0.01          # inherited from tag_gts_and_friends_default; official CGENN uses 0
+# optimizer: Adam             # inherited AdamW; official CGENN uses Adam (one flat group)

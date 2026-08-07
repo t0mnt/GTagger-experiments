@@ -37,7 +37,11 @@ class TaggingExperiment(BaseExperiment):
 
         # Hybrid recipes ship batchsize/lr as '???', but OmegaConf MISSING can't override
         # the tag_default values, so an unfilled recipe silently falls back to 512 / 1e-3.
-        if self.cfg.train and modelname.endswith(("GraphTrans", "GraphGPS")):
+        # CGENN is included because top_cgenn.yaml ships the same ??? placeholders: it is the
+        # hybrids' reference row, so an unswept fallback there is as damaging as on a hybrid.
+        if self.cfg.train and (
+            modelname.endswith(("GraphTrans", "GraphGPS")) or modelname == "CGENN"
+        ):
             # check each knob independently: filling one placeholder must not mute the other
             unswept = []
             if float(self.cfg.training.lr) == 1e-3:

@@ -125,8 +125,10 @@ recipe (e.g. `top_transformer` = Lion, lr=3e-5, 300k iters) — see §7.
 > **A baseline with no recipe file does not fail — it inherits the hybrid recipe.** The
 > default above applies to *anything* that does not pass `training=`, so a baseline whose
 > `config/training/top_<X>.yaml` is missing trains at AdamW / lr 1e-3 / batchsize 512 /
-> wd 0.01 rather than its published setting, silently. Missing today: `tag_cgenn`,
-> `tag_MIParT-L`, `tag_graphnet`, `tag_top_transformer`, `tag_pelican*`.
+> wd 0.01 rather than its published setting, silently. Missing today: `tag_MIParT-L`,
+> `tag_graphnet`, `tag_top_transformer`, `tag_pelican*` (`tag_cgenn` now has `top_cgenn.yaml`,
+> which pins the same shared recipe explicitly so the reference row stops tracking the task
+> default by accident).
 >
 > **And this fork changed what that fallback is.** Upstream's `config/toptagging.yaml`
 > defaults to `training: top_transformer` (Lion, lr 3e-5, **weight_decay 2**, batchsize 128,
