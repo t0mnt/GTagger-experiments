@@ -1,7 +1,7 @@
 _target_: experiments.eventgen.wrappers.LGATrSlimCFM
 
 net:
- _target_: lgatr.nets.lgatr_slim.LGATrSlim
+ _target_: lgatr.LGATrSlim
 
  in_v_channels: null
  in_s_channels: null
