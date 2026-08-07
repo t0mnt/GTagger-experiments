@@ -311,3 +311,58 @@ ParticleNet next (weaver-core supports both upstream now, so the risk is low); t
 GT hybrids post-campaign, measuring ParticleNetParTGraphTrans/GPS first, since graph
 breaks would come from the wrapper (per-batch kNN rebuild, PyG scatter, LLoCa transport)
 rather than the backbones.
+
+---
+
+## L-GATr's own `compile` flag — what it covers, and what it cannot
+
+`lgatr.nets` (`LGATr`, `LGATrSlim`, `ConditionalLGATr`, `ConditionalSlim`) accept
+`compile: bool = False` + `compile_kwargs`. On 2.0 the helper is
+`lgatr/utils/compile.py::compile_model`, which rebinds `model.forward` on the **instance**
+(not the class) after calling `warmup_caches()`. On 1.4.4 it was the cruder
+`self.__class__ = torch.compile(self.__class__, ...)` with `fullgraph=False`, needed because
+attention carries a `torch.compiler.disable`.
+
+**Where we already use it.** `config/model/tag_slim.yaml:22` sets `compile: true`, so the
+`tag_slim` baseline has been compiling all along — same as upstream's efficiency repo, which
+sets it on its `tag_slim` too. `tag_lgatr` does **not** set it, in either repo.
+
+**The asymmetry to fix, and where.** `LorentzNetLGATrSlimGraphTrans` constructs a real
+`LGATrSlim` (`lorentznetlgatrslimgraphtrans.py:399`) with an explicit kwarg list that omits
+`compile`. So the hybrid's L-GATr half runs eager while the `tag_slim` baseline it shares a
+table with runs compiled — and walltime is a reported column. Enabling it is two lines (a
+`compile` kwarg forwarded to the constructor, plus the yaml key), but it changes throughput
+and Inductor reassociates reductions, so it belongs in **Stage 2 (step 6)** behind
+BIT/TOL/DET/BREAKS/RECOMP, not as a config tweak.
+
+**Why the GPS variants cannot have it at all.** `LorentzNetLGATrSlimGraphGPS` imports
+`MLP`/`Dropout`/`Linear`/`RMSNorm`/`SelfAttention` from `lgatr.nets.lgatr_slim` and assembles
+the blocks itself, because GPS *is* the interleaving of a local MPNN branch with the attention
+branch inside each layer. There is no monolithic lgatr net to wrap around that. Same for both
+CGENN hybrids, which import from `lgatr.layers`. For every GPS model the route is our own
+`torch.compile(self.net, dynamic=True)` with the wrapper left eager — i.e. exactly the Stage-1
+recipe, no data-flow change required.
+
+**One thing to copy from lgatr's helper:** it calls `warmup_caches()`
+(`lgatr.primitives.compile`) *before* compiling. lgatr's primitives populate caches (Cayley
+tables, basis elements) lazily on first use; compiling first traces cache population into the
+graph or forces an extra recompile. Any hybrid that compiles lgatr layers should warm first —
+one import, and it is invisible until you are counting compilations in the RECOMP gate.
+
+### Where compile actually pays, and why it is not the transformers
+
+Compile wins come from fusing elementwise chains (fewer memory round-trips) and from removing
+per-op dispatch overhead. It cannot improve an already-fused kernel. So the ranking across
+this table is the opposite of the intuition that "compile is for transformers":
+
+| stack | dominant cost | expected compile win |
+|---|---|---|
+| CGENN | `copy_` 38.5% over **2071 calls**, `mul` 23%, `bmm` 19% — many small memory-bound ops | **largest** |
+| L-GATr / slim | multivector elementwise + norms + GLU on `(B, P, C, 16)` | large — upstream shipping a `compile` flag is their own evidence |
+| ParticleNet EdgeConv | kNN gather + BN + conv chains | moderate (the gathers stay memory-bound) |
+| ParT / plain transformer | attention, **already fused** by xformers/flash | **smallest** — only the norms and MLP are left to fuse |
+
+This is why Stage 1 is CGENN and step 7 (ParT/ParticleNet/plain) is last: the ordering follows
+the op-count profile, not the model's fame. It also means a disappointing number on the
+transformer rows is the expected result, not a failed port — the "stays eager with a logged
+reason" branch of the table-wide policy exists for exactly that.
