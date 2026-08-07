@@ -1,5 +1,6 @@
 _target_: experiments.tagging.wrappers.CGENNWrapper
 out_channels: null
+compile: false  # torch.compile(net, dynamic=True); wrapper stays eager (docs/cgenn-compile.md)
 
 net:
  _target_: experiments.baselines.cgenn.cgenn.CGENN

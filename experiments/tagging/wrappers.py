@@ -797,9 +797,14 @@ class PELICANWrapperOfficial(nn.Module):
 
 
 class CGENNWrapper(nn.Module):
-    def __init__(self, net, framesnet, out_channels):
+    def __init__(self, net, framesnet, out_channels, compile=False):
         super().__init__()
         self.net = net(n_outputs=out_channels)
+        if compile:
+            # net only -- the wrapper stays eager: pair.nonzero, the spurion rescale and
+            # to_dense_batch are data-dependent by design (docs/cgenn-compile.md section 2).
+            # dynamic=True: N = B*P and the fully-connected E vary per batch.
+            self.net = torch.compile(self.net, dynamic=True)
         self.framesnet = framesnet
         assert isinstance(framesnet, IdentityFrames)
 
