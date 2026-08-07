@@ -396,6 +396,22 @@ Next hotspot after matmul+compile on CPU: `mm`+`bmm` 24% (the GEMMs themselves) 
 inductor cannot fuse into (the eager 50% `copy_` is already down to 9%). No further
 CPU-side lever worth taking; the next real datum is the GPU matrix.
 
+**Default flipped to `gp_impl: sparse` (2026-08-07, operator-directed).** This adopts
+lgatr 2.0's own default posture: `PrimitivesConfig` ships `sparse_gp=True` ("under
+`torch.compile` this is both faster and far lighter than the dense product") and
+`sparse_linear=False` (sparse linear "has fewer FLOPs but no single fused BLAS GEMM, so on
+FLOP-rich GPUs it is typically slower; it mainly helps on FLOP-bound hardware") — i.e.
+sparse GP + dense linear on GPU, exactly the operator's recollection. CGENN's MVLinear has
+no dense/sparse choice to make (its blade-diagonal weight structure IS the model), so the
+adoption reduces to the GP default. Note the honest asymmetry: lgatr's sparse gp is a pure
+gather-multiply-sum with **no matmul by design** (their comment: a matmul would materialize
+the 16×16 operand; the fused gather is lighter under compile), while CGENN's weighted
+sparse form must still contract channels — on CPU inductor lowers that einsum to
+badly-shaped bmm, which is why sparse lost the CPU matrix above. The campaign is GPU, where
+triton fuses the gather like lgatr's kernel; β-PERF can overturn the default with one yaml
+line. BIT/reference gates now pin `gp_impl=einsum` explicitly, so the recorded fixtures
+stay authoritative while the suite exercises the campaign posture.
+
 **Campaign-order ruling (pre-β):** *(superseded same day: the operator confirmed compiled
 CGENN still dominates the campaign budget and directed immediate implementation of both GP
 forms — see the `gp_impl` entry below)* sparse-GP does NOT blind-jump the queue. Order is:

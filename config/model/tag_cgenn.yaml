@@ -14,8 +14,11 @@ net:
  n_outputs: null
  n_layers: 4
  dropout: 0.2
- # einsum (reference, bit-identical to fixtures) | matmul | sparse — docs/cgenn-compile.md
- gp_impl: einsum
+ # einsum (BIT-reference path) | matmul (dense GEMM) | sparse (quasigroup gather).
+ # sparse mirrors lgatr 2.0's sparse_gp=True default posture (fastest under compile on
+ # GPU); CPU-measured ranking is matmul > einsum > sparse, so quick/CPU work may prefer
+ # matmul. β-PERF GPU matrix can overturn this with a one-line change. docs/cgenn-compile.md
+ gp_impl: sparse
 
 defaults:
  - framesnet: identity

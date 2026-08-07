@@ -821,6 +821,21 @@ python run.py -cp ~/GTagger-experiments/runs/EXPNAME/RUNNAME -cn config \
 in the run dir carries everything else.) The run's table row consolidates to
 `[N trials] $mean ± std$` automatically.
 
+**How the error bars are made (and why this mechanism is the canonical one — GUIDE §8):**
+each trial appends its raw scalars to `table_metrics_<split>.json` in the shared run dir,
+lineage-keyed (a later continue-training *extends its parent's row* instead of counting as
+an extra trial); the row's `mean ± std` is the sample std (n−1) over those rows, recomputed
+whenever a trial lands. Because the raw per-trial values persist in the JSON, the statistic
+can be changed (median, min–max band) or a bad trial dropped later without retraining. The
+grouping is *explicit* — the directory IS the ensemble — so nothing can silently pool
+inequivalent runs, and a pinned `seed` is caught at launch (with `seed=null`, the default,
+every trial draws a fresh init; batch order stays sampler-seeded and identical across
+trials). Plain independent submissions of the same variant also work: the aggregator (§8)
+groups them by `(task, model, frames, kNN)` at parse time and refuses to pool whenever that
+inference could lie (disagreeing iters/params/FLOPs, identical-metric seed clones, or a mix
+with an in-run-aggregated row). Use independent dirs when wall-clock for ONE variant
+matters (three parallel jobs) — for campaign rows, prefer the warm-start mechanism above.
+
 ## 7. The full campaign (which models, and which need the LR finder)
 
 The study's grid is the 8 hybrids. **All 8 need §4** (their recipes deliberately leave

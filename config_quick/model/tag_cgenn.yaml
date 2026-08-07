@@ -13,8 +13,9 @@ net:
  n_outputs: null
  n_layers: 1
  dropout: 0.0
- # einsum (reference, bit-identical to fixtures) | matmul | sparse — docs/cgenn-compile.md
- gp_impl: einsum
+ # campaign posture (lgatr-2.0 sparse_gp default analog); the BIT/reference gates pin
+ # gp_impl=einsum explicitly, so the suite exercises sparse while fixtures stay valid
+ gp_impl: sparse
 
 defaults:
  - framesnet: identity

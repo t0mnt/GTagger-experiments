@@ -107,11 +107,15 @@ def _content_hash(obj):
     return h.hexdigest()
 
 
+REF_IMPL = ["model.net.gp_impl=einsum"]  # the BIT-reference path; the yaml default is the
+# campaign posture (sparse) and is TOL-class, so reference gates pin einsum explicitly
+
+
 @pytest.mark.parametrize("prec", ["fp32", "fp64"])
 def test_bit_eager_vs_fixtures(prec):
     """BIT: eager outputs bit-identical to the pre-rewrite recording. torch.equal, no tolerance."""
     path = FIX / f"{prec}.pt"
-    exp = _build(float64=(prec == "fp64"))
+    exp = _build(float64=(prec == "fp64"), extra_overrides=REF_IMPL)
     if RECORD:
         data = _fixed_batch(exp)
         pack = {"batch": _batch_fields(data), "y": _forward(exp, data),
@@ -162,7 +166,7 @@ def test_impl_tol_vs_reference(impl, prec):
         pytest.skip("no cgenn_compile fixtures recorded")
     ref = torch.load(path, weights_only=False)
     f64 = prec == "fp64"
-    exp = _build(float64=f64)
+    exp = _build(float64=f64, extra_overrides=REF_IMPL)
     exp.model.load_state_dict(ref["sd"], strict=True)
     y_ref = _forward(exp, _rebuild(ref["batch"]))
     exp2 = _build(float64=f64, extra_overrides=[f"model.net.gp_impl={impl}"])

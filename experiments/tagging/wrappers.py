@@ -411,7 +411,7 @@ class TransformerWrapper(AggregatedTaggerWrapper):
         frames = frames.reshape(1, *frames.shape)
 
         # network
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(features_local.device.type, enabled=self.use_amp):
             outputs = self.net(inputs=features_local, frames=frames, **mask_kwarg)
 
         # aggregation
@@ -587,7 +587,7 @@ class LGATrWrapper(nn.Module):
         mv = embed_vector(fourmomenta).unsqueeze(-2)
         s = scalars if scalars.shape[-1] > 0 else None
 
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(mv.device.type, enabled=self.use_amp):
             mv_outputs, _ = self.net(mv, s, **mask_kwarg)
         out = extract_scalar(mv_outputs)[0, :, :, 0]
 
@@ -976,7 +976,7 @@ class LGATrSlimWrapper(nn.Module):
         v = fourmomenta.unsqueeze(-2)
         s = scalars
 
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(v.device.type, enabled=self.use_amp):
             _, out_s = self.net(v, s, **mask_kwarg)
         out = out_s[0, :, :]
 
