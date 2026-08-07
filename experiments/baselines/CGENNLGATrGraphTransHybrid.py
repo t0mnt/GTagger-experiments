@@ -147,6 +147,9 @@ class CliffordAlgebra(nn.Module):
             .to(torch.get_default_dtype())
         )
         self.grades = self.bbo.grades.unique()
+        # python-int copy for loops/indexing under torch.compile: int(0-d tensor) is a
+        # Tensor.item() call, and item() inside the traced region is a dynamo graph break.
+        self.grades_list = [int(g) for g in self.grades]
         self.register_buffer(
             "subspaces",
             torch.tensor(tuple(math.comb(self.dim, g) for g in self.grades)),
@@ -162,6 +165,32 @@ class CliffordAlgebra(nn.Module):
         self.register_buffer("even_grades", self.bbo_grades % 2 == 0)
         self.register_buffer("odd_grades", ~self.even_grades)
         self.register_buffer("cayley", cayley)
+        # blade index -> subspace(grade) index: index_select with this replaces every
+        # tensor-valued repeat_interleave over the blade dimension (pure data movement ->
+        # bit-identical; tensor-valued repeats are also a dynamo graph-break hazard).
+        self.register_buffer(
+            "blade_subspace_idx",
+            torch.arange(self.n_subspaces).repeat_interleave(
+                torch.tensor(tuple(math.comb(self.dim, g) for g in self.grades))),
+            persistent=False,
+        )
+        # quasigroup sparse-GP tables (one nonzero right blade per (left, output) pair)
+        # -- same construction as experiments/baselines/cgenn/cliffordalgebra.py
+        assert ((cayley != 0).sum(-1) <= 1).all(), "cayley lost the one-nonzero-per-(i,j) property"
+        gp_k_idx = cayley.abs().argmax(dim=-1)
+        self.register_buffer("gp_k_idx", gp_k_idx, persistent=False)
+        self.register_buffer(
+            "gp_val",
+            torch.gather(cayley, -1, gp_k_idx.unsqueeze(-1)).squeeze(-1),
+            persistent=False,
+        )
+        # materialize every functools.cached_property at init: the descriptor's RLock is a
+        # dynamo graph break on first touch, invisible to explain after any eager warm-up
+        # (the Stage-1 lesson -- docs/cgenn-compile.md Log)
+        for klass in type(self).__mro__:
+            for name, member in vars(klass).items():
+                if isinstance(member, functools.cached_property):
+                    getattr(self, name)
 
     def geometric_product(self, a, b, blades=None):
         cayley = self.cayley
@@ -171,13 +200,24 @@ class CliffordAlgebra(nn.Module):
             assert isinstance(blades_o, torch.Tensor)
             assert isinstance(blades_r, torch.Tensor)
             cayley = cayley[blades_l[:, None, None], blades_o[:, None], blades_r]
-        return torch.einsum("...i,ijk,...k->...j", a, cayley, b)
+        # two-operand chains replacing the 3-operand einsum: >= 3 operands recompute an
+        # opt_einsum path from concrete sizes per call (python overhead eager; per-shape
+        # re-specialization under compile). Chains == the paths opt_einsum picks at
+        # production sizes; selector reads only static blade dims. Bit-identity enforced
+        # by the cgenn_hybrid_compile BIT gate. Mirrors baselines/cgenn/cliffordalgebra.py.
+        if cayley.shape[1] == 1 and cayley.shape[0] > 1:
+            t = torch.einsum("ijk,...i->jk...", cayley, a)
+            return torch.einsum("jk...,...k->...j", t, b)
+        t = torch.einsum("...k,...i->...ki", b, a)
+        return torch.einsum("...ki,ijk->...j", t, cayley)
 
     def _grade_to_slice(self, subspaces):
         grade_to_slice = list()
         subspaces = torch.as_tensor(subspaces)
         for grade in self.grades:
-            index_start = subspaces[:grade].sum()
+            # int endpoints: tensor-valued slice bounds call Tensor.item() (__index__) at
+            # every mv[..., s] -- an in-trace graph break under compile (Stage-1 fix)
+            index_start = int(subspaces[:grade].sum())
             index_end = index_start + math.comb(self.dim, grade)
             grade_to_slice.append(slice(index_start, index_end))
         return grade_to_slice
@@ -272,7 +312,7 @@ class CliffordAlgebra(nn.Module):
 
     def norms(self, mv, grades=None):
         if grades is None:
-            grades = self.grades
+            grades = self.grades_list
         return [
             self.norm(self.get_grade(mv, grade), blades=self.grade_to_index[grade])
             for grade in grades
@@ -280,7 +320,7 @@ class CliffordAlgebra(nn.Module):
 
     def qs(self, mv, grades=None):
         if grades is None:
-            grades = self.grades
+            grades = self.grades_list
         return [
             self.q(self.get_grade(mv, grade), blades=self.grade_to_index[grade])
             for grade in grades
@@ -379,7 +419,7 @@ class NormalizationLayer(nn.Module):
         norms = torch.cat(self.algebra.norms(input), dim=-1)
         s_a = torch.sigmoid(self.a)
         norms = s_a * (norms - 1) + 1 # Interpolates between 1 and the norm.
-        norms = norms.repeat_interleave(self.algebra.subspaces, dim=-1)
+        norms = norms.index_select(-1, self.algebra.blade_subspace_idx)
         normalized = input / (norms + EPS)
         return normalized
 
@@ -415,7 +455,7 @@ class MVLinear(nn.Module):
         return torch.einsum("bm...i, nm->bn...i", input, self.weight)
 
     def _forward_subspaces(self, input):
-        weight = self.weight.repeat_interleave(self.algebra.subspaces, dim=-1)
+        weight = self.weight.index_select(-1, self.algebra.blade_subspace_idx)
         return torch.einsum("bm...i, nmi->bn...i", input, weight)
 
     def forward(self, input):
@@ -449,6 +489,19 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
         if include_first_order:
             self.linear_left = MVLinear(algebra, in_features, out_features, bias=True)
         self.product_paths = algebra.geometric_product_paths
+        # integer indices of the allowed grade paths: index_put with these is the same
+        # values in the same order as the boolean-mask assignment, without the runtime
+        # nonzero() a bool mask implies under compile (Stage-1 rewrite b)
+        self.register_buffer("_path_idx", self.product_paths.nonzero().T.contiguous(),
+                             persistent=False)
+        self.gp_impl = getattr(algebra, "gp_impl", "einsum")
+        g = algebra.bbo_grades.long()
+        lookup = torch.full((algebra.n_subspaces,) * 3, -1, dtype=torch.long)
+        lookup[self._path_idx[0], self._path_idx[1], self._path_idx[2]] = torch.arange(
+            self._path_idx.shape[1])
+        pth = lookup[g[:, None], g[None, :], g[algebra.gp_k_idx]]
+        self.register_buffer("_sp_path", pth.clamp(min=0), persistent=False)
+        self.register_buffer("_sp_val", algebra.gp_val * (pth >= 0), persistent=False)
         self.weight = nn.Parameter(
             torch.empty(out_features, in_features, self.product_paths.sum())
         )
@@ -468,26 +521,38 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
             dtype=self.weight.dtype,
             device=self.weight.device,
         )
-        weight[:, :, self.product_paths] = self.weight
-        subspaces = self.algebra.subspaces
+        weight[:, :, self._path_idx[0], self._path_idx[1], self._path_idx[2]] = self.weight
+        bsi = self.algebra.blade_subspace_idx
         weight_repeated = (
-            weight.repeat_interleave(subspaces, dim=-3)
-            .repeat_interleave(subspaces, dim=-2)
-            .repeat_interleave(subspaces, dim=-1)
+            weight.index_select(-3, bsi).index_select(-2, bsi).index_select(-1, bsi)
         )
         return self.algebra.cayley * weight_repeated
 
     def forward(self, input):
         input_right = self.linear_right(input)
         input_right = self.normalization(input_right)
-        weight = self._get_weight()
-        if self.include_first_order:
-            return (
-                self.linear_left(input)
-                + torch.einsum("bni, mnijk, bnk -> bmj", input, weight, input_right)
-            ) / math.sqrt(2)
+        if self.gp_impl == "sparse":
+            # quasigroup gather (lgatr 2.0 sparse_gp) -- see baselines/cgenn/fcgp.py
+            pair = input.unsqueeze(-1) * input_right[..., self.algebra.gp_k_idx]
+            w = self.weight[:, :, self._sp_path] * self._sp_val
+            product = torch.einsum("bnij,mnij->bmj", pair, w)
+        elif self.gp_impl == "matmul":
+            weight = self._get_weight()
+            nb = self.algebra.n_blades
+            outer = (input.unsqueeze(-1) * input_right.unsqueeze(-2)).flatten(1)
+            wf = weight.permute(0, 3, 1, 2, 4).reshape(self.out_features * nb, -1)
+            product = (outer @ wf.T).view(-1, self.out_features, nb)
         else:
-            return torch.einsum("bni, mnijk, bnk -> bmj", input, weight, input_right)
+            # two-operand chain == opt_einsum's path at these shapes; a 3-operand einsum
+            # recomputes that path per call and re-specializes the compiled graph per
+            # batch shape. Bit-identity enforced by the cgenn_hybrid_compile BIT gate.
+            weight = self._get_weight()
+            outer = torch.einsum("bnk,bni->bnki", input_right, input)
+            product = torch.einsum("bnki,mnijk->bmj", outer, weight)
+        if self.include_first_order:
+            return (self.linear_left(input) + product) / math.sqrt(2)
+        else:
+            return product
 
 class SteerableGeometricProductLayer(nn.Module):
     def __init__(
@@ -507,6 +572,16 @@ class SteerableGeometricProductLayer(nn.Module):
         if include_first_order:
             self.linear_left = MVLinear(algebra, features, features, bias=True)
         self.product_paths = algebra.geometric_product_paths
+        self.register_buffer("_path_idx", self.product_paths.nonzero().T.contiguous(),
+                             persistent=False)
+        self.gp_impl = getattr(algebra, "gp_impl", "einsum")
+        g = algebra.bbo_grades.long()
+        lookup = torch.full((algebra.n_subspaces,) * 3, -1, dtype=torch.long)
+        lookup[self._path_idx[0], self._path_idx[1], self._path_idx[2]] = torch.arange(
+            self._path_idx.shape[1])
+        pth = lookup[g[:, None], g[None, :], g[algebra.gp_k_idx]]
+        self.register_buffer("_sp_path", pth.clamp(min=0), persistent=False)
+        self.register_buffer("_sp_val", algebra.gp_val * (pth >= 0), persistent=False)
         self.weight = nn.Parameter(torch.empty(features, self.product_paths.sum()))
         self.reset_parameters()
 
@@ -520,26 +595,38 @@ class SteerableGeometricProductLayer(nn.Module):
             dtype=self.weight.dtype,
             device=self.weight.device,
         )
-        weight[:, self.product_paths] = self.weight
-        subspaces = self.algebra.subspaces
+        weight[:, self._path_idx[0], self._path_idx[1], self._path_idx[2]] = self.weight
+        bsi = self.algebra.blade_subspace_idx
         weight_repeated = (
-            weight.repeat_interleave(subspaces, dim=-3)
-            .repeat_interleave(subspaces, dim=-2)
-            .repeat_interleave(subspaces, dim=-1)
+            weight.index_select(-3, bsi).index_select(-2, bsi).index_select(-1, bsi)
         )
         return self.algebra.cayley * weight_repeated
 
     def forward(self, input):
         input_right = self.linear_right(input)
         input_right = self.normalization(input_right)
-        weight = self._get_weight()
-        if self.include_first_order:
-            return (
-                self.linear_left(input)
-                + torch.einsum("bni, nijk, bnk -> bnj", input, weight, input_right)
-            ) / math.sqrt(2)
+        if self.gp_impl == "sparse":
+            # quasigroup gather (lgatr 2.0 sparse_gp) -- see baselines/cgenn/gp.py
+            pair = input.unsqueeze(-1) * input_right[..., self.algebra.gp_k_idx]
+            w = self.weight[:, self._sp_path] * self._sp_val
+            product = torch.einsum("bnij,nij->bnj", pair, w)
+        elif self.gp_impl == "matmul":
+            weight = self._get_weight()
+            nb = self.algebra.n_blades
+            outer = input.unsqueeze(-1) * input_right.unsqueeze(-2)
+            wf = weight.permute(0, 1, 3, 2).reshape(self.features, nb * nb, nb)
+            product = torch.bmm(
+                outer.permute(1, 0, 2, 3).reshape(self.features, -1, nb * nb), wf
+            ).permute(1, 0, 2)
         else:
-            return torch.einsum("bni, nijk, bnk -> bnj", input, weight, input_right)
+            # two-operand chain == opt_einsum's path at these shapes (see FCGP.forward)
+            weight = self._get_weight()
+            outer = torch.einsum("bnk,bni->bnki", input_right, input)
+            product = torch.einsum("bnki,nijk->bnj", outer, weight)
+        if self.include_first_order:
+            return (self.linear_left(input) + product) / math.sqrt(2)
+        else:
+            return product
 
 class MVLayerNorm(nn.Module):
     def __init__(self, algebra, channels):
@@ -578,10 +665,10 @@ class MVSiLU(nn.Module):
             raise ValueError(f"Invariant {invariant} not recognized.")
 
     def _norms_except_scalar(self, input):
-        return self.algebra.norms(input, grades=self.algebra.grades[1:])
+        return self.algebra.norms(input, grades=self.algebra.grades_list[1:])
 
     def _mag2s_except_scalar(self, input):
-        return self.algebra.qs(input, grades=self.algebra.grades[1:])
+        return self.algebra.qs(input, grades=self.algebra.grades_list[1:])
 
     def forward(self, input):
         norms = self._get_invariants(input)
@@ -589,7 +676,7 @@ class MVSiLU(nn.Module):
         a = unsqueeze_like(self.a, norms, dim=2)
         b = unsqueeze_like(self.b, norms, dim=2)
         norms = a * norms + b
-        norms = norms.repeat_interleave(self.algebra.subspaces, dim=-1)
+        norms = norms.index_select(-1, self.algebra.blade_subspace_idx)
         return torch.sigmoid(norms) * input
 
 
@@ -625,7 +712,7 @@ def cgenn_gain_and_bias_names(module):
 
 
 def get_invariants(algebra, input):
-    norms = algebra.qs(input, grades=algebra.grades[1:])
+    norms = algebra.qs(input, grades=algebra.grades_list[1:])
     return torch.cat([input[..., :1], *norms], dim=-1)
 
 def psi(p):
@@ -906,7 +993,7 @@ class CGLayer(nn.Module):
             weights = self.psi_x(m_h).view(
                 len(m_h), self.out_features_x, self.algebra.n_subspaces
             )
-            weights = torch.repeat_interleave(weights, self.algebra.subspaces, dim=2)
+            weights = weights.index_select(2, self.algebra.blade_subspace_idx)
             m_x = m_x * torch.sigmoid(weights)
         x_red = self.reduce(m_x.flatten(1), i, num_segments=x.size(0)).view(
             len(x), *m_x.shape[1:]
@@ -923,7 +1010,7 @@ class CGLayer(nn.Module):
             weights = self.chi_x(h_u).view(
                 len(h_u), self.out_features_x, self.algebra.n_subspaces
             )
-            weights = torch.repeat_interleave(weights, self.algebra.subspaces, dim=2)
+            weights = weights.index_select(2, self.algebra.blade_subspace_idx)
             x_u = x_u * torch.sigmoid(weights)
         if self.residual and self.in_features_h == self.out_features_h:
             h = h_u + h
@@ -948,6 +1035,7 @@ class CGENNBackbone(nn.Module):
         residual=False,
         aggregation="mean",
         layer_type="fc",
+        gp_impl="einsum",
     ):
         super().__init__()
         self.in_features_h = in_features_h
@@ -955,6 +1043,12 @@ class CGENNBackbone(nn.Module):
         self.in_features_x = in_features_x
         self.hidden_features_x = hidden_features_x
         self.algebra = CliffordAlgebra((1.0, -1.0, -1.0, -1.0))
+        # geometric-product contraction for the weighted GP layers: einsum (BIT reference)
+        # | matmul (dense GEMM) | sparse (quasigroup gather; lgatr 2.0 sparse_gp posture).
+        # matmul/sparse are TOL-class -- see docs/cgenn-compile.md and baselines/cgenn.
+        if gp_impl not in ("einsum", "matmul", "sparse"):
+            raise ValueError(f"gp_impl must be einsum|matmul|sparse, got {gp_impl!r}")
+        self.algebra.gp_impl = gp_impl
         self.n_layers = n_layers
         self.embedding_h = nn.Linear(in_features_h, hidden_features_h)
         self.embedding_x = MVLinear(
@@ -1026,6 +1120,7 @@ class CGENNLGATrGraphTrans(nn.Module):
         cgenn_residual: bool = False,  # official CGENN top-tagging default (tag_cgenn row)
         cgenn_layer_type: str = "fc",
         cgenn_normalization_init=None,  # official CGENN: no NormalizationLayer (tag_cgenn row)
+        gp_impl: str = "einsum",  # einsum (BIT ref) | matmul | sparse -- docs/cgenn-compile.md
         concat_original: bool = True,
         use_explicit_edge_features: bool = True,
         beam_spurion: str = "xyplane",
@@ -1088,6 +1183,7 @@ class CGENNLGATrGraphTrans(nn.Module):
             residual=cgenn_residual,
             aggregation=cgenn_aggregation,
             layer_type=cgenn_layer_type,
+            gp_impl=gp_impl,
         )
 
         # concat_original skips the raw particle kinematic channel (ch 0) only. Spurion

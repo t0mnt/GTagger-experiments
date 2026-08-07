@@ -657,6 +657,13 @@ def test_config_snapshot_diff(name):
 
     removed = [l for l in diff if l[0] == "-"]
     added = [l for l in diff if l[0] == "+"]
+    # Stage-3 deliberate addition (docs/cgenn-compile.md, gp_impl knob): the CGENN hybrids
+    # grew `gp_impl` with campaign posture `sparse`. Allow exactly that key as a pure
+    # addition with exactly that value -- any other value (or a removal) still fails here.
+    gp_added = [l for l in added if key_of(l) == "gp_impl"]
+    assert all(val_of(l) == "sparse" for l in gp_added), (
+        f"{name}: gp_impl must be 'sparse' (campaign posture):\n" + "\n".join(gp_added))
+    added = [l for l in added if key_of(l) != "gp_impl"]
     bad_removed = [l for l in removed
                    if key_of(l) not in {"increase_hidden_channels", "activation", "_target_"}]
     bad_added = [l for l in added

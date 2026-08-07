@@ -423,6 +423,40 @@ footnoted as sparse-GP CGENN either way. If compiled CGENN fits the budget, spar
 post-campaign as originally scoped. Stage 2 (LorentzNet, gate-running only) is cheap and can
 slot before the campaign regardless.
 
+**Stage 3 — the CGENN hybrids, ported and gated (2026-08-07, operator-directed).** The GPS
+hybrid imports its CGENN stack from `CGENNLGATrGraphTransHybrid.py`, so one file's rewrites
+served both models. Discipline identical to Stage 1: pre-port fixtures recorded and
+committed first (`e494657`), then the full fix family: cached-property warm-up + quasigroup
+gp tables in the hybrid's own `CliffordAlgebra`, int slice endpoints + `grades_list`
+(tensor iteration was an in-trace `.item()` per element — 7 breaks in `qs`/`get_grade`/
+`get_invariants`), bool-mask scatter → `_path_idx`, every tensor-valued
+`repeat_interleave` → `blade_subspace_idx` gathers (incl. two missed gating sites in
+`CGLayer.forward` and `MVSiLU`), 3-op einsums → the 2-op chains, and the full
+`gp_impl: einsum|matmul|sparse` knob threaded through `CGENNBackbone`,
+`CGENNLGATrGraphTrans` and `CGENNLGATrGraphGPS`, campaign default `sparse` in all four
+yamls (the snapshot-diff parity gate got a value-pinned exemption for exactly this
+addition).
+
+Gate results (`test_cgenn_hybrid_compile.py`, 13/13): **BIT `torch.equal` fp32+fp64 both
+hybrids ✓ · TOL-IMPL matmul/sparse ≤ 1.3e-16 · compiled TOL ≤ 1.4e-16 · DET ✓ · BREAKS
+24 → 3** — the 3 survivors are all `aten.nonzero` in `generate_edges_vectorized`:
+data-dependent edge building, the same class as tag_cgenn's deliberately-eager wrapper
+edges, except here it lives INSIDE the net. The gate now asserts exactly that: ≤ 3 breaks,
+every reason the dynamic-shape edge class, zero fix-family classes (RLock / `.item()` /
+opt_einsum). **RECOMP [4, 4, 4]** across the production-regime sweep — the four fragments
+are dynamic from their first compile and never re-specialize. Small-P batches (padded
+length ≤ k) legitimately compile one extra regime each: `k_actual = min(k, P−1)` is a real
+branch that changes topk's shape semantics (verified guard-by-guard with `guard_fail_fn`);
+production batches never enter those regimes. lgatr144 parity stayed green throughout
+(23/23) — the second, independent guard — and SUITE closed at 638 passed / 15 failed / 47
+skipped (the known pelican environment class only).
+
+Hybrid compile REMAINS unwired in configs (no `compile:` knob yet): compiled hybrids are
+correct (TOL/DET) but the edge phase fragments the net into ~4 graphs, so the win is
+partial; wiring it is a β-PERF decision once GPU numbers exist, possibly with the edge
+phase hoisted out of the compiled region first. That is the one deliberate piece of
+Stage 3 left on the table.
+
 ---
 
 ## Table-wide compile policy

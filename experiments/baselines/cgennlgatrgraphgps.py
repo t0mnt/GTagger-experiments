@@ -195,6 +195,7 @@ class CGENNLGATrGraphGPS(nn.Module):
                  attn_dropout: float = 0.0,
                  head_layers: int = 2,
                  primitives_sparse_gp: bool = True,  # v2-native; parity tier-1 sets False
+                 gp_impl: str = "einsum",  # einsum (BIT ref) | matmul | sparse -- docs/cgenn-compile.md
                  **kwargs,
                  ):
         super().__init__()
@@ -205,6 +206,9 @@ class CGENNLGATrGraphGPS(nn.Module):
         if knn_metric not in ("deltaR", "minkowski"):
             raise ValueError(f"knn_metric must be 'deltaR' or 'minkowski', got '{knn_metric}'")
         self.algebra = CliffordAlgebra((1.0, -1.0, -1.0, -1.0))
+        if gp_impl not in ("einsum", "matmul", "sparse"):
+            raise ValueError(f"gp_impl must be einsum|matmul|sparse, got {gp_impl!r}")
+        self.algebra.gp_impl = gp_impl
         self.k = k
         self.knn_metric = knn_metric
         self.spurion_kwargs = dict(
