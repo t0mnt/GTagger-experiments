@@ -165,8 +165,12 @@ The mapping is `M[(i, k), j] = cayley[i, j, k]`, i.e. `cayley.permute(0, 2, 1).r
 precomputed once at init. The geometric product is `mul` + `bmm` ≈ 46% of CGENN's runtime, so a 5×
 there is ~1.6–1.8× on the whole model, before compile and before sparse-GP.
 
-**This does NOT explain the 38% `copy_`** — the einsum benchmark shows a 0.1% copy/permute share,
-so einsum is not marshalling operands here. The `copy_` is the §2 patterns, independently.
+~~**This does NOT explain the 38% `copy_`** — the einsum benchmark shows a 0.1% copy/permute share,
+so einsum is not marshalling operands here. The `copy_` is the §2 patterns, independently.~~
+**Corrected by the C-β CPU profile (see Log):** on the real model the `einsum` call tree is
+~91% of eager runtime and the ~50% `copy_` sits *inside* it — it IS operand marshalling at
+model shapes (the micro-benchmark's layout happened to dodge it). Direct proof: the §2
+rewrites left `copy_` at 51.5%→49.4%, while compiling fuses it down to 8.4%.
 
 ### The sparse-GP rewrite is no longer optional-looking
 
@@ -322,6 +326,33 @@ DET ✓ · BREAKS 0 (cold build) · RECOMP unique_graphs = 1 across the (B, P) s
 environment class (migration decision log), nothing CGENN-related. β-PERF (cluster it/s)
 remains the open Stage-1 item and gates whether `compile: true` ships in `tag_cgenn.yaml` —
 the knob currently stays `false`.
+
+**C-β, CPU tranche (2026-08-07)** — fixture batch (B=4, 256 padded rows), fp32, 4 threads,
+median of 30 forwards after warm-up; OLD = pre-rewrite fixtures commit (`dbb0c02`) via
+worktree, NEW = post-Stage-1 HEAD:
+
+| config | median fwd | notes |
+|---|---|---|
+| OLD eager | 172.7 ms | `einsum` tree ≈ 91% of runtime; `copy_` 51.5% self (einsum-internal marshalling) |
+| NEW eager | 173.1 ms | statistically identical — the Stage-1 rewrites are perf-neutral eager, as designed |
+| NEW compiled (`dynamic=True`) | **110.8 ms (1.56×)** | `copy_` 8.4% (inductor fused the marshalling); `bmm` 31.6% total remains; one-time compile 65.6 s |
+
+Read-across: (1) the eager-level einsum→outer+matmul rewrite is now **permanently closed** —
+inductor already fuses eager einsum's marshalling on the compiled path, so the rewrite's win
+is a strict subset of what compile delivers, and its BIT failure stands; (2) the compiled
+model is GEMM-bound (`bmm` + fused graph ≈ 96%), i.e. the remaining fat is the **dense 16×
+Cayley arithmetic** — exactly the sparse-GP lever. CPU 1.56× is the floor of interest; the
+GPU number decides shipping (small GEMMs are launch-bound eager on GPU, so the compiled win
+is plausibly larger there).
+
+**Campaign-order ruling (pre-β):** sparse-GP does NOT blind-jump the queue. Order is:
+β-PERF GPU numbers for compiled tag_cgenn (cheap: knob + gates already shipped) → if
+compiled CGENN still dominates the campaign budget (it is ~84% of campaign FLOPs today),
+sparse-GP moves ahead of the campaign as a TOL-class task with its own fixtures — noting it
+also changes the published FLOPs column (16× less GP arithmetic), so the row must be
+footnoted as sparse-GP CGENN either way. If compiled CGENN fits the budget, sparse-GP stays
+post-campaign as originally scoped. Stage 2 (LorentzNet, gate-running only) is cheap and can
+slot before the campaign regardless.
 
 ---
 
