@@ -125,10 +125,15 @@ recipe (e.g. `top_transformer` = Lion, lr=3e-5, 300k iters) — see §7.
 > **A baseline with no recipe file does not fail — it inherits the hybrid recipe.** The
 > default above applies to *anything* that does not pass `training=`, so a baseline whose
 > `config/training/top_<X>.yaml` is missing trains at AdamW / lr 1e-3 / batchsize 512 /
-> wd 0.01 rather than its published setting, silently. Missing today: `tag_MIParT-L`,
-> `tag_graphnet`, `tag_top_transformer`, `tag_pelican*`. (`tag_cgenn` used to be the worst of
-> these — reference row for both CGENN hybrids — and now has `top_cgenn.yaml` carrying the
-> official Adam / lr 1e-3 / weight_decay 0 / batch 32 recipe.) (The cluster wrappers
+> wd 0.01 rather than its published setting, silently. Missing today: `tag_cgenn`,
+> `tag_MIParT-L`, `tag_graphnet`, `tag_top_transformer`, `tag_pelican*`.
+>
+> **And this fork changed what that fallback is.** Upstream's `config/toptagging.yaml`
+> defaults to `training: top_transformer` (Lion, lr 3e-5, **weight_decay 2**, batchsize 128,
+> 300k iterations); ours defaults to `tag_gts_and_friends_default` (AdamW, lr 1e-3,
+> weight_decay 0.01, batchsize 512, 20 epochs). So a recipe-less baseline does not train the
+> way it trained upstream — "the repo default" is not the same object it was. Relevant to
+> `tag_cgenn` above all, since it is the reference row for both CGENN hybrids. (The cluster wrappers
 > derive `training=top_<X>` automatically *when the file exists*, so this is the same trap
 > whether you use `run.py` or `sbatch train.sbatch`.)
 
