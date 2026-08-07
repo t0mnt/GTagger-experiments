@@ -151,9 +151,15 @@ size (N = 4·64·16 edges, C = 8 channels, CPU 4 threads):
 | `einsum` (CGENN today) | 76.1 ms | — |
 | outer + matmul (lgatr 2.0 dense) | **14.6 ms** | `torch.allclose` exact, **max abs diff 0.0** |
 
-**5.2×, and bit-identical on this input** — the contraction order happens to agree, so this is a
-BIT-gated rewrite like the §2 ones, not a TOL one. (Verify that claim on the real fixtures and on
-GPU before relying on it; if it ever fails BIT, it becomes a TOL item, not a relaxed gate.)
+**5.2× — but the "bit-identical" half of this row did NOT survive the real fixtures.** The
+caveat below fired: C-α applied the recipe verbatim and BIT failed at **max |diff| 8.3e-17 in
+fp64** (~1 ulp, pure reassociation) on the blades-subset path, which the micro-benchmark input
+above happens to dodge. The rewrite was reverted per the stop-and-report contract and
+**reclassified as a TOL item**, to ride with the sparse-GP tolerance workflow (step 9) rather
+than being retried under a relaxed BIT gate. The benchmark row stands as a *timing* result; read
+its "output" column as "bit-identical on this synthetic input only".
+
+Do not re-land it as a BIT rewrite. The speed claim is unaffected; only the gate class changed.
 
 The mapping is `M[(i, k), j] = cayley[i, j, k]`, i.e. `cayley.permute(0, 2, 1).reshape(256, 16)`,
 precomputed once at init. The geometric product is `mul` + `bmm` ≈ 46% of CGENN's runtime, so a 5×
