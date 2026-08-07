@@ -749,6 +749,34 @@ edited; the flagged case stayed red until the operator's S10 ruling landed in it
   4 norm-gain no-decay assertions). The 7 `test_config_snapshot_diff` cases were added after
   this run launched and passed standalone (7/7); future suite runs collect 679.
 
+**Step 5 — H16 addendum: diff against upstream's own 2.0 environment (2026-08-07).**
+`heidelberg-hepml/tagging-guide` released; the provisional API-*style* choices were diffed
+against it as H16 prescribed ("expect renames, not rework" — confirmed, and better):
+
+- **`compile_kwargs: {dynamic: true}` is upstream practice on every compiled lgatr net**
+  (tag_lgatr, tag_slim, lloca, equivectors) — our M9 choice exactly; they add an explicit
+  `mode: default` (same as omitting it). Same mechanism too: lgatr's net-level `compile`
+  knob, not wrapper-side `torch.compile`.
+- **Upstream compiles FULL LGATr in production** (`compile: true` on their tag_lgatr). We
+  deliberately don't yet — H11 gates that flip on our own Gate H numbers; upstream's posture
+  is the expected carrot confirmation, and the flip stays a one-line yaml change after H.
+- **Their explicit `primitives:` block == the v2 defaults we inherit**, verified against
+  `PrimitivesConfig()`: `{subgroup: True, bivector: True, geometric_product: True,
+  sparse_gp: True, sparse_linear: False}`. Likewise `nonlinearity_v: sigmoid` spelled
+  explicitly upstream = the default we inherit; neither repo sets
+  `norm_elementwise_affine` (affine True both sides); `attention_backend: xformers` both
+  sides; `naive_amp: false` explicit upstream, matching the S8 posture.
+- Cosmetics/divergences, nothing to port: their `_target_` style is mixed (`lgatr.LGATr`
+  top-level but `lgatr.nets.slim.LGATrSlim` deep — our uniform shallow M2 style is within
+  their own range); their pin is `>=2.0.0` uncapped where we keep `<3` (ours is the safer,
+  deliberate choice); their wrapper grew knobs we don't have (`units`, `zeropad`) and their
+  spurion keys are renamed (`canonicalize_spurions`, `spurion_scale`) — their pipeline's
+  own evolution.
+
+Net: the Posture-B shipped configs match the lgatr authors' own 2.0 environment on every
+behavioral choice; the only divergence (full-LGATr compile off) is deliberately parked on
+Gate H.
+
 **Still open, cluster-only (Gates G/H) — the runbook's close-out is incomplete until they
 run**: fixed-seed quick-run loss bands (G) and the it/s table (H) need OSCAR; a cluster
 session runs them and appends their numbers here whatever they say. The PR waits for that
