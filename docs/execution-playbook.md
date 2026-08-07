@@ -9,7 +9,7 @@
 | 1 | **L-A** lgatr fixtures on 1.4.4 | web | FIRST — perishable (needs a 1.4.4 env) |
 | 2 | **L-B** lgatr port + Gates A–F | web | after L-A checks |
 | 3 | **L-C** posture flip + cluster gates + close-out | cluster | after L-B checks; ends in PR dev→main |
-| 4 | **C-α** CGENN compile, Stage 1 | web | independent of L-B/L-C; run after L-A to keep review load serial |
+| 4 | **C-α** CGENN compile, Stage 1 | web | code-independent of L-B/L-C, but **do not start it while L-B is open** — see below |
 | 5 | **C-β** CGENN cluster numbers | cluster | after C-α checks |
 | 6 | **LN** LorentzNet compile, Stage 2 | web (+cluster β) | optional, cheap; after C-α |
 | 7 | **NE** ParT / ParticleNet / plain-transformer compile | web (+cluster β) | policy: compile where it works; after C-α |
@@ -255,3 +255,24 @@ compile knobs and the einsum→matmul rewrite (steps 4/6/7), the sparse-GP arith
 `diffs.md` backs the paper's fidelity claims, so a fix that lands in code and not in the
 ledger is a claim that can no longer be checked. Operator check, at every step: the diff
 touches `docs/diffs.md` whenever it touches behaviour.
+
+
+---
+
+## Sequencing correction: code independence is not attention independence
+
+Step 4's row used to read "independent of L-B/L-C; run after L-A to keep review load serial",
+which is self-contradictory and was read the obvious way: a session finished L-A, saw C-α had
+no code dependency on L-B, and started it while L-B was still open. Both then stopped at
+report lines simultaneously, leaving two unrelated gate failures (Gate C's equivectors edge
+batch, and RECOMP's 11 graphs) to adjudicate at once — the exact load the "serial" clause
+existed to prevent.
+
+The rule that was meant: **one open stop-and-report item at a time.** C-α's code does not need
+L-B, but *you* do — every gate failure routes through an operator decision, and decisions made
+while another is pending are the ones that get rubber-stamped. Start C-α when L-B's gates are
+green and reviewed, not when L-A's are.
+
+The one exception is a diagnostic-only session: no model code, commits logs and a findings
+note, proposes fixes without applying them. Those cost no adjudication and may run in parallel,
+provided they write to different files than the open step.
