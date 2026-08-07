@@ -11,13 +11,16 @@
 *.sh.o*
 
 venv/
-runs/
+# no trailing slash: docs/OSCAR.md turns these three into SYMLINKS into ~/scratch, and a
+# trailing-slash pattern matches directories ONLY -- so `runs/` left the symlink untracked
+# and `git add -A` would have committed a link into someone's personal scratch path.
+runs
 mlruns/
 outputs/
 scripts/
 data/jetclass/
-data/JetClass/
-data/toptagxl/
+data/JetClass
+data/toptagxl
 *~
 *.hdf5
 *.npy
