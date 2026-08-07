@@ -64,6 +64,7 @@ from lgatr.layers.mlp.mlp import GeoMLP
 from experiments.baselines.CGENNLGATrGraphTransHybrid import (
     CGLayer,
     CliffordAlgebra,
+    cgenn_gain_and_bias_names,
     generate_edges_vectorized,
     get_invariants,
 )
@@ -253,7 +254,7 @@ class CGENNLGATrGraphGPS(nn.Module):
 
     @torch.jit.ignore
     def no_weight_decay(self):
-        return set()
+        return cgenn_gain_and_bias_names(self)
 
     def forward(self, x, v, mask, points):
         # x: (B, P, C_s); v: (B, P, 4) [E, px, py, pz]; mask: (B, P); points: (B, P, 2)

@@ -379,6 +379,15 @@ class BaseExperiment:
     def _init_optimizer(self, param_groups=None):
         if param_groups is None:
 
+            # a net may declare further no-decay parameters by name, exactly as the ParT
+            # grouping in tagging/experiment.py already honours. Needed for gains that are
+            # neither 1-d nor named ".bias" -- CGENN's MVSiLU.a/.b are (1, C, dim+1).
+            declared = (
+                self.model.net.no_weight_decay()
+                if hasattr(self.model.net, "no_weight_decay")
+                else set()
+            )
+
             def is_bias(name, param):
                 # ndim<=1 catches norm gains and ordinary 1-d biases. The name check
                 # catches MULTI-DIM biases -- CGENN's MVLinear.bias is (1, C, 1) -- which
@@ -386,7 +395,7 @@ class BaseExperiment:
                 # Without it the two paths disagree, and the same hybrid family is
                 # regularized differently in its GraphTrans (ParT path) and GraphGPS
                 # (this path) variants: an asymmetry across the study's primary axis.
-                return param.ndim <= 1 or name.endswith(".bias")
+                return param.ndim <= 1 or name.endswith(".bias") or name in declared
 
             param_groups = [
                 {
