@@ -25,6 +25,7 @@ dedicated smoke; compile on CPU is slow but valid).
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -190,7 +191,17 @@ def test_breaks_and_recomp():
     exp_cold = _build(float64=True)
     exp_cold.model.load_state_dict(ref["sd"], strict=True)
     explanation = dynamo.explain(exp_cold.model.net)(*captured["args"], **captured["kwargs"])
+    # str(explanation) embeds repr()s of live objects, whose heap addresses differ every
+    # process -- so the committed artifact came back 637 lines "changed" after every run,
+    # which is how a tracked report stops being read and starts being `git checkout`ed.
+    # Normalize the addresses: the file then diffs only when the GRAPH changes, which is
+    # the thing it exists to record.
     report = str(explanation)
+    report = re.sub(r"0x[0-9a-fA-F]+", "0x...", report)  # repr() heap addresses
+    # ___check_type_id / ___check_obj_id guards embed id() of a class or module object
+    report = re.sub(r"(___check_(?:type|obj)_id\([^,]+, )\d+\)", r"\1...)", report)
+    # trailing compile-time table: wall-clock seconds, non-deterministic by nature
+    report = re.sub(r"^([\w.]+), \d+\.\d+$", r"\1, ...", report, flags=re.M)
     (FIX / "dynamo_explain.txt").write_text(report)
     print("GATE-BREAKS graph_break_count =", explanation.graph_break_count)
     assert explanation.graph_break_count == 0, f"graph breaks:\n{report[:2000]}"
