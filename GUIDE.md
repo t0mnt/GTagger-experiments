@@ -347,7 +347,9 @@ one working point (0.5) the paper doesn't report, with a coarser ruler.
 1. **PlainGraphGPS PE/SE variants first** (cheapest model, most toggles — confirm each
    trains): `model.net.use_edge_attr=true|false` (ParT-pair edge features, ParticleNeXt-style),
    `model.net.use_rwse=true|false` (+ `model.net.rwse_k=K`), `model.net.norm=batch|layer`.
-2. **Then every model under both graph metrics**: `model.net.knn_metric=deltaR|minkowski`
+2. **Then every HYBRID under both graph metrics**: `model.net.knn_metric=deltaR|minkowski`
+   (the eight hybrids only — no baseline config exposes the knob, and lloca's `ParticleNet`
+   is handed (phi, eta) rather than four-momenta, so minkowski is not available to it)
    (minkowski is the Lorentz-invariant graph; deltaR the eta–phi one).
 3. **Then the LLoCa-canonicalized models under PD frames**: `model/framesnet=learnedpd`
    on the Plain and ParticleNet-ParT hybrids (the internally-equivariant CGENN /
