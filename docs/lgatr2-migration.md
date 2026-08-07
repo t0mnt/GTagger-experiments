@@ -484,8 +484,9 @@ non-equivariant rows dominated by launch overhead, which their kernel profile ma
 **Task B close-out (2026-08-07).** Environment: `lgatr==2.0.0`, `lloca==1.3.6` (exact; freeze
 pasted in the session report). Posture shipped: **B, v2-native** (§2.4) — shipped configs carry
 v2 defaults untouched; every pin named below exists only in the parity script's build
-overrides (`PARITY_PINS` / `TIER1_SPARSE_GP_OFF`). Still Task C, deliberately not started
-here: Gates G/H, the posture-flip commit (manifest re-baseline at v2 defaults + the H15
+overrides (`PARITY_PINS` / `TIER1_SPARSE_GP_OFF`). At Task B close-out the following were
+deliberately not started — see the Task C entries below for what has since landed: Gates
+G/H (cluster), the posture-flip commit (manifest re-baseline at v2 defaults + the H15
 optimizer exemption), the `>=2.0.0,<3` pin relaxation, the PR.
 
 ### Gate results (Task B, CPU, fp64 unless stated — numbers, not pass/fail)
@@ -691,6 +692,36 @@ edited; the flagged case stayed red until the operator's S10 ruling landed in it
   isolate the S3 reorder at 1e-8, and without the S9 bridge it would instead measure the
   shipped ~1e-4 S9 delta and fail by construction. §2.1's "no effect at the defaults" line
   was corrected and the §2.3 S9 row added when this landed (5ea8afa).
+
+### Task C entries
+
+**Step 1 — posture-flip commit (2026-08-07; the S10 ruling closed the last open A–F item).**
+
+- **Manifest re-baseline.** `production_manifests_v2.json` records the shipped (unpinned,
+  v2-default) manifests, written only after an in-run rule check against the v1 baselines
+  (`_rebaseline_rule_check`: removed == S5 exactly; added == the **structural** norm-gain
+  set — the same helper the optimizer exemption uses; `requires_grad` follows the freezing
+  rule on old and new parameters alike; totals exact). Numbers (v1 → v2-default totals):
+  tag_lgatr 1 079 394 → 1 077 474 (−4 608 qkv, +2 688 gains / 48 tensors); tag_slim
+  1 794 631 → 1 793 623 (−3 456, +2 448 / 48); CGENN-GraphTrans 1 154 664 → 1 153 064
+  (−3 840, +2 240 / 40); CGENN-GPS 1 898 197 → 1 894 357 (−3 840, **+0** — bare-norm
+  construction, the §2.1 structural claim measured); LN-GraphTrans 1 636 032 → 1 635 192
+  (−2 880, +2 040 / 40); LN-GPS 2 179 493 → 2 176 613 (−2 880, **+0**); equivectors
+  2 267 307 → 2 267 291 (−84, +68 / 4). `test_production_manifest` on 2.x now runs BOTH
+  gates: the pinned rule-check vs v1 (migration evidence, unchanged) and a strict
+  names/shapes/requires_grad/total regression against the v2 baseline (the campaign gate).
+- **H15 exemption.** `lgatr_norm_gain_names` (structural `EquiLayerNorm`/`SlimRMSNorm`
+  isinstance-collection — a name pattern would also catch SlimLinear's *real* `weight_v`
+  weight, which must keep decaying) now feeds BOTH grouping paths: base (`is_bias`, net and
+  framesnet alike) and the ParT/weaver path. The rule mirror in
+  `test_weight_decay_grouping.py` tracks it; the previously-failing CGENN pair test is green
+  again; the runbook's Gate-B extension landed as `test_norm_gains_sit_in_no_decay_groups`
+  (the REAL experiment optimizer is built per model and every `*.weight_mv` / `*.weight_s`
+  parameter is asserted into a `weight_decay=0` group; file total 17/17). Stated for the
+  record, deliberately NOT changed: eventgen's third grouping path decays everything by
+  design (on v1 too) and stays as-is; the ParT path's framesnet group has no bias split
+  (pre-existing; lgatr-relevant only for the S10-ruled-unused equivectors composition).
+- **Methods sentence** added to `todo.md` §4 per §2.4's obligation.
 
 ## Appendix A — evidence log
 

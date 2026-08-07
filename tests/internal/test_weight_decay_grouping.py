@@ -18,6 +18,8 @@ import torch
 from hydra import compose, initialize
 from hydra.utils import instantiate
 
+from experiments.base_experiment import lgatr_norm_gain_names
+
 # the class names TaggingExperiment._init_optimizer routes through the ParT grouping
 PART_PATH = {
     "ParticleTransformer",
@@ -58,14 +60,17 @@ def _net(model_name):
 def _decayed(net, cls):
     """Names the model's actual grouping path would put in a decayed group."""
     no_wd = set(net.no_weight_decay()) if hasattr(net, "no_weight_decay") else set()
+    # H15: both real paths exempt lgatr 2.0's affine norm gains via the same helper;
+    # the mirror must track them or it would re-report the disease the paths just cured.
+    gains = lgatr_norm_gain_names(net)
     out = []
     for name, param in net.named_parameters():
         if not param.requires_grad:
             continue
         if cls in PART_PATH:
-            exempt = param.ndim == 1 or name.endswith(".bias") or name in no_wd
+            exempt = param.ndim == 1 or name.endswith(".bias") or name in no_wd or name in gains
         else:
-            exempt = param.ndim <= 1 or name.endswith(".bias")
+            exempt = param.ndim <= 1 or name.endswith(".bias") or name in gains
         if not exempt:
             out.append(name)
     return out
@@ -80,6 +85,48 @@ def test_no_bias_is_weight_decayed(model_name):
         f"{model_name} ({'ParT' if cls in PART_PATH else 'base'} grouping) weight-decays "
         f"{len(decayed_biases)} bias tensors, e.g. {decayed_biases[0]}. Multi-dim biases "
         f"(CGENN's MVLinear.bias is (1, C, 1)) slip past an ndim-only exemption."
+    )
+
+
+@pytest.mark.parametrize(
+    "model_name",
+    ["tag_lgatr", "tag_slim", "tag_CGENNLGATrGraphTrans", "tag_CGENNLGATrGraphGPS"],
+)
+def test_norm_gains_sit_in_no_decay_groups(model_name):
+    """H15 end-to-end (the runbook's Gate-B extension): build the REAL experiment optimizer
+    -- whichever grouping path the model routes through -- and require every parameter named
+    `*.weight_mv` / `*.weight_s` to sit in a `weight_decay=0` group. Those names exist only
+    on lgatr 2.0's affine norms; `weight_s` is 1-d and already rank-exempt, but asserting
+    both keeps the rule self-documenting (runbook H15). Models whose norms are structurally
+    affine-off (the GPS hybrids' bare layer constructions, 2.1) pass vacuously -- which is
+    itself the structural claim, so an upstream default flip would surface here.
+    """
+    import logging.handlers  # noqa: F401
+    import hydra
+    import experiments.logger
+    from experiments.tagging.experiment import TopTaggingExperiment
+
+    experiments.logger.LOGGER.disabled = True
+    with initialize(version_base=None, config_path="../../config_quick"):
+        cfg = compose(config_name="toptagging", overrides=[f"model={model_name}", "save=false"])
+    exp = TopTaggingExperiment(cfg)
+    exp._init()
+    exp.init_physics()
+    exp.init_model()
+    exp._init_optimizer()
+    wd_of = {}
+    for group in exp.optimizer.param_groups:
+        for p in group["params"]:
+            wd_of[id(p)] = group.get("weight_decay", 0.0)
+    gains = [
+        (n, p)
+        for n, p in exp.model.named_parameters()
+        if n.rsplit(".", 1)[-1] in ("weight_mv", "weight_s")
+    ]
+    decayed = [n for n, p in gains if wd_of.get(id(p), 0.0) != 0.0]
+    assert not decayed, (
+        f"{model_name}: affine norm gains landed in a decayed group: {decayed} -- "
+        f"H15's silent gain-decay disease; both grouping paths must exempt them"
     )
 
 

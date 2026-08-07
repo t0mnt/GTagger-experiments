@@ -444,6 +444,10 @@ def _rescale_glu_gates(sd, glu_weight_v_keys):
     return out
 
 
+REBASELINE = os.environ.get("LGATR_PARITY") == "rebaseline"
+V2_MANIFESTS = FIX / "production_manifests_v2.json"
+
+
 @pytest.mark.parametrize("name", sorted(PRODUCTION))
 def test_production_manifest(name):
     manifest_file = FIX / "production_manifests.json"
@@ -458,13 +462,70 @@ def test_production_manifest(name):
     if not manifest_file.exists():
         pytest.skip("no 1.4.4 fixtures recorded")
     stored = json.loads(manifest_file.read_text())[name]
+    if REBASELINE:
+        # Posture-flip re-baseline (Task C step 1): record the v2-DEFAULT manifests -- but
+        # only after rule-checking them against v1 (never trust a recording you didn't check).
+        assert _lgatr_version().startswith("2."), "re-baseline records v2 defaults on 2.x"
+        exp = _build("config", PRODUCTION[name], with_data=False)  # unpinned: shipped config
+        live = _manifest(exp.model)
+        _rebaseline_rule_check(name, stored, exp, live)
+        v2_stored = json.loads(V2_MANIFESTS.read_text()) if V2_MANIFESTS.exists() else {}
+        v2_stored[name] = live
+        V2_MANIFESTS.write_text(json.dumps(v2_stored, indent=1, sort_keys=True))
+        return
     if _lgatr_version().startswith("2."):
         _manifest_check_v2(name, stored)
+        if V2_MANIFESTS.exists():
+            # Post-flip regression gate: the shipped (unpinned, v2-default) build must match
+            # the re-baselined manifest exactly -- names, shapes, requires_grad, total.
+            baseline = json.loads(V2_MANIFESTS.read_text())[name]
+            live = _manifest(_build("config", PRODUCTION[name], with_data=False).model)
+            assert (live["total"] == baseline["total"]
+                    and live["entries"] == baseline["entries"]
+                    and live["names"] == baseline["names"]), (
+                f"{name}: shipped-config manifest drifted from the Posture-B v2 baseline")
         return
     exp = _build("config", PRODUCTION[name], with_data=False)
     live = _manifest(exp.model)
     assert live["total"] == stored["total"] and live["entries"] == stored["entries"], (
         f"{name}: production manifest drifted from recorded 1.4.4 baseline")
+
+
+def _rebaseline_rule_check(name, stored_v1, exp, live):
+    """The Posture-B re-baseline is itself rule-checked (runbook Phase 3 / Gate B row):
+    v2-default manifest == v1 manifest − S5 qkv biases + affine norm gains, where the gain
+    set is collected STRUCTURALLY from the live model (norm-owned parameters only, same
+    helper the H15 optimizer exemption uses) and requires_grad must follow the freezing rule
+    on old and new parameters alike.
+    """
+    from math import prod
+    from experiments.base_experiment import lgatr_norm_gain_names
+    key_map_file = FIX / "key_map.json"
+    key_map = json.loads(key_map_file.read_text()) if key_map_file.exists() else {}
+    v1 = {key_map.get(name, {}).get(n, n): (tuple(s), rg) for n, s, rg in stored_v1["names"]}
+    v2 = {n: (tuple(s), rg) for n, s, rg in live["names"]}
+    qkv = {k for k in v1 if QKV_BIAS_RE.search(k)}
+    gains = lgatr_norm_gain_names(exp.model)
+    assert set(v1) - set(v2) == qkv, (
+        f"{name}: removed beyond S5: {sorted((set(v1) - set(v2)) ^ qkv)}")
+    added = set(v2) - set(v1)
+    assert added == gains, (
+        f"{name}: added params are not exactly the structural norm-gain set: "
+        f"added-not-gain={sorted(added - gains)} gain-not-added={sorted(gains - added)}")
+    drift = {k for k in v2 if k in v1 and v1[k][0] != v2[k][0]}
+    assert not drift, f"{name}: shape drift at {sorted(drift)}"
+    frozen = _expected_frozen(exp.model)
+    flips = {k for k in v2 if k in v1 and v1[k][1] != v2[k][1]}
+    assert flips == {k for k in frozen if k in v1 and v1[k][1]}, (
+        f"{name}: requires_grad flips beyond the freezing rule: {sorted(flips)}")
+    bad_gains = {k for k in gains if v2[k][1] != (k not in frozen)}
+    assert not bad_gains, (
+        f"{name}: gain requires_grad disagrees with the freezing rule: {sorted(bad_gains)}")
+    waived = sum(prod(v1[k][0]) for k in qkv)
+    gained = sum(prod(v2[k][0]) for k in gains)
+    assert live["total"] == stored_v1["total"] - waived + gained
+    print(f"REBASELINE {name}: v1_total={stored_v1['total']} v2_default_total={live['total']} "
+          f"(-{waived} qkv biases, +{gained} affine gains in {len(gains)} tensors)")
 
 
 def _expected_frozen(model):

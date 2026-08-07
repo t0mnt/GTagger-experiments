@@ -26,6 +26,27 @@ torch.autograd.set_detect_anomaly(False)
 MIN_STEP_SKIP = 1000
 
 
+def lgatr_norm_gain_names(module):
+    """Norm gain parameters of lgatr 2.0's affine layer norms, collected by module class.
+
+    EquiLayerNorm's per-grade gain `weight_mv` is `(mv_channels, 5)` -- 2-d, so it fails
+    every shape/name no-decay rule and would silently weight-decay toward zero on any
+    v2-affine net (docs/lgatr2-migration.md H15; worst under top_lgatr's Lion at wd=0.2).
+    Collected structurally rather than by name pattern because slim nets also own a REAL
+    weight called `weight_v` (SlimLinear), which must keep decaying; SlimRMSNorm's 1-d gains
+    are already exempt by rank but are collected anyway so the exemption reads as "norm
+    gains", not "whatever shapes happen to slip through".
+    """
+    from lgatr.layers import EquiLayerNorm, SlimRMSNorm
+
+    names = set()
+    for prefix, mod in module.named_modules():
+        if isinstance(mod, (EquiLayerNorm, SlimRMSNorm)):
+            for pname, _ in mod.named_parameters(recurse=False):
+                names.add(f"{prefix}.{pname}" if prefix else pname)
+    return names
+
+
 class BaseExperiment:
     def __init__(self, cfg, rank=0, world_size=1):
         self.cfg = cfg
@@ -387,37 +408,58 @@ class BaseExperiment:
                 if hasattr(self.model.net, "no_weight_decay")
                 else set()
             )
+            # H15 (lgatr 2.0 posture flip): EquiLayerNorm's affine gain weight_mv is
+            # (mv_channels, 5) -- neither 1-d nor named ".bias", so without this it decays.
+            # Collected for net and framesnet alike (the equivectors framesnet may itself
+            # be an affine v2 LGATr).
+            net_gains = lgatr_norm_gain_names(self.model.net)
+            frames_gains = lgatr_norm_gain_names(self.model.framesnet)
 
-            def is_bias(name, param):
+            def is_bias(name, param, gains):
                 # ndim<=1 catches norm gains and ordinary 1-d biases. The name check
                 # catches MULTI-DIM biases -- CGENN's MVLinear.bias is (1, C, 1) -- which
                 # the ParT grouping in tagging/experiment.py already exempts by name.
                 # Without it the two paths disagree, and the same hybrid family is
                 # regularized differently in its GraphTrans (ParT path) and GraphGPS
                 # (this path) variants: an asymmetry across the study's primary axis.
-                return param.ndim <= 1 or name.endswith(".bias") or name in declared
+                return (
+                    param.ndim <= 1
+                    or name.endswith(".bias")
+                    or name in declared
+                    or name in gains
+                )
 
             param_groups = [
                 {
-                    "params": [p for n, p in self.model.net.named_parameters() if not is_bias(n, p)],
+                    "params": [
+                        p
+                        for n, p in self.model.net.named_parameters()
+                        if not is_bias(n, p, net_gains)
+                    ],
                     "lr": self.cfg.training.lr,
                     "weight_decay": self.cfg.training.weight_decay,
                 },
                 {
-                    "params": [p for n, p in self.model.net.named_parameters() if is_bias(n, p)],
+                    "params": [
+                        p for n, p in self.model.net.named_parameters() if is_bias(n, p, net_gains)
+                    ],
                     "lr": self.cfg.training.lr,
                     "weight_decay": 0,
                 },
                 {
                     "params": [
-                        p for n, p in self.model.framesnet.named_parameters() if not is_bias(n, p)
+                        p
+                        for n, p in self.model.framesnet.named_parameters()
+                        if not is_bias(n, p, frames_gains)
                     ],
                     "lr": self.cfg.training.lr_factor_framesnet * self.cfg.training.lr,
                     "weight_decay": self.cfg.training.weight_decay_framesnet,
                 },
                 {
                     "params": [
-                        p for n, p in self.model.framesnet.named_parameters() if is_bias(n, p)
+                        p
+                        for n, p in self.model.framesnet.named_parameters()
+                        if is_bias(n, p, frames_gains)
                     ],
                     "lr": self.cfg.training.lr_factor_framesnet * self.cfg.training.lr,
                     "weight_decay": 0,

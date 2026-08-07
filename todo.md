@@ -210,6 +210,10 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
       makes it fatal).
 - [ ] xformers pin note for the SLURM target (docs/SLURM.md install step).
 - [ ] learnedpd boost-precision-floor methods sentence for the paper.
+- [ ] lgatr 2.0 methods sentence (§2.4 obligation, docs/lgatr2-migration.md): the
+      `tag_lgatr`/`tag_slim` reference rows are (re)trained under lgatr 2.0.0 at v2-native
+      defaults (sigmoid slim gate, affine norms, sparse geometric product, tanh-GeLU, no qkv
+      biases) — published-paper L-GATr numbers are indicative, not exact comparators.
 - [ ] LorentzNet GPS: zero padded slots between layers for exact BN-running-stat parity
       (cosmetic; logits unaffected).
 - [ ] LorentzNetKNNBlock phi_e BN normalises invalid edges (pre-existing, both variants).
