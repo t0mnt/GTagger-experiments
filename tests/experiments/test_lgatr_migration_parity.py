@@ -664,6 +664,14 @@ def test_config_snapshot_diff(name):
     assert all(val_of(l) == "sparse" for l in gp_added), (
         f"{name}: gp_impl must be 'sparse' (campaign posture):\n" + "\n".join(gp_added))
     added = [l for l in added if key_of(l) != "gp_impl"]
+    # Stage-3 completion: the hybrid wrappers grew a `compile` knob, default false (the
+    # edge-hoist + full-compile work). Pinned like gp_impl: a deliberate flip to true is a
+    # posture change and must come back through this gate with an updated pin.
+    comp_added = [l for l in added if key_of(l) == "compile"]
+    assert all(val_of(l).split("#")[0].strip() == "false" for l in comp_added), (
+        f"{name}: hybrid compile knob must default false pending beta-PERF:\n"
+        + "\n".join(comp_added))
+    added = [l for l in added if key_of(l) != "compile"]
     bad_removed = [l for l in removed
                    if key_of(l) not in {"increase_hidden_channels", "activation", "_target_"}]
     bad_added = [l for l in added
