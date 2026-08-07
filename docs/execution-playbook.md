@@ -243,3 +243,15 @@ port at v2 defaults and say so.
 ```
 
 **Your checks:** their CI green; the PR description separates mechanical renames from behavior notes (S-items) so upstream can judge the posture themselves.
+
+---
+
+## Cross-cutting: keep `docs/diffs.md` current
+
+No step above says so, which is how a difference ledger goes stale. Every step that changes
+behaviour relative to upstream adds a line to `docs/diffs.md` **in the same commit** — the
+compile knobs and the einsum→matmul rewrite (steps 4/6/7), the sparse-GP arithmetic reorder
+(step 9), and the whole lgatr 2.0 posture including each S-item's shipped default (steps 1–3).
+`diffs.md` backs the paper's fidelity claims, so a fix that lands in code and not in the
+ledger is a claim that can no longer be checked. Operator check, at every step: the diff
+touches `docs/diffs.md` whenever it touches behaviour.
