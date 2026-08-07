@@ -15,7 +15,7 @@ net:
   num_heads: 8
   multi_query: false
  mlp:
-  activation: gelu
+  nonlinearity: gelu
 
 defaults:
  - framesnet: identity
