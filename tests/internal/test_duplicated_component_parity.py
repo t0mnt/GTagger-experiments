@@ -245,27 +245,135 @@ def test_cayley_table_parity():
 
 
 def test_edgeconv_block_parity():
-    """The hybrid's EdgeConv must reduce to vendored ParticleNet when transport is off."""
-    kwargs = dict(k=4, in_feat=6, out_feats=(8, 8))
+    """The hybrid's EdgeConv must reduce to the ported ParticleNet when transport is off.
+
+    `experiments/baselines/particlenet.py` is no longer a stock-weaver copy: it is the LLoCa
+    port that `tag_particlenet` runs, so this is now a comparison between two live models
+    rather than against a museum piece. Identity frames and 3-d coords switch off both the
+    transport and the hybrid's phi-wrapping, leaving the pure EdgeConv arithmetic.
+    """
+    from lloca.framesnet.frames import Frames
+    from lloca.reps.tensorreps import TensorReps
+
     torch.manual_seed(5)
-    hybrid = H_pn.EdgeConvBlock(**kwargs)
+    hybrid = H_pn.EdgeConvBlock(k=4, in_feat=6, out_feats=(8, 8))
     torch.manual_seed(5)
-    vendored = V_pn.EdgeConvBlock(**kwargs)
+    ported = V_pn.EdgeConvBlock(k=4, in_reps=TensorReps("6x0n"), out_feats=(8, 8))
     torch.manual_seed(11)
     points, features = torch.randn(3, 3, 9), torch.randn(3, 6, 9)
-    _assert_same_output(hybrid, vendored, (points, features))
+    frames = Frames(is_identity=True, device=points.device, dtype=points.dtype, shape=(3 * 9,))
+    hp, vp = dict(hybrid.named_parameters()), dict(ported.named_parameters())
+    assert set(hp) == set(vp), f"parameter names diverged: {sorted(set(hp) ^ set(vp))}"
+    with torch.no_grad():
+        for name in hp:
+            hp[name].copy_(vp[name].reshape(hp[name].shape))
+    hybrid.eval()
+    ported.eval()
+    with torch.no_grad():
+        a = hybrid(points, features, knn_metric="deltaR", mask=None, frames=None)
+        b = ported(points, features, frames=frames)
+    assert torch.equal(a, b), f"outputs differ, max |delta| {(a - b).abs().max():.3e}"
+
+
+def test_ported_particlenet_transport_is_byte_faithful_to_installed_lloca():
+    """The port must stay a port.
+
+    `experiments/baselines/particlenet.py` was generated from `lloca.backbone.particlenet` and
+    carries exactly two deliberate additions (the for_inference sigmoid, and knn_metric). The
+    tensorial message passing itself -- `change_local_frame`, the two `get_graph_feature`
+    variants and `knn` -- is copied verbatim, and it is the part whose silent divergence would
+    be invisible in results while invalidating "this is LLoCa-ParticleNet".
+
+    Compare ASTs rather than text so formatting, comments and lint fixes are free, but any
+    change to the arithmetic on either side fails. If upstream deliberately changed one of
+    these, port the change and update the row in docs/diffs.md in the same commit.
+    """
+    import ast
+    import inspect
+
+    from lloca.backbone import particlenet as L_pn
+
+    for name in ("change_local_frame", "get_graph_feature_v1", "get_graph_feature_v2", "knn"):
+        ours = ast.dump(ast.parse(inspect.getsource(getattr(V_pn, name))))
+        theirs = ast.dump(ast.parse(inspect.getsource(getattr(L_pn, name))))
+        assert ours == theirs, (
+            f"{name}() has drifted from the installed lloca. The port is only meaningful while "
+            f"the transport math is identical -- diff the two files, port the change "
+            f"deliberately, and record it in docs/diffs.md."
+        )
+
+
+def test_ported_particlenet_deltaR_matches_installed_lloca_end_to_end():
+    """Whole-model bit-parity on the default path, so the published row cannot move silently."""
+    from lloca.backbone import particlenet as L_pn
+    from lloca.framesnet.frames import Frames
+
+    kwargs = dict(
+        input_dims=6,
+        hidden_reps_list=["6x0n", "8x0n"],
+        num_classes=2,
+        conv_params=[(4, (8, 8)), (4, (8, 8))],
+        fc_params=[(16, 0.0)],
+    )
+    torch.manual_seed(5)
+    ported = V_pn.ParticleNet(**kwargs)
+    torch.manual_seed(5)
+    lloca = L_pn.ParticleNet(**kwargs)
+    torch.manual_seed(11)
+    points, features = torch.randn(3, 3, 9), torch.randn(3, 6, 9)
+    frames = Frames(is_identity=True, device=points.device, dtype=points.dtype, shape=(3 * 9,))
+    ported.eval()
+    lloca.eval()
+    with torch.no_grad():
+        # v is supplied but must be IGNORED at the deltaR default -- that is the point
+        a = ported(points, features, frames=frames, v=torch.randn(3, 4, 9))
+        b = lloca(points, features, frames=frames)
+    assert torch.equal(a, b), f"outputs differ, max |delta| {(a - b).abs().max():.3e}"
+
+
+def test_minkowski_changes_the_graph_and_deltaR_does_not():
+    """The new metric must actually do something, and only when asked."""
+    from lloca.framesnet.frames import Frames
+
+    kwargs = dict(
+        input_dims=6,
+        hidden_reps_list=["6x0n", "8x0n"],
+        num_classes=2,
+        conv_params=[(4, (8, 8)), (4, (8, 8))],
+        fc_params=[(16, 0.0)],
+    )
+    torch.manual_seed(5)
+    dr = V_pn.ParticleNet(**kwargs)
+    torch.manual_seed(5)
+    mink = V_pn.ParticleNet(knn_metric="minkowski", **kwargs)
+    torch.manual_seed(11)
+    points, features = torch.randn(3, 3, 9), torch.randn(3, 6, 9)
+    v = torch.randn(3, 4, 9)
+    frames = Frames(is_identity=True, device=points.device, dtype=points.dtype, shape=(3 * 9,))
+    dr.eval()
+    mink.eval()
+    with torch.no_grad():
+        a = dr(points, features, frames=frames, v=v)
+        b = mink(points, features, frames=frames, v=v)
+        c = mink(points, features, frames=frames, v=None)  # no momenta -> falls back to deltaR
+    assert not torch.equal(a, b), "knn_metric=minkowski produced the deltaR graph"
+    assert torch.equal(a, c), "minkowski without v must fall back to the deltaR graph exactly"
+
+    with pytest.raises(ValueError, match="knn_metric"):
+        V_pn.ParticleNet(knn_metric="euclidean", **kwargs)
 
 
 def test_edgeconv_block_matches_the_live_lloca_baseline():
-    """The reference that matters is the one the TABLE uses.
+    """Close the chain against the library itself: hybrid == ported == installed lloca.
 
-    `experiments/baselines/particlenet.py` is an unused stock-weaver copy; the
-    tag_particlenet row instantiates `lloca.backbone.particlenet.ParticleNet`. So the
-    comparison that actually protects the study is hybrid-vs-lloca: under identity frames
-    and an unmasked plain-L2 kNN the hybrid's EdgeConv must be BIT-identical to it, which
-    is what makes 'the hybrid's GNN stage is ParticleNet' a checkable claim rather than a
-    description. The hybrid's documented extensions (phi-wrapped deltaR, padding-aware kNN,
-    explicit self-loop removal, k capping) are all switched off by these arguments.
+    The `tag_particlenet` row now runs the in-repo port, so the two tests above compare it to
+    the hybrid and to lloca respectively. This one keeps the third edge of the triangle, so a
+    change that moved BOTH in-repo files together -- the failure the other two cannot see --
+    still fails. Under identity frames and an unmasked plain-L2 kNN the hybrid's EdgeConv must
+    be BIT-identical to lloca's, which is what makes "the hybrid's GNN stage is ParticleNet" a
+    checkable claim rather than a description. The hybrid's documented extensions (phi-wrapped
+    deltaR, padding-aware kNN, explicit self-loop removal, k capping) are all switched off by
+    these arguments.
     """
     from lloca.backbone import particlenet as L_pn
     from lloca.framesnet.frames import Frames

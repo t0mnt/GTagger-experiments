@@ -4,7 +4,7 @@ out_channels: null
 add_fourmomenta_backbone: false
 
 net:
- _target_: experiments.baselines.particlenet_lloca.ParticleNetLLoCa
+ _target_: experiments.baselines.particlenet.ParticleNet
  _partial_: true
  num_classes: null
  conv_params: [[16, [64, 64, 64]], [16, [128, 128, 128]], [16, [256, 256, 256]]]
@@ -12,7 +12,7 @@ net:
  input_dims: null
  hidden_reps_list: ["7x0n", "32x0n+8x1n", "64x0n+16x1n"]
  use_fusion: false
- # layer-0 kNN: 'deltaR' (lloca's own squared-L2 on (phi, eta) -- the default and
+ # layer-0 kNN: 'deltaR' (lloca's own squared-L2 on (phi, eta) -- the default, and
  # bit-identical to lloca.backbone.particlenet.ParticleNet) or 'minkowski' (rank by
  # |(p_i - p_j)^2|, the Lorentz-invariant graph the eight hybrids can already use).
  knn_metric: deltaR

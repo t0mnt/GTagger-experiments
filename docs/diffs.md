@@ -76,16 +76,24 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   (`& ~is_spurion`), so a spacelike beam spurion (m^2=-1) is not forced lightlike (which would
   void the spacelike-beam ablation).
 
-- `tag_particlenet` gains a `knn_metric` option (`experiments/baselines/particlenet_lloca.py`,
-  a subclass of lloca's ParticleNet). lloca's backbone seeds layer-0 kNN with a plain
-  squared-L2 on `points` and never receives the four-momenta, so `minkowski` -- available
-  on all eight hybrids -- was not expressible for the baseline row. `ParticleNetWrapper`
-  now also passes `v` (dense `(B, 4, P)` local four-momenta), consumed only by layer 0 and
-  only when `knn_metric=minkowski`. **`deltaR` still calls lloca's own `knn`, so the
-  default path is bit-identical**; routing it through the hybrid's helper would have
-  changed the published-reproduction row, because the hybrid wraps `dphi` into `[0, pi]`
-  before the L2 (azimuth is periodic) and lloca does not. That baseline-vs-hybrid
-  difference is pre-existing and is left alone.
+- **`tag_particlenet` runs an in-repo port of LLoCa-ParticleNet**, not the library class.
+  `experiments/baselines/particlenet.py` was regenerated from `lloca.backbone.particlenet`
+  1.3.6 (it had been a stale stock-weaver copy that nothing imported), so the tensorial
+  message passing -- `change_local_frame`, both `get_graph_feature` variants, `knn`,
+  `hidden_reps_list` -- is byte-faithful, with exactly two additions:
+  (1) `for_inference` single-logit heads use sigmoid; (2) `knn_metric` gains `minkowski`,
+  which seeds the layer-0 graph by `|(p_i - p_j)^2|` instead of a squared L2 on (phi, eta).
+  lloca's backbone never receives the four-momenta, so this was not expressible before;
+  `ParticleNetWrapper` now passes them as dense `(B, 4, P)` `v`, consumed only by layer 0 and
+  only when the metric asks for it. **`deltaR` still calls the ported (= lloca's) `knn`, so
+  the default path is bit-identical** -- it deliberately does not reuse the hybrid's
+  metric-aware helper, which wraps `dphi` into `[0, pi]` before the L2 (azimuth is periodic)
+  where lloca does not; adopting that silently would have moved the published-reproduction
+  row. That baseline-vs-hybrid difference in the deltaR graph is pre-existing and left alone.
+  Four tests pin the arrangement: AST equality of the four transported helpers against the
+  installed lloca, whole-model bit-parity on the deltaR path, hybrid-vs-port, and
+  hybrid-vs-lloca (the third edge, so a change moving both in-repo files together still
+  fails).
 
 ## Fixed here (input pipeline & training robustness)
 - CGENN `MVLayerNorm` gain reshaped (1, C) -> (C,) so it falls under the optimizer's ndim<=1
