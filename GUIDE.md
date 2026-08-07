@@ -405,13 +405,24 @@ path is version-sensitive, so smoke-test it on your GPU first).
 ## 8. Multiple trials and the results table
 
 - **One `run.py` invocation = one trial** (`run_idx=0`) and emits one table row.
-- **Several trials of the *same* model** accumulate into `mean ± std` automatically:
-  re-run the *same* experiment as a **fresh-trial warm start** — point `-cp`/`-cn` at the
+- **Several trials of the *same* model** — the simple way is to submit the identical
+  command again. `utils/aggregate_table.py` groups run directories by
+  `(task, model, frames, kNN)` and forms `mean ± std` across them, so three plain
+  `sbatch train.sbatch tag_X` submissions give you a `[3 trials]` row with no warm start,
+  no shared directory, and no flag to forget. Each run's own log keeps reporting *that*
+  run, which is what it should say; the ensemble number appears when you aggregate.
+  Raw per-trial values stay in the individual run dirs, so the statistic can be changed
+  (or a bad trial dropped) later without retraining.
+- **The in-run accumulator still works** and is the older path: re-run the *same*
+  experiment as a **fresh-trial warm start** — point `-cp`/`-cn` at the
   saved run config and pass `warm_start_idx=<prev run_idx> warm_start_load=false`. It
   increments `run_idx`, shares the run directory, appends to
   `runs/<exp>/<run>/table_metrics_*.json`, and starts from a **new random initialization**
   with a fresh optimizer/scheduler. The final row then reads
-  `… & <iters> [N trials] & $acc ± σ$ & …`.
+  `… & <iters> [N trials] & $acc ± σ$ & …`. Use it when you want the consolidated number
+  visible in a single run's log; prefer independent runs otherwise. Mixing the two for one
+  variant is safe — the aggregator refuses to merge a group that already contains an
+  in-run `mean ± std` row (it would double-count) and keeps the newest instead, with a note.
   **Do NOT use a plain warm start (the `warm_start_load=true` default) for trials**: that
   reloads the previous model *and* the finished scheduler, so the "trial" is a correlated
   continuation of the same training — and the reloaded cosine steps past `T_max`, ramping

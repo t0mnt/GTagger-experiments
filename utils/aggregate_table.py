@@ -72,6 +72,65 @@ def latest_row(run_dir, split):
     return row, mtime
 
 
+def _is_aggregated(row):
+    """True if this row already carries an in-run mean +- std (the warm-start accumulator)."""
+    return "\\pm" in row or re.search(r"\[\d+ trials\]", row) is not None
+
+
+def _consolidate(key, entries):
+    """Collapse one variant's run dirs into a single (mtime, row, dirs) table entry.
+
+    entries: list of (mtime, row, run_dir) for the SAME (exp_type, model, frames, kNN).
+    """
+    entries = sorted(entries, key=lambda e: e[0])
+    if len(entries) == 1:
+        return entries[-1][0], entries[-1][1], [entries[-1][2]]
+    if any(_is_aggregated(r) for _, r, _ in entries):
+        # mixed mechanisms, or several dirs each already holding their own trials --
+        # merging would double-count, so fall back to the historical newest-wins rule
+        newest = entries[-1]
+        print(f"[note] {key}: {len(entries)} run dirs, at least one already aggregated in-run; "
+              f"keeping the newest ({newest[2]}) rather than merging")
+        return newest[0], newest[1], [newest[2]]
+
+    cols = [[c.strip() for c in r.split("&")] for _, r, _ in entries]
+    ncols = len(cols[0])
+    if any(len(c) != ncols for c in cols):
+        newest = entries[-1]
+        print(f"[note] {key}: run dirs disagree on column count; keeping the newest ({newest[2]})")
+        return newest[0], newest[1], [newest[2]]
+
+    n = len(entries)
+    out = []
+    for j in range(ncols):
+        vals = [c[j] for c in cols]
+        if all(v == vals[0] for v in vals):          # model / frames / params / kNN
+            out.append(vals[0])
+            continue
+        nums, unit = [], ""
+        for v in vals:                                # train_time carries a trailing "s"
+            m = re.fullmatch(r"(-?[\d.]+(?:[eE][-+]?\d+)?)([a-zA-Z%]*)", v)
+            if m is None:
+                nums = None
+                break
+            nums.append(float(m.group(1)))
+            unit = m.group(2)
+        if nums is None:
+            out.append(vals[-1])                      # not numeric -> newest run's value
+            continue
+        mean = sum(nums) / n
+        var = sum((x - mean) ** 2 for x in nums) / (n - 1)
+        # match the per-run formatter's precision so merged and in-run rows look alike
+        dec = max((len(v.split(".")[1].rstrip("s")) if "." in v else 0) for v in vals)
+        fmt = f".{dec}f" if "e" not in vals[0].lower() else ".3e"
+        out.append(f"${format(mean, fmt)} \\pm {format(var ** 0.5, fmt)}${unit}")
+
+    out[2] = f"{out[2]} [{n} trials]"                 # iters column carries the trial count
+    dirs = [d for _, _, d in entries]
+    print(f"[note] {key}: merged {n} trials from {', '.join(os.path.basename(x) for x in dirs)}")
+    return entries[-1][0], " & ".join(out), dirs
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -112,14 +171,16 @@ def main():
         # different tasks (toptagging / toptagxl / jctagging) report different metric
         # columns -> group into SEPARATE tables keyed by the run's exp_type
         key = (etype, model, frames, knn)
-        if key in rows:
-            prev_mtime, prev_row, prev_dir = rows[key]
-            if prev_row != row:
-                newer, older = (d, prev_dir) if mtime >= prev_mtime else (prev_dir, d)
-                print(f"[note] re-run of {key}: keeping {newer} (newer log), dropping {older}")
-            if mtime < prev_mtime:
-                continue
-        rows[key] = (mtime, row, d)
+        rows.setdefault(key, []).append((mtime, row, d))
+
+    # Trials of the same variant are INDEPENDENT run dirs (see GUIDE section 8) -- three
+    # plain submissions, no warm start, no shared directory. Group them here and form
+    # mean +- std across the group, so the raw per-trial values survive to this point and
+    # the statistic is chosen at presentation time rather than frozen during training.
+    # A run whose own row is already `[N trials] mean +- std` came from the in-run
+    # accumulator (fresh-trial warm starts into one dir); that path still works, so such a
+    # group is NOT merged -- the newest row wins, exactly as before.
+    rows = {k: _consolidate(k, v) for k, v in rows.items()}
 
     if not rows:
         print(f"No 'table {args.split}:' rows found under {args.runs}/")
