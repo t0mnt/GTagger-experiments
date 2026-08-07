@@ -834,7 +834,10 @@ Then `exit`, and submit one sbatch per model (§5) plus 2 more fresh-trial seeds
 Once the recipes are filled, shake down the config axes before (or alongside) the seed
 runs, in this order — PlainGraphGPS PE/SE variants first (`model.net.use_edge_attr`,
 `model.net.use_rwse`, `model.net.norm=batch|layer` — confirm each trains), then every
-model under both graph metrics (`model.net.knn_metric=deltaR|minkowski`), then the
+hybrid under both graph metrics (`model.net.knn_metric=deltaR|minkowski` — the eight
+hybrids only; no baseline exposes the knob, and the lloca `ParticleNet` baseline could not
+use it anyway since `ParticleNetWrapper` hands it (phi, eta) and never the four-momenta),
+then the
 LLoCa models (Plain / ParticleNet-ParT) under PD frames (`model/framesnet=learnedpd`).
 See GUIDE §6's shakedown note for the reasoning.
 
