@@ -1105,13 +1105,14 @@ class CGENNLGATrGraphTrans(nn.Module):
         attention = dict(
             multi_query=multi_query,
             num_heads=num_heads,
-            increase_hidden_channels=increase_hidden_channels_attention,
+            attn_ratio=increase_hidden_channels_attention,
             head_scale=head_scale,
         )
         mlp = dict(
-            activation=activation,
-            increase_hidden_channels=increase_hidden_channels_mlp,
-            num_hidden_layers=num_hidden_layers_mlp,
+            nonlinearity=activation,
+            mlp_ratio=increase_hidden_channels_mlp,
+            # v2 counts ALL layers: v1 num_hidden_layers=N == v2 num_layers_mlp=N+1
+            num_layers_mlp=num_hidden_layers_mlp + 1,
         )
         self.net = LGATr(
             num_blocks=num_blocks,

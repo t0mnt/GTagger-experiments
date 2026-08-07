@@ -97,7 +97,7 @@ class CGENNLGATrGPSLayer(nn.Module):
         #      dropout -> the GPS layer applies the external dropout) ----
         attn_cfg = replace(
             SelfAttentionConfig(num_heads=num_heads, multi_query=multi_query,
-                                increase_hidden_channels=increase_hidden_channels_attention,
+                                attn_ratio=increase_hidden_channels_attention,
                                 head_scale=head_scale),
             in_mv_channels=mv_channels, out_mv_channels=mv_channels,
             in_s_channels=s_channels, out_s_channels=s_channels,
@@ -106,9 +106,10 @@ class CGENNLGATrGPSLayer(nn.Module):
         self.attention = SelfAttention(attn_cfg)
         # ---- FFN: raw GeoMLP (geometric product first) ----
         mlp_cfg = replace(
-            MLPConfig(activation=activation,
-                      increase_hidden_channels=increase_hidden_channels_mlp,
-                      num_hidden_layers=num_hidden_layers_mlp),
+            MLPConfig(nonlinearity=activation,
+                      mlp_ratio=increase_hidden_channels_mlp,
+                      # v2 counts ALL layers: v1 num_hidden_layers=N == v2 num_layers_mlp=N+1
+                      num_layers_mlp=num_hidden_layers_mlp + 1),
             mv_channels=mv_channels, s_channels=s_channels, dropout_prob=None,
         )
         self.mlp = GeoMLP(mlp_cfg)
