@@ -308,31 +308,99 @@ def _self_consistency(name, overrides):
                 assert dev(a, b) <= ulp, f"{name}/{tag}: first divergence at block {n1}"
 
 
-def _transplant_check(name, overrides):  # Task B fills key_map.json; the machinery is ready
-    key_map_file = FIX / "key_map.json"
-    if not key_map_file.exists():
-        pytest.skip("KEY_MAP not built yet (migration Task B, Phase 1a)")
-    key_map = json.loads(key_map_file.read_text())
+# Phase 3 parity pins: applied ONLY to the parity script's v2 builds (shipped configs are
+# v2-native, Posture B). S1 -> nonlinearity_v=null restores the v1 gate routing; S2 ->
+# norm_elementwise_affine=false removes the gains the pinned build must not have.
+PARITY_PINS = {
+    "tag_slim": ["+model.net.nonlinearity_v=null", "+model.net.norm_elementwise_affine=false"],
+    "tag_lgatr": ["+model.net.norm_elementwise_affine=false"],
+    "tag_LorentzNetLGATrSlimGraphTrans": [
+        "+model.net.nonlinearity_v=null", "+model.net.norm_elementwise_affine=false"],
+    "tag_LorentzNetLGATrSlimGraphGPS": ["+model.net.nonlinearity_v=null"],
+    "tag_CGENNLGATrGraphTrans": ["+model.net.norm_elementwise_affine=false"],
+    "tag_CGENNLGATrGraphGPS": [],
+    "equivectors_lgatr": ["+model.framesnet.equivectors.net.norm_elementwise_affine=false"],
+}
+# Tier 1 additionally forces the DENSE geometric product on full-LGATr-bearing models (S3);
+# slim models have no geometric product.
+TIER1_SPARSE_GP_OFF = {
+    "tag_lgatr": ["+model.net.primitives.sparse_gp=false"],
+    "tag_CGENNLGATrGraphTrans": ["+model.net.primitives.sparse_gp=false"],
+    "tag_CGENNLGATrGraphGPS": ["+model.net.primitives_sparse_gp=false"],
+    "equivectors_lgatr": ["+model.framesnet.equivectors.net.primitives.sparse_gp=false"],
+}
+# S6 compensation targets, derived BY RULE from the v1 state_dict: every slim GLU fused
+# linear's vector weight. S5 waivers likewise: every bias under a qkv projection module.
+GLU_WEIGHT_V_RE = re.compile(r"\.mlp\.layers\.\d+\.linear\.weight_v$")
+
+
+def _transplant_check(name, overrides):
     ref = torch.load(FIX / f"{name}.pt", weights_only=False)
+    key_map_file = FIX / "key_map.json"
+    key_map = json.loads(key_map_file.read_text()) if key_map_file.exists() else {}
     sd = {key_map.get(name, {}).get(k, k): v for k, v in ref["sd"].items()}
-    sd = _rescale_glu_gates(sd, key_map.get(f"{name}::glu_weight_v_keys", []))
-    exp = _build("config_quick", overrides, with_data=False)
-    missing, unexpected = exp.model.load_state_dict(sd, strict=False)
-    waived = set(key_map.get(f"{name}::waived", []))
-    assert set(missing) | set(unexpected) <= waived, (
-        f"{name}: unwaived state_dict mismatch: missing={missing} unexpected={unexpected}")
+    glu_keys = [k for k in sd if GLU_WEIGHT_V_RE.search(k)]
+    sd = _rescale_glu_gates(sd, glu_keys)
     tier1 = os.environ.get("LGATR_PARITY_TIER", "1") == "1"
+    pins = PARITY_PINS[name] + (TIER1_SPARSE_GP_OFF.get(name, []) if tier1 else [])
+    if tier1:
+        # S9 compensation (verification instrument only): v2 unified get_nonlinearity uses
+        # gelu(approximate="tanh"); v1 used exact erf-GeLU. Restore erf for the pinned build
+        # so tier 1 isolates everything else at 1e-10; shipped models keep v2's tanh-gelu.
+        # v1's flavors were SPLIT: slim used exact erf-GeLU everywhere; the full model's
+        # ScalarGatedNonlinearity used tanh-GeLU for the multivector GATE (v1 gated_gelu,
+        # approximate="tanh") but exact erf-GeLU on the auxiliary scalar stream. Reproduce
+        # exactly that during the pinned tier-1 build; shipped models keep v2's unified tanh.
+        import torch.nn.functional as F
+        import lgatr.layers.mlp.nonlinearities as _c1
+        import lgatr.layers.slim_layers as _c2
+        import lgatr.utils.misc as _lm
+        _orig_get = _c2.get_nonlinearity
+        _c2.get_nonlinearity = lambda label: (
+            (lambda x: F.gelu(x)) if label == "gelu" else _orig_get(label))
+        _orig_fwd = _c1.ScalarGatedNonlinearity.forward
+        def _v1_split_forward(self, multivectors, scalars=None):
+            weights = F.gelu(multivectors[..., [0]], approximate="tanh")
+            outputs_mv = weights * multivectors
+            outputs_s = F.gelu(scalars) if scalars is not None else None
+            return outputs_mv, outputs_s
+        _c1.ScalarGatedNonlinearity.forward = _v1_split_forward
+        # NB: slim's flavor binds at CONSTRUCTION (get_nonlinearity), the full model's
+        # ScalarGated flavor at FORWARD time -> the patch must span the comparisons below,
+        # not just the build; it is restored at the end of this check.
+    exp = _build("config_quick", list(overrides) + pins, with_data=False)
+    missing, unexpected = exp.model.load_state_dict(sd, strict=False)
+    # v1-side keys with no v2 slot, derived by rule: S5 qkv biases + the attention `metric`
+    # buffer v2 made non-persistent (constant Minkowski signature, zero learnable content).
+    expected_extra = {k for k in sd
+                      if QKV_BIAS_RE.search(k) or k.endswith(".attention.metric")}
+    assert set(unexpected) == expected_extra and not missing, (
+        f"{name}: state_dict mismatch beyond the S5/metric rules: "
+        f"missing={sorted(missing)} unexpected={sorted(set(unexpected) - expected_extra)}")
+    tier1 = os.environ.get("LGATR_PARITY_TIER", "1") == "1"
+    tol = 1e-10 if tier1 else 1e-8
     tol = 1e-10 if tier1 else 1e-8
     mode = _grad_mode(name)
     for tag in ("main", "edge"):
         data = _rebuild_batch(ref[f"batch_{tag}"])
         pack = _forward_pack(exp, data, mode)
         rel = (pack["y"] - ref[tag]["y"]).abs().max() / (1 + ref[tag]["y"].abs().max())
+        print(f"GATE-C {name}/{tag} tier{1 if tier1 else 2} forward rel={rel:.3e}")
         assert rel < tol, f"{name}/{tag}: forward parity {rel:.3e} >= {tol}"
+        for i, ((n1, ts1), (n2, ts2)) in enumerate(zip(pack["block_acts"], ref[tag]["block_acts"])):
+            for a, b in zip(ts1, ts2):
+                if a.shape != b.shape and a.shape[-2:] == b.shape[-2:][::-1]:
+                    a = a.transpose(-1, -2)  # M8: v2 slim blocks emit channel-last (H14(2))
+                d = (a - b).abs().max() / (1 + b.abs().max())
+                assert d < tol, f"{name}/{tag}: first divergence at block {n1} (rel={d:.3e})"
         if mode == "full":
             relg = ((pack["x_grad"] - ref[tag]["x_grad"]).abs().max()
                     / (1 + ref[tag]["x_grad"].abs().max()))
+            print(f"GATE-C {name}/{tag} grad rel={relg:.3e}")
             assert relg < (tol if tier1 else 1e-6), f"{name}/{tag}: grad parity {relg:.3e}"
+    if tier1:
+        _c2.get_nonlinearity = _orig_get
+        _c1.ScalarGatedNonlinearity.forward = _orig_fwd
 
 
 def _rescale_glu_gates(sd, glu_weight_v_keys):

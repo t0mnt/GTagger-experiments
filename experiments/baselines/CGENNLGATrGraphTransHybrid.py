@@ -1037,6 +1037,8 @@ class CGENNLGATrGraphTrans(nn.Module):
         increase_hidden_channels_attention: int = 2,
         increase_hidden_channels_mlp: int = 2,
         num_hidden_layers_mlp: int = 1,
+        norm_elementwise_affine: bool = True,  # v2-native; parity pins set False
+        primitives: dict | None = None,        # e.g. {'sparse_gp': False} in parity tier 1
         head_scale: bool = False,
         dropout_prob: float = None,
         checkpoint_blocks: bool = False,
@@ -1115,6 +1117,8 @@ class CGENNLGATrGraphTrans(nn.Module):
             num_layers_mlp=num_hidden_layers_mlp + 1,
         )
         self.net = LGATr(
+            norm_elementwise_affine=norm_elementwise_affine,
+            **({"primitives": primitives} if primitives is not None else {}),
             num_blocks=num_blocks,
             in_mv_channels=hidden_mv_channels,
             out_mv_channels=num_classes,

@@ -308,6 +308,8 @@ class LorentzNetLGATrSlimGraphTrans(nn.Module):
         knn_metric="minkowski",
         c_weight=1e-3,
         use_phi_m=True,
+        nonlinearity_v="sigmoid",              # v2-native; parity pins set None
+        norm_elementwise_affine=True,          # v2-native; parity pins set False
         # official LorentzNet re-injects the raw input scalars into phi_h at every
         # LGEB layer (node_attr); keep on for faithfulness, off = pre-audit ablation.
         use_node_attr=True,
@@ -397,6 +399,8 @@ class LorentzNetLGATrSlimGraphTrans(nn.Module):
 
         # ---- L-GATr-slim.
         self.net = LGATrSlim(
+            nonlinearity_v=nonlinearity_v,
+            norm_elementwise_affine=norm_elementwise_affine,
             in_v_channels=in_v_channels,
             out_v_channels=1,                     # vector sink (unused for readout)
             hidden_v_channels=hidden_v_channels,
