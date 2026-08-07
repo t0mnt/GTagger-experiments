@@ -90,7 +90,7 @@ class LorentzNetSlimGPSLayer(nn.Module):
             mlp_ratio=mlp_ratio, num_layers=num_layers_mlp, dropout_prob=None,
         )
         # equivariant norm (stateless -> shared) + dropout
-        self.norm = SlimRMSNorm()
+        self.norm = SlimRMSNorm(v_channels, s_channels, elementwise_affine=False)  # M5: shared across call sites -> must stay stateless (affine off)
         self.dropout = SlimDropout(dropout_prob if dropout_prob is not None else 0.0)
         # attention-WEIGHTS dropout: lgatr's sdp_attention forwards dropout_p to one sdpa
         # call over concatenated (mv, s), so one joint mask keeps the streams consistent and
