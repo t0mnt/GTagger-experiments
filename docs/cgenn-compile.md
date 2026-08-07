@@ -457,6 +457,25 @@ partial; wiring it is a β-PERF decision once GPU numbers exist, possibly with t
 phase hoisted out of the compiled region first. That is the one deliberate piece of
 Stage 3 left on the table.
 
+**Stage 2 — tag_lorentznet, gated and knob-wired (2026-08-07).** The runbook's readiness
+note was one break short of true: the LGEB stack itself is compile-clean, but the readout's
+PyG `MeanAggregation` derives `dim_size = int(index.max()) + 1` — an in-trace `.item()`,
+3 breaks. Fix (bit-identical on real data, and strictly more correct if a trailing event
+ever had zero constituents): the wrapper passes `ptr` and the net aggregates with
+`dim_size=ptr.numel() - 1` (symbolic under compile). Fixtures recorded pre-edit
+(`tests/fixtures/lorentznet_compile/`), then gates: **BIT `torch.equal` fp32+fp64 ✓ ·
+TOL 0.000e+00 (bit-equal, recorded as bonus) · DET ✓ · BREAKS 0 (cold) · RECOMP
+unique_graphs = 1**. `compile: false` knob wired in `tag_lorentznet.yaml` (CGENNWrapper
+pattern — net only, wrapper edges stay eager); flip on β-PERF numbers.
+
+**What's next, in order:** (1) cluster β-PERF matrix — it/s eager vs compiled for
+tag_cgenn (×3 `gp_impl`), tag_lorentznet, tag_slim/tag_lgatr, picking every compile/impl
+default with data; (2) **full hybrid compile**: hoist `generate_edges_vectorized` out of
+the compiled region (edges depend only on the input mask/points, so the hybrid forward can
+take precomputed edges the way tag_cgenn's net does) — kills the 3 structural breaks and
+defragments the ~4 graphs into 1–2, then wire the hybrid `compile:` knobs behind the same
+gate file; (3) Gates G/H from the migration runbook (cluster).
+
 ---
 
 ## Table-wide compile policy

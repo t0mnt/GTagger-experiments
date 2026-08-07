@@ -696,9 +696,14 @@ class LorentzNetWrapper(nn.Module):
         net,
         framesnet,
         out_channels,
+        compile=False,
     ):
         super().__init__()
         self.net = net(n_class=out_channels)
+        if compile:
+            # compile the net only; the wrapper's edge building stays eager by design
+            # (Stage-2 gates: tests/experiments/test_lorentznet_compile.py)
+            self.net = torch.compile(self.net, dynamic=True)
 
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
@@ -716,7 +721,7 @@ class LorentzNetWrapper(nn.Module):
 
         edge_index = get_edge_index_from_ptr(ptr, fourmomenta.shape, remove_self_loops=True)
         fourmomenta = fourmomenta.to(scalars.dtype)
-        output = self.net(scalars, fourmomenta, edges=edge_index, batch=batch)
+        output = self.net(scalars, fourmomenta, edges=edge_index, batch=batch, ptr=ptr)
         return output, {}, None
 
 

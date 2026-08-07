@@ -1,5 +1,6 @@
 _target_: experiments.tagging.wrappers.LorentzNetWrapper
 out_channels: null
+compile: false  # torch.compile(net, dynamic=True); Stage-2 gates green, flip on beta-PERF numbers
 
 net:
  _target_: experiments.baselines.lorentznet.LorentzNet
