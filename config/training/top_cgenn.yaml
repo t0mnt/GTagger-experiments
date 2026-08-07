@@ -1,0 +1,40 @@
+# CGENN top-tagging, from the official repository
+# https://github.com/DavidRuhe/clifford-group-equivariant-neural-networks
+#
+# README run command:
+#   top_tagging.py -C configs/engineer/trainer.yaml -C configs/optimizer/adam.yaml \
+#     -C configs/dataset/top_tagging.yaml -C configs/model/lorentz_cggnn.yaml \
+#     --trainer.max_steps=331126 --trainer.val_check_interval=8192 \
+#     --dataset.batch_size=32 --optimizer.lr=0.001
+#
+# Without this file, tag_cgenn inherits the TASK default -- tag_gts_and_friends_default, the
+# eight-hybrid recipe (AdamW, lr 1e-3, batchsize 512, weight_decay 0.01, 20 epochs). That is a
+# considered recipe for the hybrids and an arbitrary one for the CGENN reference row, and it is
+# where CGENN's weight decay came from: an inherited default, not a decision about CGENN.
+
+optimizer: Adam          # `configs/optimizer/adam.yaml` -> torch.optim.Adam, ONE flat
+                         # param group (`model.parameters()`), no grouping of any kind
+lr: 1e-3                 # --optimizer.lr=0.001
+weight_decay: 0          # NOT passed on the command line -> torch.optim.Adam's default 0.
+                         # Deliberate: their nbody command DOES pass
+                         # --optimizer.weight_decay=0.0001, so the omission here is a choice.
+batchsize: 32            # --dataset.batch_size=32
+iterations: 331126       # --trainer.max_steps=331126 (~8.8 epochs of the 1.21M train split)
+epochs: null             # iterations win; do not let an epoch budget override the step count
+validate_every_n_steps: 8192   # --trainer.val_check_interval=8192
+
+# Their schedule is a custom cosine-with-warmup built in top_tagging.py:
+#   CosineAnnealingLR(optimizer, steps, warmup_steps=steps/64, decay_steps=steps/4)
+# Ours is linear warmup -> cosine decay. The warmup fraction matches exactly (1/64 =
+# 0.015625); their `decay_steps` argument has no equivalent here, so the tail of the decay
+# is not bit-faithful to theirs. Closest available mapping, and noted rather than hidden.
+scheduler: CosineAnnealingWarmup
+warmup_pct_start: 0.015625
+
+# NOTE on batchsize 32: this is the published value and it is small for a modern GPU -- the
+# run will be latency-bound rather than FLOP-bound, and 331126 steps at batch 32 is a lot of
+# tiny kernels. Raising it is a legitimate choice, but it is then no longer the published
+# recipe and the row must say so (the LR would need re-tuning with it).
+
+defaults:
+ - tag_default
