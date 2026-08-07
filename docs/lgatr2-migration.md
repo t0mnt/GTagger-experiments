@@ -478,6 +478,194 @@ turns out to compile, prefer uniform compilation** to the current split -- it re
 per-row disclosure above rather than managing it. Also revisit if a profiler shows the
 non-equivariant rows dominated by launch overhead, which their kernel profile makes unlikely.
 
+## Decision log
+
+**Task B close-out (2026-08-07).** Environment: `lgatr==2.0.0`, `lloca==1.3.6` (exact; freeze
+pasted in the session report). Posture shipped: **B, v2-native** (§2.4) — shipped configs carry
+v2 defaults untouched; every pin named below exists only in the parity script's build
+overrides (`PARITY_PINS` / `TIER1_SPARSE_GP_OFF`). Still Task C, deliberately not started
+here: Gates G/H, the posture-flip commit (manifest re-baseline at v2 defaults + the H15
+optimizer exemption), the `>=2.0.0,<3` pin relaxation, the PR.
+
+### Gate results (Task B, CPU, fp64 unless stated — numbers, not pass/fail)
+
+Relative deviations are `max|Δ| / (1 + max|ref|)` against the 1.4.4 fixtures. Bars: tier 1
+< 1e-10; tier 2 < 1e-8 forward/activations, < 1e-6 input-gradients. The §4 separation
+argument expects clean ports at fp64-reassociation scale (~1e-12 or below) — every green
+number below sits at **2e-13 or better**, so no near-bar pass needed a drift investigation.
+
+**Gate A — composition.** `tests/internal/test_jc_wiring.py`: 8/8 on v2. All seven fixture
+compositions instantiate on v2 exception-free with channel asserts holding (each was built
+repeatedly: two Gate C tier builds plus the Gate B pinned build).
+
+**Gate B — production manifests, two-sided rule-derived check, 7/7.** The 2.x branch of
+`test_production_manifest` builds each full-size config with the Phase 3 pins and asserts:
+removed-set == the S5 set derived from the *stored v1 names* via `QKV_BIAS_RE`; added-set
+== ∅; `requires_grad` flips == the structural freezing rule (`_expected_frozen`: v2's
+zero-size freeze + `_freeze_dead_tail` semantics recomputed from the live module tree —
+never read back from the flags v2 set); `(shape)|requires_grad` multiset equality after
+waiver subtraction; totals differing by exactly the waived numel.
+
+| model | v1 params | v2 params (pinned) | waived qkv biases | rg flips (rule-matched) |
+|---|---|---|---|---|
+| tag_lgatr | 1 079 394 | 1 074 786 | 24 (4 608) | 0 |
+| tag_slim | 1 794 631 | 1 791 175 | 12 (3 456) | 3 |
+| tag_CGENNLGATrGraphTrans | 1 154 664 | 1 150 824 | 20 (3 840) | 0 |
+| tag_CGENNLGATrGraphGPS | 1 898 197 | 1 894 357 | 20 (3 840) | 0 |
+| tag_LorentzNetLGATrSlimGraphTrans | 1 636 032 | 1 633 152 | 10 (2 880) | 0 |
+| tag_LorentzNetLGATrSlimGraphGPS | 2 179 493 | 2 176 613 | 10 (2 880) | 0 |
+| equivectors_lgatr | 2 267 307 | 2 267 223 | 2 (84) | 0 |
+
+`tag_slim`'s three flips are exactly v2's freezing rules firing on the only net with an empty
+output stream: `net.linear_out.weight_v (0, 6)` (zero-size) plus
+`net.blocks.11.mlp.layers.{0.linear,1}.weight_v` (`_freeze_dead_tail`, net
+`out_v_channels=0`); all are v1 `True` → v2 `False`, no reverse flips anywhere.
+
+**Gate C — transplant parity** (S6 √2 rescale + S5 waivers + S9 flavor patch; tier 1 adds the
+S1/S2 pins everywhere and `sparse_gp=false`; per-block activations asserted at the same bars
+as the forward). Forward `main / edge`; input-gradient rows only where the fixture carries one
+(the four hybrid models — `tag_slim`/`tag_lgatr` record param-grad norms only, wrapper
+in-place ops block input-leaf backward; `equivectors_lgatr` has no CPU flex backward):
+
+| model | tier-1 fwd | tier-1 ∇x | tier-2 fwd | tier-2 ∇x |
+|---|---|---|---|---|
+| tag_lgatr | 4.889e-17 / 2.460e-17 | — | 1.955e-16 / 1.599e-16 | — |
+| tag_slim | 4.879e-17 / 4.898e-17 | — | 4.879e-17 / 4.898e-17 | — |
+| tag_CGENNLGATrGraphTrans | 1.239e-16 / 1.211e-16 | 3.975e-17 / 1.675e-17 | 3.098e-16 / 3.027e-16 | 3.312e-17 / 5.611e-17 |
+| tag_CGENNLGATrGraphGPS | 0.0 / 3.972e-17 | 1.971e-16 / 4.481e-17 | 0.0 / 0.0 | 6.042e-16 / 6.016e-16 |
+| tag_LorentzNetLGATrSlimGraphTrans | 1.381e-16 / 1.375e-16 | 1.946e-18 / 1.731e-18 | 1.381e-16 / 1.375e-16 | 1.946e-18 / 1.731e-18 |
+| tag_LorentzNetLGATrSlimGraphGPS | 0.0 / 0.0 | 2.168e-19 / 2.710e-19 | 0.0 / 0.0 | 2.168e-19 / 2.710e-19 |
+| equivectors_lgatr | 1.919e-13 / **1.529e-9 FAIL** | (no pack) | 9.863e-14 / **6.281e-6 FAIL** | (no pack) |
+
+Slim-only models (`tag_slim`, both LorentzNet hybrids) have no geometric product, so their
+tier-2 build is the tier-1 build; the bit-identical numbers across tiers are the expected
+consistency check, not a copy-paste. For the full-LGATr models the tier-1→tier-2 movement
+(≤6e-16) is the S3 reorder itself — at these widths it is invisible, exactly as argued in §4.
+
+**The one red case — `equivectors_lgatr` edge batch (OPEN, operator call).** Characterized,
+per instruction, not decided; the tier-2 edge failure is the same item, not a second finding.
+The edge batch truncates jets to multiplicities [1, 3, 30, 49]; per-jet decomposition of the
+tier-1 deviation: the n=1 jet carries **2.848e-9** while the n=3 / n=30 / n=49 jets sit at
+4.574e-14 / 1.188e-14 / 6.661e-16 — and every jet of the main batch (natural multiplicities)
+is ≤ 2.623e-13. So: (a) the batch-level 1.529e-9 is driven entirely by the single-particle
+jet, not spread over elements; (b) it does not merely shrink at n≥2, it collapses by 4+
+orders to baseline; (c) it is bit-deterministic — three repeated runs and varied-seed builds
+reproduce both batches to max|Δ| = 0.0, so this is a fixed arithmetic difference, not noise;
+(d) flex-specificity is untestable on CPU: flex is the only importable sparse lloca backend
+here (varlen is CUDA-only; xformers/flash are CUDA-gated by lloca's registry). Consistent
+interpretation (not a ruling): a 1-particle jet degenerates the learned-frames path, whose
+conditioning amplifies the ~1e-13 cross-version reassociation baseline into the 1e-9 (dense)
+and 1e-6 (sparse_gp) range. Whether a degenerate 1-particle jet is in scope for a 1e-10
+transplant bar is the operator's call; the bar was not widened and the test stays red until
+that call is made.
+
+**Gate D — full suite on v2: 611 passed, 17 failed, 39 skipped** (667 collected; the "64/64"
+criterion line predates the suite's growth). The 17 decompose exactly into three known
+classes, none an unexplained migration break:
+
+- **15 × pelican-FLOPs environment class**: every `*-learnedpd-pelican` parametrization of
+  `test_tag_flops`/`test_amp_flops` plus `test_tagging[tag_pelican_fair-identity]`. The
+  installed pelican package internally calls `torch.compile(fullgraph=True)`
+  (`pelican/primitives.py:104`), which refuses under `FlopCounterMode`'s torch dispatch mode
+  on this container's torch 2.13 ("non-infra torch dispatch mode present"). No lgatr frame in
+  any traceback; no dependency path from the lgatr version to pelican internals; the
+  `learnedpd-lgatr` equivectors FLOPs rows all PASS on v2. Same environment-only family as
+  the container FLOPs failures already in `docs/audit-ledger.md`.
+- **1 × `test_transplant_parity[equivectors_lgatr]`** — the flagged item above appearing
+  under its default tier-1 invocation; red is its honest state pending the operator call.
+- **1 × `test_weight_decay_grouping[tag_CGENNLGATrGraphTrans-tag_CGENNLGATrGraphGPS]`** —
+  **H15 firing, on schedule**: under Posture B the GraphTrans hybrid's LGATr nets now carry
+  affine gains (net-level v2 default passed through) and those `weight_mv` gains land in the
+  *decayed* group, while the GPS hybrid's bare per-layer `EquiLayerNorm()` (structurally
+  affine-off, §2.1) has none — so the decayed-kinds sets differ. This is precisely the H15
+  prediction; the fix (gains into `weight_decay=0` in BOTH grouping paths + the no-decay
+  assertion) is the Task C posture-flip commit's step 2 and was deliberately not pulled
+  forward into this session.
+
+**Gate E — identity-frames bit-exactness.** The suite's spot checks
+(`tests/internal/test_duplicated_component_parity.py`, run standalone on v2: 31/31) assert
+`torch.equal` — max|Δ| = 0.0 by definition of passing — for hybrid EdgeConv ≡ ported
+ParticleNet ≡ installed lloca, per-block and whole-model, under `Frames(is_identity=True)`.
+For the lgatr-bearing wrappers the hybrid-at-identity ≡ plain property is structural rather
+than testable: they `assert isinstance(framesnet, IdentityFrames)` and never touch frames
+(`wrappers.py:505` "not actually used"), so no second code path exists to diverge; their
+lgatr content is exactly what Gate C measures. H5's version-consistency requirement (both
+sides of any ≡ claim share one lgatr) holds trivially: one lgatr is installed.
+
+**Gate F — blade-table equivalence: max|diff| = 0.000e+00** (bar ≤ 2e-6 fp32; 256 nonzeros
+on both sides), now permanent as `test_blade_table_gate_f`. The index conventions differ by
+design and the alignment is forced, not fitted: the hybrids contract
+`out_j = a_i · cayley[i,j,k] · b_k` (output on the middle axis) while v2 contracts
+`out_i = gp[i,j,k] · x_j · y_k` (output first), so identical products ⟺
+`cayley.permute(1,0,2) == gp` — which holds bit-exactly. §2.1's "blade layout unchanged" is
+thereby re-proven, not assumed.
+
+**Parity-script deltas made in this session** (for the B→C diff review): (1) the S9
+compensation now spans BOTH tiers (`_transplant_check`; previously tier-1-only — see the S9
+entry for why tier 2 is wrong without it); (2) the Gate B 2.x branch replaced its skip
+(`_manifest_check_v2` + `_expected_frozen`, rule-derived as specified in §Phase 4); (3)
+`test_blade_table_gate_f` added. No tolerance, waiver derivation, or existing assertion was
+edited; the flagged case stays red.
+
+### Per-S-item entries (what changed, which posture shipped, why)
+
+- **S1 — slim vector-gate nonlinearity.** v1 slim gated vectors through identity routing; v2
+  adds `nonlinearity_v` defaulting to `sigmoid` ("more stable"). Shipped: v2 default — no
+  yaml sets the knob (Posture B: upstream defaults are the citation). Verification pinned
+  `nonlinearity_v=null` (script-only) so Gate C compared like against like; the knob is
+  threaded through the slim hybrids' wrappers so the pin (and any future ablation) composes.
+- **S2 — norm affine gains.** v2 flips the *net-level* `norm_elementwise_affine` default to
+  True (slim: per-channel `weight_v`/`weight_s`; full LGATr: per-grade `(mv, 5)` gains); the
+  *layer-level* default stays False, so bare `EquiLayerNorm()` / shared `SlimRMSNorm`
+  constructions (GPS hybrids, H3) remain parameter-free structurally. Shipped: v2 default
+  wherever the net-level kwarg exists — the campaign trains with gains. Verification pinned
+  affine off so manifests/transplants matched v1 minus S5. Consequences owned by Task C:
+  manifest re-baseline (gains included) and the H15 decay exemption — Gate D's grouping
+  failure above is this obligation surfacing, on schedule.
+- **S3 — `sparse_gp=True` default.** v2's sparse indexed geometric product (custom backward,
+  input-saving) reorders the blade contractions — same math, different summation order, so
+  bit-parity with v1's dense einsum is unattainable *by design*. Shipped: v2 default ON.
+  Verification: tier 1 pins it off to prove everything else at < 1e-10; tier 2 leaves it on,
+  isolating exactly this reorder — measured ≤ 6.0e-16 movement on every unflagged model
+  (table above), i.e. invisible at production widths. Phase 1a `torch.autograd.gradcheck` on
+  `geometric_product` with `sparse_gp=True` passed in fp64 (reported at session start).
+- **S5 — qkv scalar biases removed.** v2's qkv projections are all `bias=False`; v1
+  initialized those biases nonzero-uniform (slim `attention.linear_in.linear_s.bias`, full
+  `attention.qkv_module.in_linear.{s2mvs,mvs2s}.bias`). No knob — baked in; shipped as v2
+  ships. Verification: normalize-at-record (fixture models had exactly those biases zeroed,
+  count-asserted per block, net-level `linear_in` explicitly excluded per §2.5); Gate B/C
+  waive exactly the `QKV_BIAS_RE`-derived set, nothing else. Param deltas per model are the
+  Gate B table's waived column (84–4 608).
+- **S6 — GLU vector-gate scale.** v2 scales the slim GLU vector gate by `0.5 = 1/√4`,
+  flagless. Shipped: as v2 ships. Verification compensation: multiply both gate chunks of
+  every fused GLU `weight_v` (rule `GLU_WEIGHT_V_RE`, never a hand list) by √2 at transplant
+  — algebraically exact (√2·√2·0.5 = 1), confirmed by the machine-precision tier-1 column.
+  Never applied outside the verification instrument (H7: checkpoint porting is a non-goal).
+- **S7 — init refinements.** v2 zero-inits `linear_s` biases and refines slim init/scaling;
+  with S2/S5 changing the parameter set, same-seed cross-version builds are incomparable —
+  this is what retired rev 1's same-seed Gate C and forced the transplant design. Shipped: v2
+  inits (they affect fresh training only; fixtures carry recorded weights, so no
+  compensation exists or is needed).
+- **S8 — AMP strategy.** v2 keeps vector/multivector math in fp32 under autocast and adds
+  the `naive_amp` bypass. Inert here: every wrapper runs `use_amp: false` and all gates are
+  fp64 CPU (H14(1) documents that an autocast-only defect would be invisible to A–H). Shipped:
+  no change. Standing trigger: re-read the §2.3 S8 row before ever enabling amp.
+- **S9 — gelu flavor unification (found BY Gate C, the migration's one surprise).** v2's
+  unified `get_nonlinearity` makes `"gelu"` the tanh approximation everywhere — its own
+  docstring says so — while v1 *split* flavors: slim used exact erf-GeLU everywhere; the
+  full model's `ScalarGatedNonlinearity` used tanh-GeLU on the multivector gate
+  (`gated_gelu`) but erf-GeLU on the auxiliary scalar stream. First tier-1 runs failed at
+  ~1e-4 with first divergence in block 0's MLP; a blanket-erf patch then *worsened* the full
+  models, which is what exposed the split (the v1 gate really was tanh). Shipped: v2's
+  unified tanh (Posture B; ~1e-4-scale output shift vs v1 at eval, an accepted re-baseline
+  delta like S3/S5/S6). Verification: a forward-time instrument patch reproduces v1's exact
+  split during the transplant comparisons only — construction-bound for slim
+  (`get_nonlinearity`), forward-bound for `ScalarGatedNonlinearity`, so the patch must span
+  the comparisons, and it is restored afterwards. It applies in BOTH tiers: tier 2 exists to
+  isolate the S3 reorder at 1e-8, and without the S9 bridge it would instead measure the
+  shipped ~1e-4 S9 delta and fail by construction. §2.1's "no effect at the defaults" line
+  was corrected and the §2.3 S9 row added when this landed (5ea8afa).
+
 ## Appendix A — evidence log
 
 2026-07-29 (rev 1): diffed installed 1.4.4 against `dev@e8ba34d` for `__init__`, `nets/*`, `layers/*` (incl. attention + mlp configs), `interface/*`, `primitives/*` (incl. attention backends), `utils/*`; PyPI then topped at 1.4.4; lloca 1.3.6 imports checked; repo greps as cited.

@@ -343,7 +343,9 @@ def _transplant_check(name, overrides):
     sd = _rescale_glu_gates(sd, glu_keys)
     tier1 = os.environ.get("LGATR_PARITY_TIER", "1") == "1"
     pins = PARITY_PINS[name] + (TIER1_SPARSE_GP_OFF.get(name, []) if tier1 else [])
-    if tier1:
+    if True:  # S9 compensation applies in BOTH tiers: it bridges the v1<->v2 gelu-flavor
+        # change so that tier 2 isolates exactly one reorder (sparse_gp) at its 1e-8 bar,
+        # instead of measuring the shipped S9 delta (~1e-4) and failing by construction.
         # S9 compensation (verification instrument only): v2 unified get_nonlinearity uses
         # gelu(approximate="tanh"); v1 used exact erf-GeLU. Restore erf for the pinned build
         # so tier 1 isolates everything else at 1e-10; shipped models keep v2's tanh-gelu.
@@ -398,9 +400,8 @@ def _transplant_check(name, overrides):
                     / (1 + ref[tag]["x_grad"].abs().max()))
             print(f"GATE-C {name}/{tag} grad rel={relg:.3e}")
             assert relg < (tol if tier1 else 1e-6), f"{name}/{tag}: grad parity {relg:.3e}"
-    if tier1:
-        _c2.get_nonlinearity = _orig_get
-        _c1.ScalarGatedNonlinearity.forward = _orig_fwd
+    _c2.get_nonlinearity = _orig_get
+    _c1.ScalarGatedNonlinearity.forward = _orig_fwd
 
 
 def _rescale_glu_gates(sd, glu_weight_v_keys):
@@ -427,13 +428,89 @@ def test_production_manifest(name):
         return
     if not manifest_file.exists():
         pytest.skip("no 1.4.4 fixtures recorded")
-    if _lgatr_version().startswith("2."):
-        pytest.skip("Gate B on 2.x applies rule-derived waivers (migration Task B)")
     stored = json.loads(manifest_file.read_text())[name]
+    if _lgatr_version().startswith("2."):
+        _manifest_check_v2(name, stored)
+        return
     exp = _build("config", PRODUCTION[name], with_data=False)
     live = _manifest(exp.model)
     assert live["total"] == stored["total"] and live["entries"] == stored["entries"], (
         f"{name}: production manifest drifted from recorded 1.4.4 baseline")
+
+
+def _expected_frozen(model):
+    """The parameters lgatr 2.0 freezes, recomputed from the module structure -- the Gate B
+    requires_grad waiver is this RULE, never a readback of the flags v2 actually set.
+    v2's two freezing mechanisms (slim_layers.py / linear.py / layer_norm.py, all tagged
+    'zero-size params get grads only sometimes under compile, breaking DDP'):
+      1. any zero-size parameter;
+      2. _freeze_dead_tail: in an LGATrSlim net whose out_v_channels (out_s_channels) is 0,
+         the last block's mlp weight_v (linear_s) parameters and norm2 gain, which sit
+         upstream of an empty output stream.
+    """
+    import lgatr
+    frozen = {n for n, p in model.named_parameters() if p.numel() == 0}
+    for prefix, mod in model.named_modules():
+        if isinstance(mod, lgatr.LGATrSlim) and len(mod.blocks):
+            out_v = mod.linear_out.weight_v.shape[0]
+            out_s = 0 if mod.linear_out.linear_s is None else mod.linear_out.linear_s.out_features
+            last = f"{prefix}.blocks.{len(mod.blocks) - 1}." if prefix else \
+                f"blocks.{len(mod.blocks) - 1}."
+            for n, _ in model.named_parameters():
+                if not n.startswith(last):
+                    continue
+                tail = n[len(last):]
+                if out_v == 0 and ((tail.startswith("mlp.") and tail.endswith("weight_v"))
+                                   or tail == "norm2.weight_v"):
+                    frozen.add(n)
+                if out_s == 0 and ((tail.startswith("mlp.") and "linear_s" in tail)
+                                   or tail == "norm2.weight_s"):
+                    frozen.add(n)
+    return frozen
+
+
+def _manifest_check_v2(name, stored):
+    """Gate B on 2.x: two-sided comparison with waivers derived by rule, never typed by hand.
+    Build is PINNED (Phase 3: S1/S2 parity pins) -- under the pins the only legal diffs are
+    the S5 qkv-bias removals (derived from the stored v1 names via QKV_BIAS_RE) and the
+    requires_grad flips v2's freezing rules produce (derived structurally, _expected_frozen).
+    The Posture-B re-baseline at v2 defaults is Task C's own, separate, re-recorded step.
+    """
+    from collections import Counter
+    from math import prod
+    key_map_file = FIX / "key_map.json"
+    key_map = json.loads(key_map_file.read_text()) if key_map_file.exists() else {}
+    v1 = {key_map.get(name, {}).get(n, n): (tuple(s), rg) for n, s, rg in stored["names"]}
+    exp = _build("config", PRODUCTION[name] + PARITY_PINS[name], with_data=False)
+    live = _manifest(exp.model)
+    v2 = {n: (tuple(s), rg) for n, s, rg in live["names"]}
+    qkv = {k for k in v1 if QKV_BIAS_RE.search(k)}
+    # Two-sided name/shape check: removed == S5 exactly, added == nothing, no shape drift.
+    assert set(v1) - set(v2) == qkv and not set(v2) - set(v1), (
+        f"{name}: params beyond the S5 rule: removed-not-qkv="
+        f"{sorted(set(v1) - set(v2) - qkv)} qkv-not-removed={sorted(qkv - (set(v1) - set(v2)))} "
+        f"added={sorted(set(v2) - set(v1))}")
+    shape_drift = {k for k in v2 if v1[k][0] != v2[k][0]}
+    assert not shape_drift, f"{name}: shape drift at {sorted(shape_drift)}"
+    # Two-sided requires_grad check against the structural freezing rule.
+    expected_flips = {k for k in _expected_frozen(exp.model) if v1[k][1]}
+    flips = {k for k in v2 if v1[k][1] != v2[k][1]}
+    assert flips == expected_flips and all(not v2[k][1] for k in flips), (
+        f"{name}: requires_grad flips beyond the freezing rule: "
+        f"unexpected={sorted(flips - expected_flips)} missing={sorted(expected_flips - flips)}")
+    # The recorded Gate B contract: the (shape)|requires_grad multiset, waivers subtracted.
+    expect = Counter(stored["entries"])
+    expect.subtract(f"{v1[k][0]}|rg={v1[k][1]}" for k in qkv)
+    expect.subtract(f"{v1[k][0]}|rg={v1[k][1]}" for k in expected_flips)
+    expect.update(f"{v2[k][0]}|rg={v2[k][1]}" for k in expected_flips)
+    assert not -expect, f"{name}: waiver subtraction left the v1 multiset negative"
+    assert Counter(live["entries"]) == expect, (
+        f"{name}: manifest multiset mismatch after rule-derived waivers")
+    waived = sum(prod(v1[k][0]) for k in qkv)
+    assert live["total"] == stored["total"] - waived
+    print(f"GATE-B {name}: v1_total={stored['total']} v2_total={live['total']} "
+          f"waived_qkv_biases={len(qkv)} ({waived} params) added=0 "
+          f"rg_flips={len(flips)} (rule-matched)")
 
 
 @pytest.mark.parametrize("name", sorted(REDUCED))
@@ -448,6 +525,28 @@ def test_transplant_parity(name):
         _self_consistency(name, REDUCED[name])
     else:
         _transplant_check(name, REDUCED[name])
+
+
+def test_blade_table_gate_f():
+    """Gate F: the hybrids' local Cayley table and lgatr's geometric-product tensor implement
+    the same product on the same 16-blade basis (runbook 2.1 'blade layout unchanged' --
+    re-proven, not assumed). The index conventions differ by design and the alignment is
+    forced, not fitted: hybrid out_j = a_i cayley[i,j,k] b_k (output on the middle axis,
+    cliffordalgebra.py); lgatr out_i = gp[i,j,k] x_j y_k (output first, bilinear.py) --
+    identical products iff cayley.permute(1, 0, 2) == gp. Bar 2e-6 fp32 (the 1.4.4 audit's
+    bar); measured 0.000e+00 on 2.0.0 (both tables hold exact +-1/0 entries, 256 nonzeros).
+    """
+    try:
+        from lgatr.primitives.bilinear import _load_geometric_product_tensor
+    except ImportError:
+        pytest.skip("Gate F targets lgatr 2.x's geometric-product tensor")
+    from experiments.baselines.cgenn.cliffordalgebra import CliffordAlgebra
+    cayley = CliffordAlgebra((1.0, -1.0, -1.0, -1.0)).cayley.to(torch.float32)
+    gp = _load_geometric_product_tensor(device=torch.device("cpu"), dtype=torch.float32)
+    diff = (cayley.permute(1, 0, 2) - gp).abs().max().item()
+    print(f"GATE-F blade-table max|diff|={diff:.3e} "
+          f"(nonzeros: hybrid={(cayley != 0).sum().item()} lgatr={(gp != 0).sum().item()})")
+    assert diff <= 2e-6, f"blade tables disagree: max|diff|={diff:.3e} > 2e-6"
 
 
 def _content_hash(obj):
