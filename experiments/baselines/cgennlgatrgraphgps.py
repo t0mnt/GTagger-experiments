@@ -267,7 +267,15 @@ class CGENNLGATrGraphGPS(nn.Module):
     def no_weight_decay(self):
         return cgenn_gain_and_bias_names(self)
 
-    def forward(self, x, v, mask, points):
+    def build_edges(self, v, mask, points):
+        """Static kNN edges from raw inputs -- eager by design; see the GraphTrans twin."""
+        fourmomenta_flat = v if (self.knn_metric == "minkowski" and self.k is not None) else None
+        return generate_edges_vectorized(
+            mask, points, self.k, points.shape[1], v.device,
+            metric=self.knn_metric, fourmomenta=fourmomenta_flat,
+        )
+
+    def forward(self, x, v, mask, points, edges=None):
         # x: (B, P, C_s); v: (B, P, 4) [E, px, py, pz]; mask: (B, P); points: (B, P, 2)
         B, P, _ = x.shape
         device = x.device
@@ -280,11 +288,8 @@ class CGENNLGATrGraphGPS(nn.Module):
         s = x
 
         # Stage 2: static kNN graph (native dtype; shared by every layer's local branch)
-        fourmomenta_flat = v if (self.knn_metric == "minkowski" and self.k is not None) else None
-        edges = generate_edges_vectorized(
-            mask, points, self.k, P, device,
-            metric=self.knn_metric, fourmomenta=fourmomenta_flat,
-        )
+        if edges is None:
+            edges = self.build_edges(v, mask, points)
 
         # Stage 2b: static relative-momentum edge features from the RAW input multivectors
         # (before linear_in), [p_i - p_j, raw_i, raw_j], shared across every layer's local

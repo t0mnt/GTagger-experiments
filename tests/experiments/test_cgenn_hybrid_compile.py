@@ -154,19 +154,15 @@ def test_tol_det_compiled_vs_eager(model):
 @pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile smoke gates: set CGENN_COMPILE_GATES=1")
 @pytest.mark.parametrize("model", MODELS)
 def test_breaks_and_recomp(model):
-    """BREAKS: explain over a COLD hybrid net — every break must be the data-dependent
-    edge-generation class (aten.nonzero in generate_edges_vectorized: E = f(mask) is
-    data-dependent BY DESIGN, the same class as tag_cgenn's deliberately-eager wrapper
-    edges), and at most 3 of them. The fix-family classes (cached_property RLock, in-trace
-    .item(), tensor-valued repeats, 3-op einsum specialization) must contribute ZERO —
-    the port took the hybrids from 24 breaks to these 3 structural ones.
-    RECOMP: with the net fragmented at the edge phase, an absolute <=2 is not meaningful;
-    the bar is shape-STABILITY within the production kNN regime (padded length P with
-    P-1 >= k): unique_graphs must not grow at all across the sweep — the fragments are
-    dynamic from their first compile. Small-P batches (P-1 < k) legitimately compile
-    once more per regime: k_actual = min(k, P-1) is a REAL branch that changes topk's
-    shape semantics, verified via guard_fail_fn (docs/cgenn-compile.md Stage-3 log); the
-    sweep therefore keeps every shape in the production regime (quick-config k = 4)."""
+    """BREAKS: explain over a COLD hybrid net with the edges HOISTED — the wrapper builds
+    them via net.build_edges outside the compiled region, exactly like tag_cgenn's
+    permanently-eager wrapper edges — so the strict Stage-1 bar applies: 0 graph breaks.
+    Port history: 24 breaks (pre-port) -> 3 (fix family eliminated) -> 0 (edge hoist).
+    RECOMP: strict bar again — unique_graphs must not grow across the production-regime
+    sweep (padded length P with P-1 >= k; a small-P batch would legitimately compile one
+    extra kNN regime, k_actual = min(k, P-1) being a real branch that changes topk's
+    shape semantics — verified via guard_fail_fn, docs/cgenn-compile.md Stage-3 log. The
+    sweep stays in the production regime; quick-config k = 4)."""
     import torch._dynamo as dynamo
     ref = torch.load(FIX / f"{model}_fp64.pt", weights_only=False)
     ov = _ref_overrides()
@@ -193,14 +189,7 @@ def test_breaks_and_recomp(model):
     report = re.sub(r"^([\w.]+), \d+\.\d+$", r"\1, ...", report, flags=re.M)
     (FIX / f"dynamo_explain_{model}.txt").write_text(report)
     print(f"GATE-BREAKS[{model}] graph_break_count =", explanation.graph_break_count)
-    assert explanation.graph_break_count <= 3, (
-        f"more breaks than the 3 structural edge-phase ones:\n{report[:2000]}")
-    reasons = [l.strip() for l in report.splitlines() if l.strip().startswith("Reason:")]
-    assert reasons and all(r == "Reason: Dynamic shape operator" for r in reasons), (
-        f"non-edge-class break reasons (fix-family regression?):\n{report[:2000]}")
-    assert "aten.nonzero.default" in report, report[:1000]
-    for bad in ("RLock", "cached_property", "Tensor.item", "opt_einsum"):
-        assert bad not in report, f"fix-family break class reappeared: {bad}\n{report[:2000]}"
+    assert explanation.graph_break_count == 0, f"graph breaks:\n{report[:2000]}"
 
     dynamo.reset()
     from torch._dynamo.utils import counters as dyn_counters

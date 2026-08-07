@@ -1237,7 +1237,17 @@ class CGENNLGATrGraphTrans(nn.Module):
             "cls_s",
         } | cgenn_gain_and_bias_names(self)
 
-    def forward(self, x, v, mask, points):
+    def build_edges(self, v, mask, points):
+        """Static kNN edges from raw inputs -- eager by design (data-dependent nonzero).
+        The wrapper calls this OUTSIDE the compiled region so the compiled forward is
+        break-free; forward falls back to building them itself when edges is None."""
+        fourmomenta_flat = v if (self.knn_metric == "minkowski" and self.k is not None) else None
+        return generate_edges_vectorized(
+            mask, points, self.k, points.shape[1], v.device,
+            metric=self.knn_metric, fourmomenta=fourmomenta_flat,
+        )
+
+    def forward(self, x, v, mask, points, edges=None):
    # points-first inputs from the wrapper:
         #   x: (B, P, C)   v: (B, P, 4) [E, px, py, pz]   mask: (B, P)   points: (B, P, 2)
 
@@ -1264,19 +1274,8 @@ class CGENNLGATrGraphTrans(nn.Module):
         M = P
 
         # Stage 3: Build graph edges (native dtype: see generate_edges_vectorized)
-        fourmomenta_flat = None
-        if self.knn_metric == "minkowski" and self.k is not None:
-            fourmomenta_flat = v
-
-        edges = generate_edges_vectorized(
-            mask,
-            points,
-            self.k,
-            M,
-            device,
-            metric=self.knn_metric,
-            fourmomenta=fourmomenta_flat,
-        )
+        if edges is None:
+            edges = self.build_edges(v, mask, points)
 
         # Stage 4: Flatten for CGENN over the dense B*P layout (padded slots included),
         # matching official CGENN, whose theta_h BatchNorm also runs over padded nodes.

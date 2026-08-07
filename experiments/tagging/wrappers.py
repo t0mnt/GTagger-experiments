@@ -993,9 +993,13 @@ class LGATrSlimWrapper(nn.Module):
 
 
 class CGENNLGATrGraphTransWrapper(nn.Module):
-    def __init__(self, net, framesnet, out_channels):
+    def __init__(self, net, framesnet, out_channels, compile=False):
         super().__init__()
         self.net = net(num_classes=out_channels)
+        if compile:
+            # compile the net only; edge building is hoisted in forward (data-dependent
+            # nonzero, eager by design -- tests/experiments/test_cgenn_hybrid_compile.py)
+            self.net = torch.compile(self.net, dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1017,11 +1021,15 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         fourmomenta, mask = to_dense_batch(fourmomenta, batch)
         scalars, _ = to_dense_batch(scalars, batch)
         points, _ = to_dense_batch(points, batch)
+        # hoist the static kNN edges out of the (possibly compiled) net: identical values
+        # in identical order eager -- the edges depend only on these inputs
+        edges = self.net.build_edges(fourmomenta, mask, points)
         output = self.net(
             scalars,
             fourmomenta,
             mask,
             points,
+            edges=edges,
         )
         return output, {}, None
 
@@ -1036,9 +1044,13 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
     the time-first (E, px, py, pz) convention (no reorder).
     """
 
-    def __init__(self, net, framesnet, out_channels):
+    def __init__(self, net, framesnet, out_channels, compile=False):
         super().__init__()
         self.net = net(num_classes=out_channels)
+        if compile:
+            # compile the net only; edge building is hoisted in forward (data-dependent
+            # nonzero, eager by design -- tests/experiments/test_cgenn_hybrid_compile.py)
+            self.net = torch.compile(self.net, dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1060,11 +1072,15 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
         fourmomenta, mask = to_dense_batch(fourmomenta, batch)
         scalars, _ = to_dense_batch(scalars, batch)
         points, _ = to_dense_batch(points, batch)
+        # hoist the static kNN edges out of the (possibly compiled) net: identical values
+        # in identical order eager -- the edges depend only on these inputs
+        edges = self.net.build_edges(fourmomenta, mask, points)
         output = self.net(
             scalars,
             fourmomenta,
             mask,
             points,
+            edges=edges,
         )
         return output, {}, None
 

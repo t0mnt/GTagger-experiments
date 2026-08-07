@@ -451,11 +451,17 @@ production batches never enter those regimes. lgatr144 parity stayed green throu
 (23/23) — the second, independent guard — and SUITE closed at 638 passed / 15 failed / 47
 skipped (the known pelican environment class only).
 
-Hybrid compile REMAINS unwired in configs (no `compile:` knob yet): compiled hybrids are
-correct (TOL/DET) but the edge phase fragments the net into ~4 graphs, so the win is
-partial; wiring it is a β-PERF decision once GPU numbers exist, possibly with the edge
-phase hoisted out of the compiled region first. That is the one deliberate piece of
-Stage 3 left on the table.
+~~Hybrid compile REMAINS unwired in configs~~ **Completed same day — edge hoist + knobs
+(operator-directed).** Both hybrid nets expose `build_edges(v, mask, points)` (the static
+kNN build depends only on raw inputs — these hybrids compute edges ONCE, unlike the
+ParticleNet hybrids' per-block re-kNN, which this pattern must NOT be applied to), the
+wrappers hoist it unconditionally outside the (possibly compiled) net — identical values in
+identical order eager, BIT-verified — and `forward(..., edges=None)` keeps the in-net
+fallback. Result under the strict Stage-1 bars: **BREAKS 0 (cold, both hybrids) · RECOMP
+[1, 1, 1] — one whole-net dynamic graph reused across every production-regime shape · TOL
+≤ 1.4e-16 · DET ✓**. Port history: 24 breaks → 3 (fix family) → 0 (hoist); fragmentation
+~4 graphs → 1. `compile: false` knobs wired in all four hybrid yamls (net-only,
+`dynamic=True`), ready to flip on β-PERF numbers.
 
 **Stage 2 — tag_lorentznet, gated and knob-wired (2026-08-07).** The runbook's readiness
 note was one break short of true: the LGEB stack itself is compile-clean, but the readout's
@@ -468,13 +474,25 @@ TOL 0.000e+00 (bit-equal, recorded as bonus) · DET ✓ · BREAKS 0 (cold) · RE
 unique_graphs = 1**. `compile: false` knob wired in `tag_lorentznet.yaml` (CGENNWrapper
 pattern — net only, wrapper edges stay eager); flip on β-PERF numbers.
 
-**What's next, in order:** (1) cluster β-PERF matrix — it/s eager vs compiled for
-tag_cgenn (×3 `gp_impl`), tag_lorentznet, tag_slim/tag_lgatr, picking every compile/impl
-default with data; (2) **full hybrid compile**: hoist `generate_edges_vectorized` out of
-the compiled region (edges depend only on the input mask/points, so the hybrid forward can
-take precomputed edges the way tag_cgenn's net does) — kills the 3 structural breaks and
-defragments the ~4 graphs into 1–2, then wire the hybrid `compile:` knobs behind the same
-gate file; (3) Gates G/H from the migration runbook (cluster).
+**β-PERF cluster matrix (the one remaining CPU-side-prepared decision input; everything
+below is a one-line config override on an existing knob).** Measure it/s (the run's own
+timing line after warm-up — ignore the first estimate, compile warm-up lands there) on the
+quick config first, then one full-size-batch confirmation per winner. `dynamic=True` is
+already baked into every compile path (lgatr 2.0 and tagging-guide ship dynamic-true
+everywhere, zero-padded or not — our knobs match):
+
+| run | overrides |
+|---|---|
+| tag_cgenn × {eager, compiled} × {einsum, matmul, sparse} | `model.compile={false,true}` `model.net.gp_impl=...` (6 runs) |
+| tag_lorentznet × {eager, compiled} | `model.compile={false,true}` (2) |
+| tag_slim compiled (shipping default) vs eager | `model.net.compile={true,false}` (2) |
+| tag_lgatr × {eager, compiled} | `+model.net.compile={false,true}` (+`compile_kwargs.dynamic=true`) (2) |
+| CGENNLGATrGraphTrans / GPS × {eager, compiled} (gp_impl stays sparse) | `model.compile={false,true}` (4) |
+
+Decisions the table makes: every `compile:` default; the campaign `gp_impl` (sparse is the
+lgatr-2.0-posture default — GPU numbers confirm or flip to matmul in one line; only
+`sparse` changes the FLOPs column and needs the row footnote); whether full-LGATr compile
+ships (Gate H per H11). **Then:** Gates G/H from the migration runbook (cluster).
 
 ---
 
