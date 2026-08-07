@@ -52,6 +52,15 @@ class CliffordAlgebra(nn.Module):
                 torch.tensor(tuple(math.comb(self.dim, g) for g in self.grades))),
             persistent=False,
         )
+        # functools.cached_property materializes through an RLock (functools.__get__); a
+        # lock context manager inside the traced region is a dynamo graph break -- and one
+        # dynamo.explain cannot see, because any eager warm-up forward fills the caches
+        # first and explain then reads plain attributes. Touch every cached property here
+        # so the compiled net never triggers the descriptor (same values, computed once).
+        for klass in type(self).__mro__:
+            for name, member in vars(klass).items():
+                if isinstance(member, functools.cached_property):
+                    getattr(self, name)
 
     def geometric_product(self, a, b, blades=None):
         cayley = self.cayley
@@ -63,7 +72,22 @@ class CliffordAlgebra(nn.Module):
             assert isinstance(blades_r, torch.Tensor)
             cayley = cayley[blades_l[:, None, None], blades_o[:, None], blades_r]
 
-        return torch.einsum("...i,ijk,...k->...j", a, cayley, b)
+        # Two-operand chain replacing the 3-operand einsum "...i,ijk,...k->...j": with
+        # >= 3 operands torch.einsum computes an opt_einsum contraction path from the
+        # operands' concrete sizes on every call -- python work per forward, and under
+        # torch.compile(dynamic=True) it reads the symbolic batch size as an int and
+        # re-specializes the graph per shape (the RECOMP gate's per-shape recompiles).
+        # The chains below are exactly the paths opt_einsum selects at production sizes,
+        # written out pairwise; the selector reads only blade dims, which are static.
+        # Bit-identity to the old call is enforced by the cgenn_compile BIT gate.
+        if cayley.shape[1] == 1 and cayley.shape[0] > 1:
+            # grade-subset (g, 1, g), g > 1: GEMM-first ("ijk,bci->jkbc"; "jkbc,bck->bcj")
+            t = torch.einsum("ijk,...i->jk...", cayley, a)
+            return torch.einsum("jk...,...k->...j", t, b)
+        # full table (16, 16, 16) and the scalar subset (1, 1, 1): outer-first
+        # ("bck,bci->bcki"; "bcki,ijk->bcj")
+        t = torch.einsum("...k,...i->...ki", b, a)
+        return torch.einsum("...ki,ijk->...j", t, cayley)
 
     def _grade_to_slice(self, subspaces):
         grade_to_slice = list()

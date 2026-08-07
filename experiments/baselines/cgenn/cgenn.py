@@ -379,9 +379,13 @@ class CGENN(nn.Module):
         node_attr_h,
         node_attr_x,
         edges,
-        n_nodes,
         node_mask,
     ):
+        # node_mask arrives DENSE, (batch, n_nodes, 1): the padded-node count is read off
+        # this tensor's shape below, so under torch.compile(dynamic=True) it is a symbolic
+        # size. The previous python-int n_nodes argument specialized the graph per value --
+        # one recompilation for every distinct padded length, which is exactly what the
+        # RECOMP gate forbids.
         if not self.use_invariant_network:
             h = None
 
@@ -408,13 +412,13 @@ class CGENN(nn.Module):
         else:
             h = invariants
 
-        h = h * node_mask
+        h = h * node_mask.reshape(-1, 1)
         h = h.view(
             -1,
-            n_nodes,
+            node_mask.shape[1],
             self.hidden_features_h + self.hidden_features_x * self.algebra.n_subspaces,
         )
         h = torch.mean(h, dim=1)  # average over point cloud
-        #quirk from official repo kept, this divides by the padded batch max n_nodes, not each jet's true multiplicity so the readout depends on padding 
+        #quirk from official repo kept, this divides by the padded batch max n_nodes, not each jet's true multiplicity so the readout depends on padding
         pred = self.graph_dec(h)
         return pred

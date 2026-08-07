@@ -54,11 +54,18 @@ class SteerableGeometricProductLayer(nn.Module):
 
         weight = self._get_weight()
 
+        # two-operand chain == opt_einsum's path for "bni,nijk,bnk->bnj" at these shapes
+        # ("bnk,bni->bnki" then "bnki,nijk->bnj"); a 3-operand einsum recomputes that path
+        # per call and re-specializes the compiled graph per batch shape (see
+        # cliffordalgebra.geometric_product). Bit-identity enforced by the BIT gate.
+        outer = torch.einsum("bnk,bni->bnki", input_right, input)
+        product = torch.einsum("bnki,nijk->bnj", outer, weight)
+
         if self.include_first_order:
             return (
                 self.linear_left(input)
-                + torch.einsum("bni, nijk, bnk -> bnj", input, weight, input_right)
+                + product
             ) / math.sqrt(2)
 
         else:
-            return torch.einsum("bni, nijk, bnk -> bnj", input, weight, input_right)
+            return product

@@ -204,7 +204,7 @@ The premise "forward results are bit-identical, unlike lgatr 2.0" is right in th
 
 ## 2. Inventory (evidence)
 
-**Compile-clean already** (no `.item()`, no `nonzero`, no data-dependent Python branching in `CGENN.forward`/`CGLayer.forward`): einsums (`fcgp.py:72,75`, `gp.py:60,64`, `linear.py:48,52`, `cliffordalgebra.py:53`), `index_add_`-based `unsorted_segment_{sum,mean}`, BatchNorm1d, sigmoid gating, masked mean readout.
+**Compile-clean already** (no `.item()`, no `nonzero`, no data-dependent Python branching in `CGENN.forward`/`CGLayer.forward`): ~~einsums (`fcgp.py:72,75`, `gp.py:60,64`, `cliffordalgebra.py:53`)~~ **corrected by the RECOMP gate (see Log)** — break-free, yes, but a **3-operand** einsum recomputes an opt_einsum contraction path from concrete operand sizes on every call, which re-specializes the compiled graph per batch shape; rewritten as the equivalent fixed 2-operand chains. The 2-operand einsums (`linear.py:48,52`) never consult the path machinery and stay as-is. Still clean: `index_add_`-based `unsorted_segment_{sum,mean}`, BatchNorm1d, sigmoid gating, masked mean readout.
 
 **Two mechanical rewrite families needed** (both pure data movement → gated by BIT):
 
@@ -280,7 +280,48 @@ Effort: Task α ≈ one focused session; Task β ≈ one cluster hour. Log secti
 
 ## Log
 
-*(empty — no work done)*
+**Stage 1 (Task C-α) — landed, all gates green (2026-08-07).**
+
+*Session 1 (rewrites + gates, RECOMP left failing with findings):* fixtures recorded at
+pre-edit HEAD (fp32+fp64 + canonical content hashes; commit order proves record-before-edit).
+Rewrite (a) einsum→outer+matmul applied verbatim, failed BIT at max|diff| = 8.327e-17 fp64 on
+the blades-subset path, reverted and reclassified TOL (see §"Top lever" — the timing claim
+stands, the gate class changed). Rewrites (b) bool-mask scatter→integer indices and (c)
+tensor-valued `repeat_interleave`→precomputed `index_select` landed BIT-green. Graph breaks
+20→0 (tensor-iteration ints, in-trace `int()`, tensor-valued slice endpoints — all moved to
+init). Gates then: BIT ✓, TOL 4.283e-16, DET ✓, BREAKS 0, **RECOMP FAIL: 11 unique graphs on
+the first forward, +4 per (B, P) shape despite `dynamic=True`** — stop-and-report; fix needed
+an interface change beyond the session's knob-only scope.
+
+*Session 2 (operator unblocked the interface change; RECOMP root-caused and fixed):*
+
+1. **`functools.cached_property` materializes through an RLock** (`functools.__get__`) —
+   six first-call graph breaks fragmenting the net into 11 graphs, invisible to
+   `dynamo.explain` because any eager warm-up forward fills the caches first (the BREAKS
+   gate now explains a COLD build for exactly this reason). Fix: `CliffordAlgebra.__init__`
+   touches every cached property (`_alpha/_beta/_gamma_signs`, `geometric_product_paths`) —
+   same values, computed once at init.
+2. **Python-int `n_nodes` in the compiled interface** specialized the graph per padded
+   length. Fix: the wrapper now passes `node_mask` dense `(B, n_nodes, 1)` and the net reads
+   the padded dim off that tensor (symbolic under `dynamic=True`); `n_nodes` dropped from
+   `CGENN.forward` (closed interface — wrapper is the only caller). Padded-mean quirk
+   untouched.
+3. **3-operand `torch.einsum` recomputes an opt_einsum contraction path from concrete
+   operand sizes per call** — the remaining per-shape re-specialization (and per-call python
+   overhead). Fix: `cliffordalgebra.geometric_product`, `fcgp.py`, `gp.py` now run the exact
+   pairwise chains opt_einsum selects at production shapes as explicit 2-operand einsums
+   (which skip path computation): outer-first `bnk,bni->bnki; bnki,{m}nijk->b{m/n}j` for
+   fcgp/gp and the full/scalar cayley, GEMM-first `ijk,...i->jk...; jk...,...k->...j` for
+   the grade-subset (g,1,g) tables — selector reads only static blade dims. **BIT-green**
+   (pairwise einsum reproduces the pathed lowering bit-exactly; the reverted outer+matmul
+   rewrite was a different kernel — that revert stands).
+
+Final Stage-1 gate numbers: **BIT `torch.equal` fp32+fp64 ✓ · TOL 4.283e-16 (bar 1e-10) ·
+DET ✓ · BREAKS 0 (cold build) · RECOMP unique_graphs = 1 across the (B, P) sweep (bar ≤ 2)
+· SUITE 625 passed / 15 failed / 39 skipped** — the 15 are exactly the known pelican-FLOPs
+environment class (migration decision log), nothing CGENN-related. β-PERF (cluster it/s)
+remains the open Stage-1 item and gates whether `compile: true` ships in `tag_cgenn.yaml` —
+the knob currently stays `false`.
 
 ---
 

@@ -13,8 +13,9 @@ Gates (check mode, no env var):
          bit-identical; a BIT failure is a rewrite bug. Never relax to allclose.
   TOL    compiled net vs eager net — relative <= 1e-10 (fp64, CPU).
   DET    compiled net twice — torch.equal.
-  BREAKS torch._dynamo.explain over the net — 0 graph breaks (report committed next to
-         the fixtures as dynamo_explain.txt).
+  BREAKS torch._dynamo.explain over a COLD (freshly built) net — 0 graph breaks (report
+         committed next to the fixtures as dynamo_explain.txt). Cold matters: explain
+         after an eager warm-up cannot see first-call-only breaks (cached_property RLock).
   RECOMP forward sweep over (B, P) shapes with dynamic=True — <= 2 compilations.
   (SUITE = the repo's normal pytest run with the knob off; this file is part of it.)
 Compile gates are skipped on CPU test runs unless CGENN_COMPILE_GATES=1 (they are the
@@ -181,7 +182,14 @@ def test_breaks_and_recomp():
     exp.model.net.forward = spy
     _forward(exp, data)
     exp.model.net.forward = orig_forward
-    explanation = dynamo.explain(exp.model.net)(*captured["args"], **captured["kwargs"])
+    # explain must see a COLD model: lazily-materialized state (e.g. functools.cached_property
+    # fills the instance dict through an RLock on first touch) is invisible to explain once any
+    # eager forward has warmed the instance -- exactly how six first-call-only RLock graph
+    # breaks hid behind a clean explain report while RECOMP counted their fragments. The model
+    # code now materializes those at init; the cold rebuild keeps this gate honest anyway.
+    exp_cold = _build(float64=True)
+    exp_cold.model.load_state_dict(ref["sd"], strict=True)
+    explanation = dynamo.explain(exp_cold.model.net)(*captured["args"], **captured["kwargs"])
     report = str(explanation)
     (FIX / "dynamo_explain.txt").write_text(report)
     print("GATE-BREAKS graph_break_count =", explanation.graph_break_count)

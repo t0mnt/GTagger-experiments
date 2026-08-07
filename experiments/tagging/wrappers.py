@@ -838,7 +838,10 @@ class CGENNWrapper(nn.Module):
         edge_index = torch.stack([b_idx * n_nodes + i_idx, b_idx * n_nodes + j_idx])
         fourmomenta = fourmomenta.view(batch_size * n_nodes, -1)
         scalars = scalars.view(batch_size * n_nodes, -1)
-        mask = mask.view(batch_size * n_nodes, -1)
+        # dense (B, n_nodes, 1): the net reads its padded dim from this tensor -- symbolic
+        # under compile(dynamic=True), where a python-int argument would re-specialize the
+        # graph per distinct padded length (docs/cgenn-compile.md, RECOMP gate)
+        node_mask = mask.unsqueeze(-1)
 
         x = fourmomenta.unsqueeze(-2)
         i, j = edge_index
@@ -867,8 +870,7 @@ class CGENNWrapper(nn.Module):
             edge_attr_h=edge_attr_h,
             node_attr_h=node_attr_h,
             edges=edge_index,
-            n_nodes=n_nodes,
-            node_mask=mask,
+            node_mask=node_mask,
         )
 
         return out, {}, None
