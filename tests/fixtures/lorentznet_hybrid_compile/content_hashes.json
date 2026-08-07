@@ -1,0 +1,6 @@
+{
+ "tag_LorentzNetLGATrSlimGraphGPS_fp32.pt": "aae94c116ef3cdfdfdcf3ab7a5812d3101c6ce6fe0bc9093dac287874bfcd661",
+ "tag_LorentzNetLGATrSlimGraphGPS_fp64.pt": "b7ffc493bcb47fe094df9bb739b4c2821f93787f6d72786bb54be9c715b0636c",
+ "tag_LorentzNetLGATrSlimGraphTrans_fp32.pt": "f46bf15340c70ed23503d31cf612c170cf4c338fee083fd527f62471c52c2ad2",
+ "tag_LorentzNetLGATrSlimGraphTrans_fp64.pt": "34353bd78ce9c9ac384e2bf72c9886bc6685cc8c27d7192e95be68b59e4fd796"
+}
