@@ -728,10 +728,10 @@ The template's comments explain every flag choice; the load-bearing facts:
   uses the task config's default, which is `tag_gts_and_friends_default` — *the hybrid
   family recipe* (AdamW, lr 1e-3, batchsize 512, weight_decay 0.01, 20 epochs, cosine).
   That is a considered recipe for the eight hybrids and an arbitrary one for anything else.
-  Models with no top-tagging recipe today: `tag_cgenn`, `tag_MIParT-L`, `tag_graphnet`,
-  `tag_top_transformer`, and the five `tag_pelican*` variants. `tag_cgenn` is the one that
-  bites — it is the reference row for both CGENN hybrids, and official CGENN top-tagging is
-  Adam / lr 1e-3 / **weight_decay 0** / batch 32. Pass `training=<recipe>` explicitly, or
+  Models with no top-tagging recipe today: `tag_MIParT-L`, `tag_graphnet`,
+  `tag_top_transformer`, and the five `tag_pelican*` variants. (`tag_cgenn` now has
+  `config/training/top_cgenn.yaml` with the official Adam / lr 1e-3 / weight_decay 0 /
+  batch 32 recipe; before that it silently took the hybrid family's AdamW / wd 0.01.) Pass `training=<recipe>` explicitly, or
   add the recipe file, before treating any of those as a published-number reproduction.
 - Arg 2 is the task only if it names one (`toptagging|jctagging|toptagxl`); anything else
   is passed through as a hydra override, as in the examples above.
