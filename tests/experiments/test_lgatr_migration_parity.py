@@ -617,6 +617,63 @@ def test_transplant_parity(name):
         _transplant_check(name, REDUCED[name])
 
 
+@pytest.mark.parametrize("name", sorted(REDUCED))
+def test_config_snapshot_diff(name):
+    """Blind spot 2 closure (runbook 4, 'Why these gates discriminate'): eval-mode fixtures
+    cannot see train-only config values (a stray `attn_dropout: 0.5` changes no parameter
+    and no eval output), so the resolved-config snapshot recorded on 1.4.4 is line-diffed
+    against the same composition on the current tree, and the ONLY changes allowed are the
+    M-row key renames, value-preserving: M2 `_target_` path shortening (class name must
+    survive), M3 `increase_hidden_channels`->`attn_ratio`, M4 `activation`->`nonlinearity`
+    and `increase_hidden_channels`->`mlp_ratio`. Anything else -- a changed value, a new
+    key, a lost key -- fails here and nowhere else.
+    """
+    import difflib
+    from collections import Counter
+    from omegaconf import OmegaConf
+    if RECORD or REBASELINE:
+        pytest.skip("snapshot diff is a check-mode gate")
+    path = FIX / f"{name}.pt"
+    if not path.exists():
+        pytest.skip("no 1.4.4 fixtures recorded")
+    ref = torch.load(path, weights_only=False)
+    exp = _build("config_quick", REDUCED[name], with_data=True)
+    volatile = ("run_dir:", "run_name:", "run_idx:", "db:", "artifacts:")
+    live = "\n".join(l for l in OmegaConf.to_yaml(exp.cfg, resolve=True).splitlines()
+                     if not l.strip().startswith(volatile))
+    diff = [l for l in difflib.unified_diff(ref["cfg_yaml"].splitlines(), live.splitlines(),
+                                            lineterm="", n=0)
+            if l[:1] in "+-" and not l.startswith(("+++", "---"))]
+    if _lgatr_version().startswith("1.4"):
+        assert not diff, f"{name}: config drifted on 1.4.x:\n" + "\n".join(diff)
+        return
+
+    def key_of(line):
+        return line[1:].strip().split(":", 1)[0]
+
+    def val_of(line):
+        parts = line[1:].strip().split(":", 1)
+        return parts[1].strip() if len(parts) == 2 else ""
+
+    removed = [l for l in diff if l[0] == "-"]
+    added = [l for l in diff if l[0] == "+"]
+    bad_removed = [l for l in removed
+                   if key_of(l) not in {"increase_hidden_channels", "activation", "_target_"}]
+    bad_added = [l for l in added
+                 if key_of(l) not in {"attn_ratio", "mlp_ratio", "nonlinearity", "_target_"}]
+    assert not bad_removed and not bad_added and len(removed) == len(added), (
+        f"{name}: config changes beyond the M-row renames:\n" + "\n".join(diff))
+    # renames must be value-preserving: the M rows rename keys, never retune values
+    tgt_removed = sorted(val_of(l).rsplit(".", 1)[-1] for l in removed if key_of(l) == "_target_")
+    tgt_added = sorted(val_of(l).rsplit(".", 1)[-1] for l in added if key_of(l) == "_target_")
+    assert tgt_removed == tgt_added, f"{name}: _target_ class changed: {tgt_removed} -> {tgt_added}"
+    vals_removed = Counter(val_of(l) for l in removed if key_of(l) != "_target_")
+    vals_added = Counter(val_of(l) for l in added if key_of(l) != "_target_")
+    assert vals_removed == vals_added, (
+        f"{name}: a rename also changed a value: {dict(vals_removed)} vs {dict(vals_added)}")
+    print(f"GATE-CFG {name}: {len(removed)} M-row rename lines, value-preserving")
+
+
 def test_blade_table_gate_f():
     """Gate F: the hybrids' local Cayley table and lgatr's geometric-product tensor implement
     the same product on the same 16-blade basis (runbook 2.1 'blade layout unchanged' --

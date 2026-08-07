@@ -723,6 +723,37 @@ edited; the flagged case stayed red until the operator's S10 ruling landed in it
   (pre-existing; lgatr-relevant only for the S10-ruled-unused equivectors composition).
 - **Methods sentence** added to `todo.md` §4 per §2.4's obligation.
 
+**Step 4 — Phase 5 cleanup (2026-08-07, same session).**
+
+- **Blind-spot-2 closure implemented, late but before close-out**: the resolved-config
+  snapshots recorded in every fixture pack had never actually been *compared* — the runbook
+  claimed the closure, the check didn't exist. Now `test_config_snapshot_diff` line-diffs
+  each stored 1.4.4 snapshot against the same composition on the current tree and allows
+  ONLY the M-row renames, value-preserving (M2 `_target_` path shortening with the class
+  name intact; M3 `increase_hidden_channels`→`attn_ratio`; M4 `activation`→`nonlinearity`,
+  `increase_hidden_channels`→`mlp_ratio`). Measured: tag_lgatr 3 rename lines, tag_slim 1
+  (M2), equivectors 1 (M4), all four hybrids **0** — no value drifted anywhere. 7/7.
+- **Stale-comment sweep — verified, nothing to change**: the
+  `tag_LorentzNetLGATrSlimGraphGPS.yaml` "lgatr lib default is 2" mlp_ratio note is still
+  true on 2.0.0 (signature-checked); the attn_dropout comments describing the single joint
+  (mv,s) sdpa call were source-re-verified in the rev-3 evidence log; `tag_slim.yaml`'s M9
+  comment is deliberately historical and stays.
+- **Pin relaxed** exactly as scheduled: `lgatr[xformers-attention]>=2.0.0,<3`
+  (H14(3)'s exact pin held until A–F passed; gates were verified against 2.0.0).
+- **lloca upstream-issue note** (public accessor for `_load_inner_product_factors`) moved to
+  `todo.md` §4 so it survives this runbook's archival.
+- **Final full-suite state on v2 after S10 + the flip commit: 618 passed, 15 failed, 39
+  skipped** (672 collected) — the 15 are exactly the pelican-FLOPs environment class from
+  the Gate D triage, nothing else; the equivectors transplant and the H15 grouping test are
+  green, and the accounting closes: 611 + 2 flipped green + 5 new tests (Gate F blade table,
+  4 norm-gain no-decay assertions). The 7 `test_config_snapshot_diff` cases were added after
+  this run launched and passed standalone (7/7); future suite runs collect 679.
+
+**Still open, cluster-only (Gates G/H) — the runbook's close-out is incomplete until they
+run**: fixed-seed quick-run loss bands (G) and the it/s table (H) need OSCAR; a cluster
+session runs them and appends their numbers here whatever they say. The PR waits for that
+(Task C item 5: PR only after 1–4 are in the log).
+
 ## Appendix A — evidence log
 
 2026-07-29 (rev 1): diffed installed 1.4.4 against `dev@e8ba34d` for `__init__`, `nets/*`, `layers/*` (incl. attention + mlp configs), `interface/*`, `primitives/*` (incl. attention backends), `utils/*`; PyPI then topped at 1.4.4; lloca 1.3.6 imports checked; repo greps as cited.

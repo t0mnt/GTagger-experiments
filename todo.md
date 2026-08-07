@@ -209,6 +209,9 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
 - [ ] ParT-GPS float attn_mask + bool key_padding_mask deprecation (merge masks before torch
       makes it fatal).
 - [ ] xformers pin note for the SLURM target (docs/SLURM.md install step).
+- [ ] Upstream lloca issue: request a public accessor for `_load_inner_product_factors`
+      (this repo imports the private name; fine at lloca 1.3.6 + lgatr 2.0.0, re-check on
+      any bump of either — docs/lgatr2-migration.md H6, Phase 5).
 - [ ] learnedpd boost-precision-floor methods sentence for the paper.
 - [ ] lgatr 2.0 methods sentence (§2.4 obligation, docs/lgatr2-migration.md): the
       `tag_lgatr`/`tag_slim` reference rows are (re)trained under lgatr 2.0.0 at v2-native
