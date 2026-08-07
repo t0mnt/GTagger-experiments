@@ -338,7 +338,10 @@ class ParticleNet(nn.Module):
                 pts, metric = v + coord_shift, "minkowski"
             else:
                 pts, metric = (points if idx == 0 else fts) + coord_shift, "deltaR"
-            fts = conv(pts, fts, frames, metric=metric, mask=mask) * mask
+            # metric_knn wants (N, P) -- it unsqueezes to (N, 1, P) to broadcast against the
+            # (N, P, P) distance matrix -- while lloca's mask here is (N, 1, P). Squeeze, as
+            # the hybrid does (particlenettransformer.py: `mask_knn = mask.squeeze(1)`).
+            fts = conv(pts, fts, frames, metric=metric, mask=mask.squeeze(1)) * mask
             if self.use_fusion:
                 outputs.append(fts)
         if self.use_fusion:
