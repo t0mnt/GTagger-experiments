@@ -13,7 +13,7 @@ from experiments.baselines.cgenn.mvsilu import MVSiLU
 
 
 def get_invariants(algebra, input):
-    norms = algebra.qs(input, grades=algebra.grades[1:])
+    norms = algebra.qs(input, grades=algebra.grades_list[1:])
     return torch.cat([input[..., :1], *norms], dim=-1)
 
 

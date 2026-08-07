@@ -188,8 +188,10 @@ def test_breaks_and_recomp():
     assert explanation.graph_break_count == 0, f"graph breaks:\n{report[:2000]}"
 
     dynamo.reset()
-    counter = {"n": 0}
     from torch._dynamo.utils import counters as dyn_counters
+    dyn_counters.clear()  # measurement isolation: counters survive dynamo.reset(), and the
+    # explain() call above compiles its own segments -- without this the RECOMP number
+    # counts them too (observed 21 with a break-free net)
     exp2 = _build(float64=True)
     exp2.model.load_state_dict(ref["sd"], strict=True)
     exp2.model.net = torch.compile(exp2.model.net, dynamic=True)

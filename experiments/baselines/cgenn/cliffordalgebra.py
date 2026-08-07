@@ -27,6 +27,9 @@ class CliffordAlgebra(nn.Module):
             .to(torch.get_default_dtype())
         )
         self.grades = self.bbo.grades.unique()
+        # python-int copy for loops/indexing under torch.compile: int(0-d tensor) is a
+        # Tensor.item() call, and item() inside the traced region is a dynamo graph break.
+        self.grades_list = [int(g) for g in self.grades]
         self.register_buffer(
             "subspaces",
             torch.tensor(tuple(math.comb(self.dim, g) for g in self.grades)),
@@ -66,7 +69,9 @@ class CliffordAlgebra(nn.Module):
         grade_to_slice = list()
         subspaces = torch.as_tensor(subspaces)
         for grade in self.grades:
-            index_start = subspaces[:grade].sum()
+            # int endpoints: tensor-valued slice bounds call Tensor.item() (__index__) at
+            # every mv[..., s] -- the last graph-break source in the compiled net
+            index_start = int(subspaces[:grade].sum())
             index_end = index_start + math.comb(self.dim, grade)
             grade_to_slice.append(slice(index_start, index_end))
         return grade_to_slice
@@ -158,19 +163,29 @@ class CliffordAlgebra(nn.Module):
     def norm(self, mv, blades=None):
         return self._smooth_abs_sqrt(self.q(mv, blades=blades))
 
+
+    @staticmethod
+    def _as_int_grades(grades):
+        # iterate grades as python ints OUTSIDE the traced graph: indexing python lists with
+        # 0-d tensors (or int() on them) is a Tensor.item() call per element = dynamo graph
+        # break. Callers inside compiled regions must pass grades_list (already ints); this
+        # converts stragglers exactly once. Pure index bookkeeping -> bit-identical.
+        return [g if isinstance(g, int) else int(g) for g in grades]
+
     def norms(self, mv, grades=None):
         if grades is None:
-            grades = self.grades
+            grades = self.grades_list
         return [
             self.norm(self.get_grade(mv, grade), blades=self.grade_to_index[grade])
-            for grade in grades
+            for grade in self._as_int_grades(grades)
         ]
 
     def qs(self, mv, grades=None):
         if grades is None:
-            grades = self.grades
+            grades = self.grades_list
         return [
-            self.q(self.get_grade(mv, grade), blades=self.grade_to_index[grade]) for grade in grades
+            self.q(self.get_grade(mv, grade), blades=self.grade_to_index[grade])
+            for grade in self._as_int_grades(grades)
         ]
 
     def sandwich(self, u, v, w):
