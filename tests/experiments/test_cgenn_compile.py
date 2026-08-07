@@ -39,7 +39,7 @@ RUN_COMPILE_GATES = os.environ.get("CGENN_COMPILE_GATES") == "1"
 torch.set_num_threads(1)  # run-context-independent arithmetic (same lesson as lgatr parity)
 
 
-def _build(float64):
+def _build(float64, extra_overrides=()):
     import logging.handlers  # noqa: F401
     import hydra
     import experiments.logger
@@ -47,7 +47,8 @@ def _build(float64):
 
     experiments.logger.LOGGER.disabled = True
     overrides = ["save=false", "training.batchsize=4", "data.dataset=mini",
-                 "model=tag_cgenn", f"use_float64={'true' if float64 else 'false'}"]
+                 "model=tag_cgenn", f"use_float64={'true' if float64 else 'false'}",
+                 *extra_overrides]
     with hydra.initialize_config_dir(config_dir=str(REPO / "config_quick"), version_base=None):
         cfg = hydra.compose(config_name="toptagging", overrides=overrides)
     torch.manual_seed(0)
@@ -144,32 +145,68 @@ def test_fixture_content_hashes():
         assert live == expected, f"{fname}: fixture content changed"
 
 
+GP_IMPLS = ["matmul", "sparse"]
+
+
+@pytest.mark.parametrize("impl", GP_IMPLS)
+@pytest.mark.parametrize("prec", ["fp32", "fp64"])
+def test_impl_tol_vs_reference(impl, prec):
+    """TOL-IMPL: gp_impl variants vs the einsum reference — reassociation-scale only.
+
+    matmul (dense GEMM) and sparse (quasigroup gather over the 256 nonzero cayley
+    entries) reorder the same arithmetic, so they are TOL-class by design (R2 bars).
+    BIT stays owned by the default einsum path, which these variants never touch.
+    """
+    path = FIX / f"{prec}.pt"
+    if not path.exists():
+        pytest.skip("no cgenn_compile fixtures recorded")
+    ref = torch.load(path, weights_only=False)
+    f64 = prec == "fp64"
+    exp = _build(float64=f64)
+    exp.model.load_state_dict(ref["sd"], strict=True)
+    y_ref = _forward(exp, _rebuild(ref["batch"]))
+    exp2 = _build(float64=f64, extra_overrides=[f"model.net.gp_impl={impl}"])
+    exp2.model.load_state_dict(ref["sd"], strict=True)
+    y = _forward(exp2, _rebuild(ref["batch"]))
+    rel = (y - y_ref).abs().max() / (1 + y_ref.abs().max())
+    bar = 1e-10 if f64 else 1e-5
+    print(f"GATE-TOL-IMPL {impl}/{prec} rel={rel:.3e}")
+    assert rel < bar, f"TOL-IMPL {impl}/{prec}: {rel:.3e} >= {bar}"
+
+
 def _compiled_net(exp):
     return torch.compile(exp.model.net, dynamic=True)
 
 
 @pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile smoke gates: set CGENN_COMPILE_GATES=1")
-def test_tol_det_compiled_vs_eager():
-    """TOL: compiled vs eager <= 1e-10 rel (fp64 CPU). DET: compiled twice, torch.equal."""
+@pytest.mark.parametrize("impl", ["einsum", *GP_IMPLS])
+def test_tol_det_compiled_vs_eager(impl):
+    """TOL: compiled vs eager <= 1e-10 rel (fp64 CPU), per gp_impl. DET: compiled twice."""
     ref = torch.load(FIX / "fp64.pt", weights_only=False)
-    exp = _build(float64=True)
+    exp = _build(float64=True, extra_overrides=[f"model.net.gp_impl={impl}"])
     exp.model.load_state_dict(ref["sd"], strict=True)
     y_eager = _forward(exp, _rebuild(ref["batch"]))
     exp.model.net = _compiled_net(exp)
     y1 = _forward(exp, _rebuild(ref["batch"]))
     y2 = _forward(exp, _rebuild(ref["batch"]))
     rel = (y1 - y_eager).abs().max() / (1 + y_eager.abs().max())
-    print(f"GATE-TOL compiled-vs-eager rel={rel:.3e}")
-    assert rel < 1e-10, f"TOL: {rel:.3e} >= 1e-10"
-    assert torch.equal(y1, y2), "DET: compiled forward not deterministic across calls"
+    print(f"GATE-TOL[{impl}] compiled-vs-eager rel={rel:.3e}")
+    assert rel < 1e-10, f"TOL[{impl}]: {rel:.3e} >= 1e-10"
+    assert torch.equal(y1, y2), f"DET[{impl}]: compiled forward not deterministic across calls"
 
 
 @pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile smoke gates: set CGENN_COMPILE_GATES=1")
-def test_breaks_and_recomp():
-    """BREAKS: 0 graph breaks over the net. RECOMP: <= 2 compiles across a (B, P) sweep."""
+@pytest.mark.parametrize("impl", ["einsum", *GP_IMPLS])
+def test_breaks_and_recomp(impl):
+    """BREAKS: 0 graph breaks over the net. RECOMP: <= 2 compiles across a (B, P) sweep.
+
+    Parametrized over gp_impl; the committed explain artifact stays owned by the einsum
+    reference path (the other impls assert the same 0-break bar without artifact churn).
+    """
     import torch._dynamo as dynamo
     ref = torch.load(FIX / "fp64.pt", weights_only=False)
-    exp = _build(float64=True)
+    ov = [f"model.net.gp_impl={impl}"]
+    exp = _build(float64=True, extra_overrides=ov)
     exp.model.load_state_dict(ref["sd"], strict=True)
 
     data = _rebuild(ref["batch"])
@@ -188,7 +225,7 @@ def test_breaks_and_recomp():
     # eager forward has warmed the instance -- exactly how six first-call-only RLock graph
     # breaks hid behind a clean explain report while RECOMP counted their fragments. The model
     # code now materializes those at init; the cold rebuild keeps this gate honest anyway.
-    exp_cold = _build(float64=True)
+    exp_cold = _build(float64=True, extra_overrides=ov)
     exp_cold.model.load_state_dict(ref["sd"], strict=True)
     explanation = dynamo.explain(exp_cold.model.net)(*captured["args"], **captured["kwargs"])
     # str(explanation) embeds repr()s of live objects, whose heap addresses differ every
@@ -202,8 +239,9 @@ def test_breaks_and_recomp():
     report = re.sub(r"(___check_(?:type|obj)_id\([^,]+, )\d+\)", r"\1...)", report)
     # trailing compile-time table: wall-clock seconds, non-deterministic by nature
     report = re.sub(r"^([\w.]+), \d+\.\d+$", r"\1, ...", report, flags=re.M)
-    (FIX / "dynamo_explain.txt").write_text(report)
-    print("GATE-BREAKS graph_break_count =", explanation.graph_break_count)
+    if impl == "einsum":
+        (FIX / "dynamo_explain.txt").write_text(report)
+    print(f"GATE-BREAKS[{impl}] graph_break_count =", explanation.graph_break_count)
     assert explanation.graph_break_count == 0, f"graph breaks:\n{report[:2000]}"
 
     dynamo.reset()
@@ -211,7 +249,7 @@ def test_breaks_and_recomp():
     dyn_counters.clear()  # measurement isolation: counters survive dynamo.reset(), and the
     # explain() call above compiles its own segments -- without this the RECOMP number
     # counts them too (observed 21 with a break-free net)
-    exp2 = _build(float64=True)
+    exp2 = _build(float64=True, extra_overrides=ov)
     exp2.model.load_state_dict(ref["sd"], strict=True)
     exp2.model.net = torch.compile(exp2.model.net, dynamic=True)
     ptr = ref["batch"]["ptr"]
@@ -235,5 +273,5 @@ def test_breaks_and_recomp():
         d2.batch = torch.repeat_interleave(torch.arange(len(counts)), torch.tensor(counts))
         _forward(exp2, d2)
     n_compiles = sum(v for k, v in dyn_counters["stats"].items() if k == "unique_graphs")
-    print("GATE-RECOMP unique_graphs =", n_compiles)
-    assert n_compiles <= 2, f"RECOMP: {n_compiles} unique graphs (> 2) across the shape sweep"
+    print(f"GATE-RECOMP[{impl}] unique_graphs =", n_compiles)
+    assert n_compiles <= 2, f"RECOMP[{impl}]: {n_compiles} unique graphs (> 2) across the sweep"

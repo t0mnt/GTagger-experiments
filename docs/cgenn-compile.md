@@ -161,6 +161,14 @@ its "output" column as "bit-identical on this synthetic input only".
 
 Do not re-land it as a BIT rewrite. The speed claim is unaffected; only the gate class changed.
 
+**Status (2026-08-07, operator-directed):** implemented as the `matmul` option of the
+`gp_impl` knob (`config/model/tag_cgenn.yaml`), alongside `sparse` — both TOL-class, both
+gated (TOL-IMPL / TOL / DET / BREAKS / RECOMP per impl), default `einsum` so the BIT
+contract is untouched. The C-β note below ("compile fuses eager einsum's marshalling, so
+the eager-level rewrite is a strict subset of the compile win") stands as the reason the
+*default* did not change; the knob exists because the campaign decision wants measured
+eager AND compiled numbers per impl, not an argument. See the Log for the profile table.
+
 The mapping is `M[(i, k), j] = cayley[i, j, k]`, i.e. `cayley.permute(0, 2, 1).reshape(256, 16)`,
 precomputed once at init. The geometric product is `mul` + `bmm` ≈ 46% of CGENN's runtime, so a 5×
 there is ~1.6–1.8× on the whole model, before compile and before sparse-GP.
@@ -173,6 +181,8 @@ model shapes (the micro-benchmark's layout happened to dodge it). Direct proof: 
 rewrites left `copy_` at 51.5%→49.4%, while compiling fuses it down to 8.4%.
 
 ### The sparse-GP rewrite is no longer optional-looking
+*(Status 2026-08-07: implemented — `gp_impl: sparse`, quasigroup gather form; see the
+knob note above and the Log. The analysis below is kept as the motivating record.)*
 
 `CliffordAlgebra.cayley` is stored **dense** at `(16, 16, 16)` and only **256 of its 4096
 entries are nonzero (6.2%)** — each product of two basis blades lands on exactly one blade. So
@@ -337,15 +347,58 @@ worktree, NEW = post-Stage-1 HEAD:
 | NEW eager | 173.1 ms | statistically identical — the Stage-1 rewrites are perf-neutral eager, as designed |
 | NEW compiled (`dynamic=True`) | **110.8 ms (1.56×)** | `copy_` 8.4% (inductor fused the marshalling); `bmm` 31.6% total remains; one-time compile 65.6 s |
 
-Read-across: (1) the eager-level einsum→outer+matmul rewrite is now **permanently closed** —
-inductor already fuses eager einsum's marshalling on the compiled path, so the rewrite's win
-is a strict subset of what compile delivers, and its BIT failure stands; (2) the compiled
-model is GEMM-bound (`bmm` + fused graph ≈ 96%), i.e. the remaining fat is the **dense 16×
-Cayley arithmetic** — exactly the sparse-GP lever. CPU 1.56× is the floor of interest; the
-GPU number decides shipping (small GEMMs are launch-bound eager on GPU, so the compiled win
-is plausibly larger there).
+Read-across: (1) the eager-level einsum→outer+matmul rewrite is now ~~permanently closed~~
+*(superseded same day by the operator-directed `gp_impl` knob — next entry)* — inductor
+already fuses eager einsum's marshalling on the compiled path, so the rewrite's win is a
+strict subset of what compile delivers, and its BIT failure stands **for the default path**;
+(2) the compiled model is GEMM-bound (`bmm` + fused graph ≈ 96%), i.e. the remaining fat is
+the **dense 16× Cayley arithmetic** — exactly the sparse-GP lever. CPU 1.56× is the floor
+of interest; the GPU number decides shipping (small GEMMs are launch-bound eager on GPU, so
+the compiled win is plausibly larger there).
 
-**Campaign-order ruling (pre-β):** sparse-GP does NOT blind-jump the queue. Order is:
+**gp_impl knob: `einsum | matmul | sparse` — implemented and gated (2026-08-07,
+operator-directed; both forms are lgatr-2.0 imports).** `model.net.gp_impl` on
+`tag_cgenn.yaml`, default `einsum` (the BIT reference path, byte-untouched):
+
+- `matmul` — dense outer product + one GEMM (lgatr 2.0's dense form): fcgp contracts
+  `(B, n·256) @ (n·256, m·16)`; gp uses a per-feature bmm.
+- `sparse` — lgatr 2.0's `sparse_gp` trick adapted to CGENN's per-path weights: the blade
+  Cayley table is quasigroup-like (exactly one nonzero right blade per (left, output) pair
+  — 256 of 4096 entries, asserted at algebra init), so the product becomes a (16, 16)
+  gather + 2-op einsum. No scatter, deterministic, 16× fewer MACs, and fcgp never
+  materializes the dense `(m, n, 16³)` weight.
+
+Gates, all green: TOL-IMPL eager-vs-reference matmul 1.646e-12 / sparse 1.511e-13 fp64
+(8.4e-07 / 3.6e-06 fp32; bars 1e-10 / 1e-5); per-impl compiled TOL ≤ 4.3e-16 · DET ✓ ·
+BREAKS 0 · RECOMP 1 · SUITE 629 passed / 15 failed / 43 skipped (the known pelican
+environment class only; +4 passes are the TOL-IMPL gates). `state_dict` unchanged (every
+new table is a non-persistent buffer), so all recorded fixtures and checkpoints stay valid.
+
+**C-β CPU matrix** (fp32, 4 threads, fixture batch, median of 30 forwards):
+
+| `gp_impl` | eager | compiled (`dynamic=True`) |
+|---|---|---|
+| einsum (default) | 173.1 ms | 110.8 ms |
+| matmul | **143.3 ms** | **98.1 ms** |
+| sparse | 392.6 ms | 116.1 ms |
+
+Reading: **matmul wins CPU both ways** (1.21× eager, 1.13× compiled over einsum — 1.76×
+combined over the eager default). **sparse loses on CPU despite 16× fewer MACs** — the
+per-forward weight gather plus tiny j-batched GEMMs have worse locality than one
+well-shaped dense GEMM (this section's "expect well under 16×" caveat, confirmed hard).
+lgatr 2.0's own sparse motivation is GPU-shaped (single fused kernel, no 16×16 buffer,
+memory-light), so **the β-PERF GPU matrix — it/s eager vs compiled × three impls — picks
+the campaign setting**; the CPU ranking is matmul > einsum > sparse. FLOPs column:
+`matmul` reorders the same arithmetic (column unchanged, no footnote); only `sparse`
+changes counted FLOPs (16× less GP arithmetic) and needs the row footnoted if chosen.
+Next hotspot after matmul+compile on CPU: `mm`+`bmm` 24% (the GEMMs themselves) and
+`copy_`/`clone` ≈ 19% self — marshalling around *extern* MKL GEMM calls, which CPU
+inductor cannot fuse into (the eager 50% `copy_` is already down to 9%). No further
+CPU-side lever worth taking; the next real datum is the GPU matrix.
+
+**Campaign-order ruling (pre-β):** *(superseded same day: the operator confirmed compiled
+CGENN still dominates the campaign budget and directed immediate implementation of both GP
+forms — see the `gp_impl` entry below)* sparse-GP does NOT blind-jump the queue. Order is:
 β-PERF GPU numbers for compiled tag_cgenn (cheap: knob + gates already shipped) → if
 compiled CGENN still dominates the campaign budget (it is ~84% of campaign FLOPs today),
 sparse-GP moves ahead of the campaign as a TOL-class task with its own fixtures — noting it

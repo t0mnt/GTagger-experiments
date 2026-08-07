@@ -52,6 +52,20 @@ class CliffordAlgebra(nn.Module):
                 torch.tensor(tuple(math.comb(self.dim, g) for g in self.grades))),
             persistent=False,
         )
+        # The blade basis is quasigroup-like: blade_i * blade_k lands on exactly ONE output
+        # blade with a +-1 coefficient, so for each (left blade i, output blade j) exactly
+        # one right blade k has cayley[i, j, k] != 0 (256 nonzeros of 4096). Store that k
+        # and its value: the sparse gp_impl contracts only these (lgatr 2.0's sparse_gp
+        # trick, adapted to CGENN's per-path weights) -- 16x fewer MACs, gather + einsum
+        # only (no scatter), deterministic. Non-persistent: derived, state_dict unchanged.
+        assert ((cayley != 0).sum(-1) <= 1).all(), "cayley lost the one-nonzero-per-(i,j) property"
+        gp_k_idx = cayley.abs().argmax(dim=-1)
+        self.register_buffer("gp_k_idx", gp_k_idx, persistent=False)
+        self.register_buffer(
+            "gp_val",
+            torch.gather(cayley, -1, gp_k_idx.unsqueeze(-1)).squeeze(-1),
+            persistent=False,
+        )
         # functools.cached_property materializes through an RLock (functools.__get__); a
         # lock context manager inside the traced region is a dynamo graph break -- and one
         # dynamo.explain cannot see, because any eager warm-up forward fills the caches

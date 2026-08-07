@@ -27,6 +27,16 @@ class SteerableGeometricProductLayer(nn.Module):
         self.product_paths = algebra.geometric_product_paths
         self.register_buffer("_path_idx", self.product_paths.nonzero().T.contiguous(),
                              persistent=False)
+        self.gp_impl = getattr(algebra, "gp_impl", "einsum")
+        # sparse tables -- same construction as fcgp: unique right blade per (i, j) plus
+        # the compact path index its weight comes from (zero where the path is masked)
+        g = algebra.bbo_grades.long()
+        lookup = torch.full((algebra.n_subspaces,) * 3, -1, dtype=torch.long)
+        lookup[self._path_idx[0], self._path_idx[1], self._path_idx[2]] = torch.arange(
+            self._path_idx.shape[1])
+        p = lookup[g[:, None], g[None, :], g[algebra.gp_k_idx]]
+        self.register_buffer("_sp_path", p.clamp(min=0), persistent=False)
+        self.register_buffer("_sp_val", algebra.gp_val * (p >= 0), persistent=False)
         self.weight = nn.Parameter(torch.empty(features, self.product_paths.sum()))
 
         self.reset_parameters()
@@ -52,14 +62,29 @@ class SteerableGeometricProductLayer(nn.Module):
         input_right = self.linear_right(input)
         input_right = self.normalization(input_right)
 
-        weight = self._get_weight()
-
-        # two-operand chain == opt_einsum's path for "bni,nijk,bnk->bnj" at these shapes
-        # ("bnk,bni->bnki" then "bnki,nijk->bnj"); a 3-operand einsum recomputes that path
-        # per call and re-specializes the compiled graph per batch shape (see
-        # cliffordalgebra.geometric_product). Bit-identity enforced by the BIT gate.
-        outer = torch.einsum("bnk,bni->bnki", input_right, input)
-        product = torch.einsum("bnki,nijk->bnj", outer, weight)
+        if self.gp_impl == "sparse":
+            # quasigroup gather (lgatr 2.0 sparse_gp) -- see fcgp.forward
+            pair = input.unsqueeze(-1) * input_right[..., self.algebra.gp_k_idx]
+            w = self.weight[:, self._sp_path] * self._sp_val
+            product = torch.einsum("bnij,nij->bnj", pair, w)
+        elif self.gp_impl == "matmul":
+            # dense outer product + per-feature bmm (lgatr 2.0 dense form)
+            weight = self._get_weight()
+            nb = self.algebra.n_blades
+            outer = input.unsqueeze(-1) * input_right.unsqueeze(-2)
+            wf = weight.permute(0, 1, 3, 2).reshape(self.features, nb * nb, nb)
+            product = torch.bmm(
+                outer.permute(1, 0, 2, 3).reshape(self.features, -1, nb * nb), wf
+            ).permute(1, 0, 2)
+        else:
+            # two-operand chain == opt_einsum's path for "bni,nijk,bnk->bnj" at these
+            # shapes ("bnk,bni->bnki" then "bnki,nijk->bnj"); a 3-operand einsum
+            # recomputes that path per call and re-specializes the compiled graph per
+            # batch shape (see cliffordalgebra.geometric_product). Bit-identity to the
+            # recorded fixtures enforced by the BIT gate -- this is the reference path.
+            weight = self._get_weight()
+            outer = torch.einsum("bnk,bni->bnki", input_right, input)
+            product = torch.einsum("bnki,nijk->bnj", outer, weight)
 
         if self.include_first_order:
             return (

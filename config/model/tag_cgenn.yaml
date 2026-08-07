@@ -14,6 +14,8 @@ net:
  n_outputs: null
  n_layers: 4
  dropout: 0.2
+ # einsum (reference, bit-identical to fixtures) | matmul | sparse — docs/cgenn-compile.md
+ gp_impl: einsum
 
 defaults:
  - framesnet: identity

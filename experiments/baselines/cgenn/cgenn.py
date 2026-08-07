@@ -317,6 +317,7 @@ class CGENN(nn.Module):
         residual=False,
         aggregation="mean",
         layer_type="fc",
+        gp_impl="einsum",
     ):
         super().__init__()
 
@@ -331,6 +332,17 @@ class CGENN(nn.Module):
         self.use_invariant_network = use_invariant_network
 
         self.algebra = CliffordAlgebra((1.0, -1.0, -1.0, -1.0))
+        # geometric-product contraction used by the weighted GP layers (fcgp/gp):
+        #   einsum -- the reference two-operand chains, bit-identical to the recorded
+        #             fixtures (BIT gate); the default.
+        #   matmul -- dense outer product + one GEMM (lgatr 2.0's dense form).
+        #   sparse -- quasigroup gather over the 256 nonzero cayley entries, 16x fewer
+        #             MACs (lgatr 2.0's sparse_gp, adapted to per-path weights).
+        # matmul/sparse reorder the same arithmetic -> TOL-class (docs/cgenn-compile.md);
+        # layers read this off the shared algebra instance at construction.
+        if gp_impl not in ("einsum", "matmul", "sparse"):
+            raise ValueError(f"gp_impl must be einsum|matmul|sparse, got {gp_impl!r}")
+        self.algebra.gp_impl = gp_impl
         self.n_layers = n_layers
         self.embedding_h = nn.Linear(in_features_h, hidden_features_h)
         self.embedding_x = MVLinear(self.algebra, in_features_x, hidden_features_x, subspaces=False)
