@@ -819,6 +819,28 @@ model under both graph metrics (`model.net.knn_metric=deltaR|minkowski`), then t
 LLoCa models (Plain / ParticleNet-ParT) under PD frames (`model/framesnet=learnedpd`).
 See GUIDE §6's shakedown note for the reasoning.
 
+```bash
+# each axis is a plain override appended to the same train.sbatch (section 5). -J keeps the
+# logs distinguishable -- without it every variant lands in logs/gtagger-<jobid>.out.
+sbatch -J PlainGraphGPS-mink train.sbatch tag_PlainGraphGPS model.net.knn_metric=minkowski
+sbatch -J PNParTGraphTrans-mink train.sbatch tag_ParticleNetParTGraphTrans model.net.knn_metric=minkowski
+
+# the flip side: the four equivariant hybrids ship knn_metric=minkowski, so their deltaR arm is
+sbatch -J CGENNLGATrGraphGPS-dR train.sbatch tag_CGENNLGATrGraphGPS model.net.knn_metric=deltaR
+
+# whole family, both metrics (16 jobs -- check `squeue -u $USER` before pasting)
+for M in tag_{Plain,ParticleNetParT,CGENNLGATr,LorentzNetLGATrSlim}{GraphTrans,GraphGPS}; do
+    for K in deltaR minkowski; do
+        sbatch -J "${M#tag_}-$K" train.sbatch "$M" "model.net.knn_metric=$K"
+    done
+done
+```
+
+> The shipped default differs by family -- `deltaR` on Plain/ParticleNet-ParT (their
+> references seed the graph in eta-phi), `minkowski` on the two equivariant hybrids (a
+> Lorentz-invariant graph). So one arm of this ablation re-runs a model at its own default;
+> that job is the headline row and does not need repeating if you already have it.
+
 The **baseline reference rows** (`tag_ParT`, `tag_particlenet`, `tag_lgatr`, `tag_slim`,
 `tag_lorentznet`, `tag_transformer`, …) do **not** need the LR finder — they run under
 their published recipes, which already pin lr/batchsize/budget:

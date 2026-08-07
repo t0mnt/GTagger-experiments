@@ -52,17 +52,23 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
 
 ## Fixed here, offered upstream (post-audit round)
 - `for_inference` single-logit heads use sigmoid (softmax over a 1-wide dim is constant 1.0);
-  guard/softmax on dim 1 (segmentation-safe). **On `main` this landed only in the hybrid
-  `particlenetpartgraphgps.py`** -- the `original-repo-fixes` branch carries it for
-  `mipart.py` / `particlenet.py` / `particletransformer.py`, `main` does not. `particlenet.py`
-  and `particletransformer.py` are dead here (the configs instantiate the lloca package), but
-  **`mipart.py` is live via `tag_MIParT`**; latent only because nothing sets `for_inference=true`.
+  guard/softmax on dim 1 (segmentation-safe). All four sites (`mipart.py`, `particlenet.py`,
+  `particletransformer.py`, `particlenetpartgraphgps.py`). Latent: nothing sets
+  `for_inference=true` and the class default is False.
 - `boost_jet` forced off for pure-rotation frames (LearnedSO3/SO2; measured set).
-- `pairwise_lv_fts` clamping delta_r2 before the sqrt (sqrt(0) backward is NaN -> poisoned
-  learned-frames grads on bit-identical pairs) is **NOT in the tree**: applied on
-  `original-repo-fixes` as 7b40292, reverted there by 198eba7 with no stated reason, and never
-  on `main`. `mipart.py:259` still does an unclamped `.sqrt()`. Decide and record before the
-  MIParT row is trained under learned frames.
+- `pairwise_lv_fts` clamps delta_r2 **at `eps**2`** before the sqrt. `sqrt'(0)=inf`, and
+  delta_r2 is exactly 0 for any bit-identical pair -- every padded-constituent pair on every
+  forward, plus the diagonal wherever `remove_self_pair` leaves it -- so the backward is
+  `0 * inf = NaN`; the clamp already inside the `log` cannot undo it, it is what produces the
+  0. Live in the campaign path: `particlenettransformer.py` serves ParticleNetParT-GraphTrans
+  and -GraphGPS, and `plaingraphgps.py` imports the same function. `eps**2` (not `eps`) floors
+  delta at exactly `eps`, so `lndelta` is bit-identical to the unclamped version and `lnkt` is
+  too wherever `ptmin <= 1` -- every padded pair, whose pt is itself clamped to `sqrt(eps)`.
+  NOT the same as the MIParT **rapidity** clamp (`(energy - pz).clamp(min=1e-20)`), which is a
+  separate fix and is already upstream via #92. An earlier attempt on `original-repo-fixes`
+  (7b40292) clamped at `eps`, which shifts `lndelta` from `log(eps)` to `log(sqrt(eps))` for
+  every degenerate pair -- a real feature change, and the likely reason 198eba7 reverted it.
+  Still absent upstream; offer with that reasoning attached or it gets reverted again.
 - Embedding order: tagging features (deta/dphi/dr, log pt) are computed BEFORE the optional
   jet-rest-frame boost. Post-boost the jet has pt~0, so pt_jet clamps and eta_jet/phi_jet read
   off a numerically-zero vector -> dphi/deta rotation-unstable, breaking even SO(2) invariance
@@ -75,6 +81,30 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   weight-decay exemption like every other norm gain; the official 2-d shape was silently
   weight-decayed -- an undocumented regularization asymmetry hitting only the CGENN hybrids
   (broadcasting unchanged: unsqueezed to (1, C) at use).
+- **CGENN's remaining gains/biases exempted from weight decay** -- `MVSiLU.a` (1, C, dim+1,
+  init ones), `MVSiLU.b` (init zeros) and `NormalizationLayer.a` (C, n_subspaces). The
+  `MVLayerNorm` reshape above fixed one of four parameters of the same kind; the other three
+  are missed by both structural rules (ndim > 1, and named `.a`/`.b` rather than `.bias`).
+  MVSiLU computes `sigmoid(a*norms + b) * input`, so decaying `a` pulls the gate toward the
+  constant `sigmoid(b)`: a prior toward deleting the nonlinearity, not toward a simpler
+  function -- the standard argument for exempting norm gains, already followed everywhere else
+  here via ndim<=1. The **official CGENN repo settles the reference**: `top_tagging.py` builds
+  `torch.optim.Adam(model.parameters(), ...)` as one flat group and the README's top-tagging
+  command passes only `--optimizer.lr=0.001`, so weight decay is Adam's default 0 (their nbody
+  command *does* pass `--optimizer.weight_decay=0.0001`, so the omission is a choice). Official
+  top tagging decays none of these; exempting them moves toward the reference. `weight_decay:
+  0.01` still applies to every real weight. Affects `tag_cgenn` and both CGENN hybrids.
+  Declared via `no_weight_decay()`, computed by walking the module tree, never hardcoded.
+- The **base** optimizer grouping now honours `net.no_weight_decay()` too -- previously only
+  the ParT grouping did, so a net could declare exempt parameters that the GraphGPS path
+  ignored. No-op for any net that does not define the method.
+- `finetuneexperiment.py`'s grouping calls `net.no_weight_decay()` instead of a hardcoded
+  `{"cls_token"}`, matching `experiment.py`. No behavior change today (the branch is gated on
+  ParTWrapper, and ParT returns exactly that set); the two copies had drifted.
+- `save=false` keeps the best-validation checkpoint in RAM instead of on disk. `_save_model` is
+  a no-op under `save=false`, so the end-of-training restore used to fail and the evaluation
+  silently reported the **final iterate** -- a dry run's numbers could be compared against a
+  table they were not produced under. A log carrying `Cannot load best model ...` predates this.
 - Streaming loaders: `infinity_mode` (file re-cycling) is TRAIN-only -- on val/test it looped
   forever; `steps_per_epoch` bounds the train epoch (JetClass + TopTagXL).
 - Finetuning: `ema_decay` read from the config top level (`cfg.ema_decay`), not
