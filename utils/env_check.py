@@ -134,6 +134,10 @@ def main():
               "rmdir " + rel + " ; ln -sfn <target> " + rel + " ; then `ls -ld " + rel + "` "
               "MUST print an arrow. See docs/OSCAR.md section 2.")
 
+    # whether a GPU is visible at all -- distinct from the --gpu flag, which asks for the
+    # heavier kernel checks. Used to skip checks that are CUDA-gated by construction.
+    cuda_here = torch.cuda.is_available()
+
     # ---- 4. xformers --------------------------------------------------------------
     # Absence is NOT a failure: the documented Oscar image is built xformers-free
     # (OSCAR.md section 2 strips it), and nothing in the campaign needs it -- only the four
@@ -245,6 +249,15 @@ def main():
         if xformers is None and not available:
             print(f"[INFO] {mod_name.split('.')[0]} backends: {registry} (no xformers, as expected)")
             continue
+        if not cuda_here and not available:
+            # BOTH libraries gate the xformers (and flash) backends on CUDA being visible, so
+            # off-GPU the registry is ['flex', 'native'] for a perfectly healthy install. This
+            # check is UNEVALUATABLE here, not failed -- reporting FAIL on a login node is how
+            # an env check teaches you to ignore its FAILs, and a real ABI mismatch looks
+            # identical. Re-run on a GPU allocation to actually test it.
+            print(f"[SKIP] {mod_name.split('.')[0]} '{pinned}' backend: registry={registry} "
+                  f"-- CUDA-gated, unevaluatable off-GPU; re-run inside `interact -g 1`")
+            continue
         check(f"{mod_name.split('.')[0]} registered the '{pinned}' backend", available,
               f"registry={registry}",
               "xformers imports but neither library could bind it -- almost always an ABI "
@@ -264,7 +277,10 @@ def main():
     fails = RESULTS.count(False)
     print(f"\n{'CERTIFIED' if fails == 0 else 'NOT CERTIFIED'}: "
           f"{RESULTS.count(True)}/{len(RESULTS)} checks passed"
-          + ("" if args.gpu else "  (CPU-context run; repeat with --gpu before a campaign)"))
+          + ("" if args.gpu else
+             "  (a GPU IS visible here -- re-run with --gpu to certify the kernels)"
+             if cuda_here else
+             "  (CPU-context run; repeat with --gpu on a GPU allocation before a campaign)"))
     sys.exit(1 if fails else 0)
 
 
