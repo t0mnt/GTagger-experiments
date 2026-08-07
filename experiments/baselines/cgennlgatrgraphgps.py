@@ -194,7 +194,9 @@ class CGENNLGATrGraphGPS(nn.Module):
                  dropout_prob: float = None,
                  attn_dropout: float = 0.0,
                  head_layers: int = 2,
-                 **kwargs):
+                 primitives_sparse_gp: bool = True,  # v2-native; parity tier-1 sets False
+                 **kwargs,
+                 ):
         super().__init__()
         if kwargs:
             # hydra struct mode does not protect against `+model.net.<typo>=x`;
@@ -211,7 +213,7 @@ class CGENNLGATrGraphGPS(nn.Module):
         self.num_spurions = get_num_spurions(beam_spurion, add_time_spurion, beam_mirror=beam_mirror)
 
         # input embedding: (1 particle + num_spurions) mv channels + scalars -> hidden
-        self.primitives = PrimitivesConfig()  # M10: one shared config threaded to every layer
+        self.primitives = PrimitivesConfig(sparse_gp=primitives_sparse_gp)  # M10: one shared config threaded to every layer
         self.linear_in = EquiLinear(
             in_mv_channels=1 + self.num_spurions, out_mv_channels=hidden_mv_channels,
             primitives=self.primitives,

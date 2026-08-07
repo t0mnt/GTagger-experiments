@@ -67,6 +67,7 @@ class LorentzNetSlimGPSLayer(nn.Module):
 
     def __init__(self, v_channels, s_channels, num_heads, c_weight, use_phi_m,
                  attn_ratio, mlp_ratio, num_layers_mlp, nonlinearity, dropout_prob,
+                 nonlinearity_v="sigmoid",  # v2-native GLU vector-gate default; None = v1 routing (parity mode)
                  n_node_attr=0, attn_dropout=0.0):
         super().__init__()
         # local branch: LorentzNet edge conv (carries its own internal residual).
@@ -87,6 +88,7 @@ class LorentzNetSlimGPSLayer(nn.Module):
         # FFN: raw slim MLP (gated-linear-unit)
         self.mlp = SlimMLP(
             v_channels=v_channels, s_channels=s_channels, nonlinearity=nonlinearity,
+            nonlinearity_v=nonlinearity_v,
             mlp_ratio=mlp_ratio, num_layers=num_layers_mlp, dropout_prob=None,
         )
         # equivariant norm (stateless -> shared) + dropout
@@ -138,6 +140,7 @@ class LorentzNetLGATrSlimGraphGPS(nn.Module):
                  mlp_ratio=2,
                  num_layers_mlp=2,
                  nonlinearity="gelu",
+                 nonlinearity_v="sigmoid",
                  dropout_prob=None,
                  attn_dropout=0.0,
                  # static kNN graph + per-layer LorentzNet edge conv
@@ -186,6 +189,7 @@ class LorentzNetLGATrSlimGraphGPS(nn.Module):
             LorentzNetSlimGPSLayer(
                 hidden_v_channels, hidden_s_channels, num_heads, c_weight, use_phi_m,
                 attn_ratio, mlp_ratio, num_layers_mlp, nonlinearity, dropout_prob,
+                nonlinearity_v=nonlinearity_v,
                 n_node_attr=in_s_channels if use_node_attr else 0,
                 attn_dropout=attn_dropout,
             )
