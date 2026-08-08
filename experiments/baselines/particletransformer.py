@@ -1,22 +1,59 @@
-""" Particle Transformer (ParT)
+"""LLoCa Particle Transformer (ParT) -- the in-repo copy the tag_ParT row executes.
 
-Paper: "Particle Transformer for Jet Tagging" - https://arxiv.org/abs/2202.03772
+Port of lloca.backbone.particletransformer (lloca 1.3.6), following the same pattern as
+particlenet.py: the repo executes code it can fix, rather than a library copy it cannot.
+The port is mechanical -- the module tree, parameter names, and forward semantics are
+byte-faithful to the library file except for exactly two fixes, both forward-bit-identical
+on this repo's paths:
 
-NOT the baseline row, and not imported anywhere: `tag_ParT.yaml` instantiates
-`lloca.backbone.particletransformer.ParticleTransformer`, which this file is a stale
-near-copy of (it predates lloca's LLoCaAttention wiring). Read the lloca package file when
-reasoning about what the table's ParT row does.
+1. `for_inference` single-logit heads use sigmoid. Softmax over a 1-wide dim is
+   identically 1, so an exported top-tagging head (out=1, BCE-trained) would emit a
+   constant; sigmoid is the correct inverse link. Inert in training/eval here
+   (for_inference=False throughout the table).
+2. `pairwise_lv_fts` guards the delta sqrt with a STRAIGHT-THROUGH clamp: delta_r2 is
+   exactly 0 for bit-identical pairs and sqrt'(0)=inf, so the backward is 0*inf=NaN.
+   Unlike particlenettransformer.py's plain clamp-before-sqrt (safe there, where the
+   pair set has no real zero-delta pairs), ParT's PairEmbed includes the self-pair
+   diagonal, and a plain clamp measurably shifts those features -- so the forward here
+   is the raw sqrt (bit-identical to the library) and only the backward is clamped.
+
+Original upstream: https://github.com/hqucms/weaver-core (ParT, arXiv:2202.03772), with
+LLoCa's tensorial frame transport (Attention wraps a prepare_frames-d LLoCaAttention).
 """
 
+"""
+Paper: "Particle Transformer for Jet Tagging" - https://arxiv.org/abs/2202.03772
+
+We have to do two things to build LLoCa-ParT
+- Construct a LLoCaAttention module for the whole transformer that preprocesses the frames
+  and is passed to each attention block during initialization.
+- When evaluating attention, use the LLoCaAttention module.
+
+More comments:
+- We also added an extra clamp in to_ptrapphim to avoid numerical issues from log(0). This case
+  might not happen in the original ParT, but it can happen with LLoCa for highly boosted frames.
+- For simplicity, we use LLoCaAttention only for the self-attention blocks, and use
+  default attention (corresponds to scalar messages only) for the class attention blocks.
+
+You can use 'git diff --no-index' to compare this file with the original particletransformer.py file.
+"""
+
+# ruff: noqa
+
+import copy
 import math
 import random
-import copy
+from collections.abc import Callable
 from functools import partial
-from typing import Optional, Tuple, Any, Callable
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
+
+from lloca.reps.tensorreps import TensorReps
+from lloca.backbone.attention import LLoCaAttention
 
 
 @torch.jit.script
@@ -48,7 +85,7 @@ def to_ptrapphim(x, return_mass=True, eps=1e-8):
     px, py, pz, energy = x.split((1, 1, 1, 1), dim=1)
     pt = torch.sqrt(to_pt2(x, eps=eps))
     # rapidity = 0.5 * torch.log((energy + pz) / (energy - pz))
-    rapidity = 0.5 * torch.log(1 + (2 * pz) / (energy - pz).clamp(min=1e-20))
+    rapidity = 0.5 * torch.log((1 + (2 * pz) / (energy - pz).clamp(min=1e-20)).clamp(min=1e-20))
     phi = torch.atan2(py, px)
     if not return_mass:
         return torch.cat((pt, rapidity, phi), dim=1)
@@ -105,13 +142,15 @@ def pairwise_lv_fts_pp(xi, xj, num_outputs=4, eps=1e-8):
         outputs = [lnm2]
 
     if num_outputs > 1:
-        # clamp BEFORE the sqrt: delta_r2 is exactly 0 for bit-identical pairs (padded
-        # constituents, and the diagonal when self-pairs are kept), and sqrt'(0) = inf, so the
-        # backward is 0 * inf = NaN -- which the existing clamp inside the log cannot undo.
-        # eps**2 (not eps) is deliberate: it floors delta at eps, so lndelta below is
-        # bit-identical to the unclamped version, as is lnkt wherever ptmin <= 1 (all padded
-        # pairs, whose pt is itself clamped to sqrt(eps)).
-        delta = delta_r2(rapi, phii, rapj, phij).clamp(min=eps**2).sqrt()
+        # straight-through clamp around the sqrt: sqrt'(0)=inf makes the backward NaN on
+        # bit-identical pairs (ParT's PairEmbed includes the self-pair diagonal, so a plain
+        # clamp-before-sqrt would SHIFT real diagonal lnkt features -- measured 3.7e-3 at
+        # the output; particlenettransformer.py's plain clamp is safe only because its
+        # pair set excludes that case). Forward is the raw sqrt, bit-identical to the
+        # library; backward flows through the clamped branch only, so it is finite.
+        d2 = delta_r2(rapi, phii, rapj, phij)
+        delta_safe = d2.clamp(min=eps**2).sqrt()
+        delta = delta_safe + (d2.sqrt() - delta_safe).detach()
         lndelta = torch.log(delta.clamp(min=eps))
         ptmin = torch.minimum(pti, ptj)
         lnkt = torch.log((ptmin * delta).clamp(min=eps))
@@ -251,8 +290,8 @@ class SwiGLUFFN(nn.Module):
     def __init__(
         self,
         in_features: int,
-        hidden_features: Optional[int] = None,
-        out_features: Optional[int] = None,
+        hidden_features: int | None = None,
+        out_features: int | None = None,
         drop: float = 0.0,
         bias: bool = True,
     ) -> None:
@@ -393,9 +432,9 @@ class PairEmbed(nn.Module):
                     if self.remove_self_pair:
                         i = torch.arange(0, seq_len, device=x.device)
                         x[:, :, i, i] = 0
-                    x = x.view(-1, self.pairwise_lv_dim, seq_len * seq_len)
+                    x = x.reshape(-1, self.pairwise_lv_dim, seq_len * seq_len)
                 if uu is not None:
-                    uu = uu.view(-1, self.pairwise_input_dim, seq_len * seq_len)
+                    uu = uu.reshape(-1, self.pairwise_input_dim, seq_len * seq_len)
 
         # with grad
         elements = 0
@@ -416,7 +455,7 @@ class PairEmbed(nn.Module):
             y[:, :, i, j] = elements
             y[:, :, j, i] = elements
         else:
-            y = elements.view(-1, self.out_dim, seq_len, seq_len)
+            y = elements.reshape(-1, self.out_dim, seq_len, seq_len)
         return y
 
     def _forward_sparse(self, x, uu=None, mask=None):
@@ -469,6 +508,7 @@ class PairEmbed(nn.Module):
 
         return y
 
+    @torch.compiler.disable()  # torch.compile fails to make this seqlen-dynamic
     def forward(self, x, uu=None, mask=None):
         if self.sparse_eval:
             return self._forward_sparse(x, uu=uu, mask=mask)
@@ -477,14 +517,13 @@ class PairEmbed(nn.Module):
 
 
 def _canonical_mask(
-    mask: Optional[torch.Tensor],
+    mask: torch.Tensor | None,
     mask_name: str,
-    other_type: Optional[Any],
+    other_type: Any | None,
     other_name: str,
     target_type: Any,
     check_other: bool = True,
-) -> Optional[torch.Tensor]:
-
+) -> torch.Tensor | None:
     if mask is not None:
         _mask_dtype = mask.dtype
         _mask_is_float = torch.is_floating_point(mask)
@@ -495,7 +534,7 @@ def _canonical_mask(
     return mask
 
 
-def _none_or_dtype(input: Optional[torch.Tensor]):
+def _none_or_dtype(input: torch.Tensor | None):
     if input is None:
         return None
     elif isinstance(input, torch.Tensor):
@@ -505,7 +544,14 @@ def _none_or_dtype(input: Optional[torch.Tensor]):
 
 class Attention(torch.nn.Module):
     def __init__(
-        self, embed_dim, num_heads, dropout=0.0, bias=True, device=None, dtype=None
+        self,
+        attention,
+        embed_dim,
+        num_heads,
+        dropout=0.0,
+        bias=True,
+        device=None,
+        dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -513,16 +559,13 @@ class Attention(torch.nn.Module):
         self.num_heads = num_heads
         self.dropout = dropout
         self.head_dim = embed_dim // num_heads
-        assert (
-            self.head_dim * num_heads == self.embed_dim
-        ), "embed_dim must be divisible by num_heads"
+        assert self.head_dim * num_heads == self.embed_dim, (
+            "embed_dim must be divisible by num_heads"
+        )
 
         self.in_proj = torch.nn.Linear(embed_dim, 3 * embed_dim, bias=bias, **factory_kwargs)
         self.out_proj = torch.nn.Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
-
-        self.use_sdpa = hasattr(torch.nn.functional, "scaled_dot_product_attention")
-        if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 7:
-            self.use_sdpa = False
+        self.attention = attention
 
     def _load_from_state_dict(
         self,
@@ -534,7 +577,6 @@ class Attention(torch.nn.Module):
         unexpected_keys,
         error_msgs,
     ):
-
         for k in state_dict.keys():
             if k.endswith("in_proj_weight"):
                 state_dict[k.replace("_weight", ".weight")] = state_dict.pop(k)
@@ -556,10 +598,9 @@ class Attention(torch.nn.Module):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        key_padding_mask: Optional[torch.Tensor] = None,
-        attn_mask: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-
+        key_padding_mask: torch.Tensor | None = None,
+        attn_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         bsz, tgt_len, _ = query.shape
         _, src_len, _ = key.shape
 
@@ -587,9 +628,14 @@ class Attention(torch.nn.Module):
             assert key_padding_mask.shape == (
                 bsz,
                 src_len,
-            ), f"expecting key_padding_mask shape of {(bsz, src_len)}, but got {key_padding_mask.shape}"
-            key_padding_mask = key_padding_mask.view(bsz, 1, 1, src_len).expand(
-                -1, self.num_heads, -1, -1
+            ), (
+                f"expecting key_padding_mask shape of {(bsz, src_len)}, but got {key_padding_mask.shape}"
+            )
+            key_padding_mask = (
+                key_padding_mask.reshape(bsz, src_len)
+                .unsqueeze(1)
+                .unsqueeze(2)
+                .expand(-1, self.num_heads, -1, -1)
             )
             if attn_mask is None:
                 attn_mask = key_padding_mask
@@ -599,33 +645,33 @@ class Attention(torch.nn.Module):
                     self.num_heads,
                     tgt_len,
                     src_len,
-                ), f"expecting attn_mask shape of {(bsz, self.num_heads, tgt_len, src_len)}, but got {attn_mask.shape}"
+                ), (
+                    f"expecting attn_mask shape of {(bsz, self.num_heads, tgt_len, src_len)}, but got {attn_mask.shape}"
+                )
                 attn_mask = attn_mask + key_padding_mask
 
         # (bsz, seq_len, num_heads*head_dim)
         q, k, v = F._in_projection_packed(query, key, value, self.in_proj.weight, self.in_proj.bias)
 
         # -> (bsz, num_heads, src/tgt_len, head_dim)
-        q = q.view(bsz, tgt_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
-        k = k.view(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
-        v = v.view(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+        q = q.reshape(bsz, tgt_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+        k = k.reshape(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+        v = v.reshape(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
         dropout_p = self.dropout if self.training else 0.0
 
-        if self.use_sdpa:
-            # attn_output: (bsz, num_heads, tgt_len, head_dim)
-            attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p)
+        if self.attention is not None:
+            # particle attention
+            attn_output = self.attention(
+                q,
+                k,
+                v,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+            )
         else:
-            q_scaled = q * math.sqrt(
-                1.0 / float(self.head_dim)
-            )  # (bsz, num_heads, tgt_len, head_dim)
-            attn_weight = q_scaled @ k.transpose(-2, -1)  # (bsz, num_heads, tgt_len, src_len)
-            if attn_mask is not None:
-                attn_weight = attn_weight + attn_mask
-            attn_weight = F.softmax(attn_weight, dim=-1)
-            if dropout_p > 0:
-                attn_weight = F.dropout(attn_weight, p=dropout_p)
-            attn_output = attn_weight @ v  # (bsz, num_heads, head_dim)
+            # class token attention
+            attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p)
 
         attn_output = attn_output.transpose(1, 2).reshape(bsz, tgt_len, self.embed_dim)
         attn_output = self.out_proj(attn_output)
@@ -679,12 +725,13 @@ class DropPath(nn.Module):
         return drop_path(x, self.drop_prob, self.training, self.scale_by_keep)
 
     def extra_repr(self):
-        return f"drop_prob={round(self.drop_prob,3):0.3f}"
+        return f"drop_prob={round(self.drop_prob, 3):0.3f}"
 
 
 class Block(nn.Module):
     def __init__(
         self,
+        attention,
         embed_dim=128,
         num_heads=8,
         ffn_ratio=4,
@@ -708,7 +755,7 @@ class Block(nn.Module):
         self.ffn_dim = embed_dim * ffn_ratio
 
         self.pre_attn_norm = nn.LayerNorm(embed_dim)
-        self.attn = Attention(embed_dim, num_heads, dropout=attn_dropout)
+        self.attn = Attention(attention, embed_dim, num_heads, dropout=attn_dropout)
         self.post_attn_norm = nn.LayerNorm(embed_dim) if scale_attn else nn.Identity()
         self.dropout = nn.Dropout(dropout)
         self.ls1 = (
@@ -767,7 +814,14 @@ class Block(nn.Module):
             residual = x_cls
             u = torch.cat((x_cls, x), dim=1)  # (batch, 1+seq_len, embed_dim)
             u = self.pre_attn_norm(u)
-            x = self.attn(x_cls, u, u, key_padding_mask=padding_mask)[0]  # (1, batch, embed_dim)
+
+            # default attention for convenience (could be more fancy here)
+            x = self.attn(
+                x_cls,
+                u,
+                u,
+                key_padding_mask=padding_mask,
+            )[0]  # (1, batch, embed_dim)
         else:
             if self.c_mask is not None and attn_mask is not None:
                 attn_mask = torch.mul(self.c_mask, attn_mask)
@@ -779,7 +833,7 @@ class Block(nn.Module):
 
         if self.c_attn is not None:
             bsz, tgt_len, _ = x.size()
-            x = x.view(bsz, tgt_len, self.num_heads, self.head_dim)
+            x = x.reshape(bsz, tgt_len, self.num_heads, self.head_dim)
             x = torch.einsum("bthd,h->btdh", x, self.c_attn)
             x = x.reshape(bsz, tgt_len, self.embed_dim)
         x = self.post_attn_norm(x)
@@ -808,9 +862,12 @@ class Block(nn.Module):
 
 
 class ParticleTransformer(nn.Module):
+    """Particle Transformer (ParT) with local frame transformations."""
+
     def __init__(
         self,
         input_dim,
+        attn_reps,
         num_classes=None,
         # network configurations
         pair_input_type="pp",
@@ -819,6 +876,7 @@ class ParticleTransformer(nn.Module):
         remove_self_pair=False,
         use_pre_activation_pair=True,
         embed_dims=(128, 512, 128),
+        ffn_ratio=4,
         pair_embed_dims=(64, 64, 64),
         num_heads=8,
         num_layers=8,
@@ -835,6 +893,10 @@ class ParticleTransformer(nn.Module):
         for_inference=False,
         for_segmentation=False,
         use_amp=False,
+        checkpoint_blocks=False,
+        compile=False,
+        compile_mode="default",
+        compile_dynamic=False,  # ParT does not rely on dynamic shapes that much
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -843,12 +905,15 @@ class ParticleTransformer(nn.Module):
         self.for_inference = for_inference
         self.for_segmentation = for_segmentation
         self.use_amp = use_amp
+        self.checkpoint_blocks = checkpoint_blocks
 
-        embed_dim = embed_dims[-1] if len(embed_dims) > 0 else input_dim
+        attn_reps = TensorReps(attn_reps)
+        self.embed_dim = attn_reps.dim * num_heads
+        self.attention = LLoCaAttention(attn_reps, num_heads)
         default_cfg = dict(
-            embed_dim=embed_dim,
+            embed_dim=self.embed_dim,
             num_heads=num_heads,
-            ffn_ratio=4,
+            ffn_ratio=ffn_ratio,
             dropout=0.1,
             attn_dropout=0.1,
             activation_dropout=0.1,
@@ -879,10 +944,10 @@ class ParticleTransformer(nn.Module):
         if cls_block_params is not None:
             cfg_cls_block.update(cls_block_params)
 
-        self.embed = (
-            Embed(input_dim, embed_dims, activation=activation)
-            if len(embed_dims) > 0
-            else nn.Identity()
+        self.embed = Embed(
+            input_dim,
+            embed_dims if len(embed_dims) > 0 else [self.embed_dim],
+            activation=activation,
         )
 
         if pair_input_dim is None:
@@ -901,17 +966,19 @@ class ParticleTransformer(nn.Module):
             if pair_embed_dims is not None and pair_input_dim + pair_extra_dim > 0
             else None
         )
-        self.blocks = nn.ModuleList([Block(**cfg_block) for _ in range(num_layers)])
+        self.blocks = nn.ModuleList(
+            [Block(attention=self.attention, **cfg_block) for _ in range(num_layers)]
+        )
         self.cls_blocks = (
-            nn.ModuleList([Block(**cfg_cls_block) for _ in range(num_cls_layers)])
+            nn.ModuleList([Block(attention=None, **cfg_cls_block) for _ in range(num_cls_layers)])
             if num_cls_layers > 0
             else None
         )
-        self.norm = nn.LayerNorm(embed_dim)
+        self.norm = nn.LayerNorm(self.embed_dim)
 
         if fc_params is not None:
             fcs = []
-            in_dim = embed_dim
+            in_dim = self.embed_dim
             for param in fc_params:
                 try:
                     out_dim, drop_rate, act = param
@@ -937,7 +1004,7 @@ class ParticleTransformer(nn.Module):
 
         # cls tokens
         if not self.for_segmentation and num_cls_layers > 0:
-            self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, self.embed_dim), requires_grad=True)
             nn.init.trunc_normal_(self.cls_token, std=0.02)
         else:
             self.cls_token = None
@@ -947,6 +1014,11 @@ class ParticleTransformer(nn.Module):
             self.init_weights(weight_init)
         if fix_init:
             self.fix_init_weight()
+
+        if compile:
+            self.__class__ = torch.compile(
+                self.__class__, dynamic=compile_dynamic, mode=compile_mode
+            )
 
     def fix_init_weight(self):
         def rescale(param, _layer_id):
@@ -990,7 +1062,17 @@ class ParticleTransformer(nn.Module):
 
             # transform
             for block in self.blocks:
-                x = block(x, x_cls=None, padding_mask=padding_mask, attn_mask=attn_mask)
+                if self.checkpoint_blocks:
+                    x = checkpoint(
+                        block,
+                        x,
+                        x_cls=None,
+                        padding_mask=padding_mask,
+                        attn_mask=attn_mask,
+                        use_reentrant=False,
+                    )
+                else:
+                    x = block(x, x_cls=None, padding_mask=padding_mask, attn_mask=attn_mask)
 
         # x: (batch, seq_len, embed_dim)
         # padding_mask: (batch, seq_len)
@@ -1002,9 +1084,18 @@ class ParticleTransformer(nn.Module):
                 # for classification: extract using class token
                 cls_tokens = self.cls_token.expand(x.size(0), 1, -1)  # (batch, 1, embed_dim)
                 for block in self.cls_blocks:
-                    cls_tokens = block(
-                        x, x_cls=cls_tokens, padding_mask=padding_mask
-                    )  # (batch, 1, embed_dim)
+                    if self.checkpoint_blocks:
+                        cls_tokens = checkpoint(
+                            block,
+                            x,
+                            x_cls=cls_tokens,
+                            padding_mask=padding_mask,
+                            use_reentrant=False,
+                        )  # (batch, 1, embed_dim)
+                    else:
+                        cls_tokens = block(
+                            x, x_cls=cls_tokens, padding_mask=padding_mask
+                        )  # (batch, 1, embed_dim)
                 cls_tokens = cls_tokens.squeeze(1)  # (batch, embed_dim)
             else:
                 # for classification: simple average pooling
@@ -1017,12 +1108,13 @@ class ParticleTransformer(nn.Module):
             x_cls = self.norm(cls_tokens)  # (batch, embed_dim)
         return x_cls
 
-    def forward(self, x, v=None, mask=None, uu=None, uu_idx=None):
+    def forward(self, x, frames, v=None, mask=None, uu=None, uu_idx=None):
         # x: (batch_size, num_fts, seq_len)
         # v: (batch_size, 4, seq_len) [px,py,pz,energy]
         # mask: (batch_size, 1, seq_len) -- real particle = 1, padded = 0
         # for pytorch: uu (batch_size, C', num_pairs), uu_idx (batch_size, 2, num_pairs)
         # for onnx: uu (batch_size, C', seq_len, seq_len), uu_idx=None
+        self.attention.prepare_frames(frames)
 
         x, padding_mask = self._forward_encoder(x, v=v, mask=mask, uu=uu, uu_idx=uu_idx)
 
@@ -1040,9 +1132,8 @@ class ParticleTransformer(nn.Module):
                 # x: (P, N, C) -> output: (N, C, P)
                 output = x.transpose(1, 2).contiguous()
                 if self.for_inference:
-                    # single-logit heads (top-tagging here: out_channels=1, BCE) must use sigmoid --
-                    # softmax over a 1-wide dim is identically 1.0, silently making every score
-                    # constant (AUC 0.5). Multi-class (JetClass) is unchanged.
+                    # single-logit heads (top-tagging: out=1, BCE) must use sigmoid --
+                    # softmax over a 1-wide dim is identically 1 (see module docstring)
                     output = (torch.sigmoid(output) if output.shape[1] == 1
                               else torch.softmax(output, dim=1))
                 # print('output:\n', output)
@@ -1055,9 +1146,7 @@ class ParticleTransformer(nn.Module):
             # fc
             output = self.fc(x_cls)
             if self.for_inference:
-                # single-logit heads (top-tagging here: out_channels=1, BCE) must use sigmoid --
-                # softmax over a 1-wide dim is identically 1.0, silently making every score
-                # constant (AUC 0.5). Multi-class (JetClass) is unchanged.
+                # single-logit heads use sigmoid (see module docstring)
                 output = (torch.sigmoid(output) if output.shape[1] == 1
                           else torch.softmax(output, dim=1))
             # print('output:\n', output)
