@@ -695,11 +695,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
   Guard 46:
-    Name: "G['__builtins_dict___90']['isinstance']"
+    Name: "G['__builtins_dict___47']['isinstance']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___90']['isinstance'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['isinstance'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 47:
@@ -767,11 +767,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
   Guard 55:
-    Name: "G['__builtins_dict___90']['super']"
+    Name: "G['__builtins_dict___47']['super']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___90']['super'], ...), type=<class 'super'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['super'], ...), type=<class 'super'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 56:
@@ -1215,11 +1215,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
   Guard 111:
-    Name: "G['__builtins_dict___90']['iter']"
+    Name: "G['__builtins_dict___47']['iter']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___90']['iter'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['iter'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 112:
@@ -2303,6 +2303,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 247:
+    Name: "L['uu']"
+    Source: local
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['NONE_MATCH']
+    Code List: ["L['uu'] is None"]
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 248:
     Name: "L['self']._modules['pair_embed'].pairwise_lv_fts.func"
     Source: local_unspecialized_nn_module
     Create Function: CLOSURE_MATCH
@@ -2310,7 +2318,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 248:
+  Guard 249:
     Name: "L['self']._modules['pair_embed'].pairwise_lv_fts.keywords['num_outputs']"
     Source: local_unspecialized_nn_module
     Create Function: EQUALS_MATCH
@@ -2318,7 +2326,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed'].pairwise_lv_fts.keywords['num_outputs'] == 4"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 249:
+  Guard 250:
     Name: "L['self']._modules['pair_embed'].pairwise_lv_fts"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -2326,7 +2334,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed'].pairwise_lv_fts, ...), type=<class 'functools.partial'>"]
     Object Weakref: <weakref at 0x...; to 'partial' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (partial)>
-  Guard 250:
+  Guard 251:
     Name: "L['self']._modules['pair_embed'].pairwise_lv_fts.keywords"
     Source: local_unspecialized_nn_module
     Create Function: DICT_KEYS_MATCH
@@ -2334,7 +2342,7 @@ Out Guards:
     Code List: ["len(L['self']._modules['pair_embed'].pairwise_lv_fts.keywords) == 2", "list(dict.keys(L['self']._modules['pair_embed'].pairwise_lv_fts.keywords)) == ['num_outputs', 'eps']"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 251:
+  Guard 252:
     Name: "L['self']._modules['pair_embed'].pairwise_lv_fts.args"
     Source: local_unspecialized_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -2342,7 +2350,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed'].pairwise_lv_fts.args, ...), type=<class 'tuple'>", "not L['self']._modules['pair_embed'].pairwise_lv_fts.args"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 252:
+  Guard 253:
     Name: "G['to_ptrapphim']"
     Source: global
     Create Function: CLOSURE_MATCH
@@ -2350,7 +2358,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 253:
+  Guard 254:
     Name: "G['to_pt2']"
     Source: global
     Create Function: CLOSURE_MATCH
@@ -2358,7 +2366,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 254:
+  Guard 255:
     Name: "G['torch'].sqrt"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -2366,7 +2374,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['torch'].sqrt, ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 255:
+  Guard 256:
     Name: "G['torch'].log"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -2374,7 +2382,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['torch'].log, ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 256:
+  Guard 257:
     Name: "G['torch'].atan2"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -2382,7 +2390,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['torch'].atan2, ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 257:
+  Guard 258:
     Name: "G['torch'].cat"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -2390,7 +2398,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['torch'].cat, ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 258:
+  Guard 259:
     Name: "G['to_m2']"
     Source: global
     Create Function: CLOSURE_MATCH
@@ -2398,7 +2406,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 259:
+  Guard 260:
     Name: "L['self']._modules['pair_embed'].pairwise_lv_fts.keywords['eps']"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -2406,7 +2414,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed'].pairwise_lv_fts.keywords['eps'] == 1e-08"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 260:
+  Guard 261:
     Name: "G['delta_r2']"
     Source: global
     Create Function: TYPE_MATCH
@@ -2414,15 +2422,15 @@ Out Guards:
     Code List: ["___check_type_id(G['delta_r2'], ...), type=<class 'torch.jit.torch.jit.ScriptFunction'>"]
     Object Weakref: <weakref at 0x...; to 'ScriptFunction' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'pybind11_type' at 0x... (ScriptFunction)>
-  Guard 261:
-    Name: "G['__builtins_dict___90']['getattr']"
+  Guard 262:
+    Name: "G['__builtins_dict___47']['getattr']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___90']['getattr'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['getattr'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 262:
+  Guard 263:
     Name: "G['delta_r2']._torchdynamo_inline"
     Source: global
     Create Function: CLOSURE_MATCH
@@ -2430,7 +2438,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 263:
+  Guard 264:
     Name: "G['delta_phi']"
     Source: global
     Create Function: TYPE_MATCH
@@ -2438,7 +2446,7 @@ Out Guards:
     Code List: ["___check_type_id(G['delta_phi'], ...), type=<class 'torch.jit.torch.jit.ScriptFunction'>"]
     Object Weakref: <weakref at 0x...; to 'ScriptFunction' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'pybind11_type' at 0x... (ScriptFunction)>
-  Guard 264:
+  Guard 265:
     Name: "G['delta_phi']._torchdynamo_inline"
     Source: global
     Create Function: CLOSURE_MATCH
@@ -2446,7 +2454,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 265:
+  Guard 266:
     Name: "G['math']"
     Source: global
     Create Function: MODULE_MATCH
@@ -2454,7 +2462,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['math'], ...), type=<class 'module'>"]
     Object Weakref: <weakref at 0x...; to 'module' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
-  Guard 266:
+  Guard 267:
     Name: "G['math'].pi"
     Source: global
     Create Function: CONSTANT_MATCH
@@ -2462,7 +2470,7 @@ Out Guards:
     Code List: ["G['math'].pi == 3.141592653589793"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 267:
+  Guard 268:
     Name: "G['torch'].minimum"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -2470,15 +2478,15 @@ Out Guards:
     Code List: ["___check_obj_id(G['torch'].minimum, ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 268:
-    Name: "G['__builtins_dict___90']['len']"
+  Guard 269:
+    Name: "G['__builtins_dict___47']['len']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___90']['len'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['len'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 269:
+  Guard 270:
     Name: "L['self']._modules['pair_embed']._parameters"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -2486,7 +2494,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 270:
+  Guard 271:
     Name: "L['self']._modules['pair_embed']._modules"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -2494,7 +2502,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 271:
+  Guard 272:
     Name: "L['self']._modules['pair_embed']._modules['embed']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -2502,7 +2510,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed'], ...), type=<class 'torch.nn.modules.container.Sequential'>"]
     Object Weakref: <weakref at 0x...; to 'Sequential' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Sequential)>
-  Guard 272:
+  Guard 273:
     Name: "L['self']._modules['pair_embed']._modules['embed']._backward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2510,7 +2518,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 273:
+  Guard 274:
     Name: "L['self']._modules['pair_embed']._modules['embed']._backward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2518,7 +2526,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 274:
+  Guard 275:
     Name: "L['self']._modules['pair_embed']._modules['embed']._forward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2526,7 +2534,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 275:
+  Guard 276:
     Name: "L['self']._modules['pair_embed']._modules['embed']._forward_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2534,7 +2542,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 276:
+  Guard 277:
     Name: "L['self']._modules['pair_embed']._modules['embed']._forward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2542,18 +2550,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 277:
+  Guard 278:
     Name: "L['self']._modules['pair_embed']._modules['embed']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 278:
-    Name: "L['self']._modules['pair_embed']._modules['embed']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -2583,6 +2583,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 282:
+    Name: "L['self']._modules['pair_embed']._modules['embed']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 283:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -2590,7 +2598,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 283:
+  Guard 284:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules"
     Source: local_unspecialized_nn_module
     Create Function: DICT_KEYS_MATCH
@@ -2598,7 +2606,7 @@ Out Guards:
     Code List: ["len(L['self']._modules['pair_embed']._modules['embed']._modules) == 13", "list(dict.keys(L['self']._modules['pair_embed']._modules['embed']._modules)) == ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 284:
+  Guard 285:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -2606,7 +2614,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['0'], ...), type=<class 'torch.nn.modules.batchnorm.BatchNorm1d'>"]
     Object Weakref: <weakref at 0x...; to 'BatchNorm1d' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BatchNorm1d)>
-  Guard 285:
+  Guard 286:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2614,7 +2622,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 286:
+  Guard 287:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2622,7 +2630,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 287:
+  Guard 288:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2630,7 +2638,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 288:
+  Guard 289:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2638,7 +2646,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 289:
+  Guard 290:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2646,18 +2654,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 290:
+  Guard 291:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 291:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -2679,6 +2679,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 294:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 295:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -2686,14 +2694,6 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['0'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 295:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0'].training"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['BOOL_MATCH']
-    Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['0'].training == False"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 296:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -2703,38 +2703,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 297:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 298:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._modules"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['0']._modules, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 299:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 300:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TENSOR_MATCH
-    Guard Types: ['TENSOR_MATCH']
-    Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean'], '_dynamo_static_indices') == False"]
-    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
-    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 301:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0'].training"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -2742,6 +2710,38 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['0'].training == False"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 298:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 299:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._modules"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['0']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 300:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 301:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_mean'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
   Guard 302:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -2751,6 +2751,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 303:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0'].training"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['0'].training == False"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 304:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_var']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -2758,7 +2766,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_var'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_var'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_var'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_var'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._buffers['running_var'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 304:
+  Guard 305:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -2766,7 +2774,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 305:
+  Guard 306:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -2774,7 +2782,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['0']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 306:
+  Guard 307:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -2782,7 +2790,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['0'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 307:
+  Guard 308:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['0'].eps"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -2790,7 +2798,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['0'].eps == 1e-05"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 308:
+  Guard 309:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -2798,7 +2806,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['1'], ...), type=<class 'torch.nn.modules.conv.Conv1d'>"]
     Object Weakref: <weakref at 0x...; to 'Conv1d' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Conv1d)>
-  Guard 309:
+  Guard 310:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2806,7 +2814,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 310:
+  Guard 311:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2814,7 +2822,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 311:
+  Guard 312:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2822,7 +2830,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 312:
+  Guard 313:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2830,7 +2838,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 313:
+  Guard 314:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -2838,18 +2846,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 314:
+  Guard 315:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 315:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -2871,6 +2871,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 318:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 319:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -2878,7 +2886,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 319:
+  Guard 320:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -2886,7 +2894,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 320:
+  Guard 321:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -2894,7 +2902,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['1']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 321:
+  Guard 322:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1'].padding_mode"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -2902,7 +2910,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['1'].padding_mode == 'zeros'"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
-  Guard 322:
+  Guard 323:
     Name: "G['__import_torch_dot_nn_dot_modules_dot_conv']"
     Source: global
     Create Function: MODULE_MATCH
@@ -2910,7 +2918,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_conv'], ...), type=<class 'module'>"]
     Object Weakref: <weakref at 0x...; to 'module' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
-  Guard 323:
+  Guard 324:
     Name: "G['__import_torch_dot_nn_dot_modules_dot_conv'].F"
     Source: global
     Create Function: DUPLICATE_INPUT
@@ -2918,7 +2926,7 @@ Out Guards:
     Code List: ["G['__import_torch_dot_nn_dot_modules_dot_batchnorm'].F is G['__import_torch_dot_nn_dot_modules_dot_conv'].F"]
     Object Weakref: <weakref at 0x...; to 'module' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
-  Guard 324:
+  Guard 325:
     Name: "G['__import_torch_dot_nn_dot_modules_dot_batchnorm'].F.conv1d"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -2926,7 +2934,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_batchnorm'].F.conv1d, ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 325:
+  Guard 326:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1'].stride"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -2934,7 +2942,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['1'].stride, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['1'].stride) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 326:
+  Guard 327:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1'].stride"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -2942,7 +2950,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['1'].stride == (1,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 327:
+  Guard 328:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1'].padding"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -2950,7 +2958,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['1'].padding, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['1'].padding) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 328:
+  Guard 329:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1'].padding"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -2958,7 +2966,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['1'].padding == (0,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 329:
+  Guard 330:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1'].dilation"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -2966,7 +2974,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['1'].dilation, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['1'].dilation) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 330:
+  Guard 331:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1'].dilation"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -2974,7 +2982,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['1'].dilation == (1,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 331:
+  Guard 332:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1'].groups"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EQUALS_MATCH
@@ -2982,7 +2990,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['1'].groups == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 332:
+  Guard 333:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['1'].groups"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -2990,7 +2998,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['1'].groups == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 333:
+  Guard 334:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -2998,7 +3006,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['2'], ...), type=<class 'torch.nn.modules.batchnorm.BatchNorm1d'>"]
     Object Weakref: <weakref at 0x...; to 'BatchNorm1d' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BatchNorm1d)>
-  Guard 334:
+  Guard 335:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3006,7 +3014,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 335:
+  Guard 336:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3014,7 +3022,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 336:
+  Guard 337:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3022,7 +3030,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 337:
+  Guard 338:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3030,7 +3038,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 338:
+  Guard 339:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3038,18 +3046,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 339:
+  Guard 340:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 340:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -3071,6 +3071,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 343:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 344:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3078,14 +3086,6 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['2'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 344:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2'].training"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['BOOL_MATCH']
-    Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['2'].training == False"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 345:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -3095,38 +3095,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 346:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 347:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._modules"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['2']._modules, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 348:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 349:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TENSOR_MATCH
-    Guard Types: ['TENSOR_MATCH']
-    Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean'], '_dynamo_static_indices') == False"]
-    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
-    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 350:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2'].training"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3134,6 +3102,38 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['2'].training == False"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 347:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 348:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._modules"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['2']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 349:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 350:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_mean'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
   Guard 351:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -3143,6 +3143,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 352:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2'].training"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['2'].training == False"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 353:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_var']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -3150,7 +3158,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_var'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_var'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_var'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_var'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._buffers['running_var'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 353:
+  Guard 354:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -3158,7 +3166,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 354:
+  Guard 355:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -3166,7 +3174,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['2']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 355:
+  Guard 356:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3174,7 +3182,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['2'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 356:
+  Guard 357:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['2'].eps"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3182,7 +3190,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['2'].eps == 1e-05"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 357:
+  Guard 358:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['3']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -3190,7 +3198,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['3'], ...), type=<class 'torch.nn.modules.activation.GELU'>"]
     Object Weakref: <weakref at 0x...; to 'GELU' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (GELU)>
-  Guard 358:
+  Guard 359:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['3']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3198,7 +3206,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 359:
+  Guard 360:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['3']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3206,7 +3214,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 360:
+  Guard 361:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['3']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3214,7 +3222,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 361:
+  Guard 362:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['3']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3222,7 +3230,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 362:
+  Guard 363:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['3']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3230,18 +3238,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 363:
+  Guard 364:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['3']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 364:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['3']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -3255,6 +3255,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 366:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['3']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 367:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['3'].approximate"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3262,7 +3270,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['3'].approximate == 'none'"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
-  Guard 367:
+  Guard 368:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -3270,7 +3278,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['4'], ...), type=<class 'torch.nn.modules.conv.Conv1d'>"]
     Object Weakref: <weakref at 0x...; to 'Conv1d' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Conv1d)>
-  Guard 368:
+  Guard 369:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3278,7 +3286,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 369:
+  Guard 370:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3286,7 +3294,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 370:
+  Guard 371:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3294,7 +3302,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 371:
+  Guard 372:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3302,7 +3310,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 372:
+  Guard 373:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3310,18 +3318,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 373:
+  Guard 374:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 374:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -3343,6 +3343,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 377:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 378:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -3350,7 +3358,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 378:
+  Guard 379:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -3358,7 +3366,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 379:
+  Guard 380:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -3366,7 +3374,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['4']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 380:
+  Guard 381:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4'].padding_mode"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3374,7 +3382,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['4'].padding_mode == 'zeros'"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
-  Guard 381:
+  Guard 382:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4'].stride"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -3382,7 +3390,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['4'].stride, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['4'].stride) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 382:
+  Guard 383:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4'].stride"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3390,7 +3398,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['4'].stride == (1,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 383:
+  Guard 384:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4'].padding"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -3398,7 +3406,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['4'].padding, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['4'].padding) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 384:
+  Guard 385:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4'].padding"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3406,7 +3414,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['4'].padding == (0,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 385:
+  Guard 386:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4'].dilation"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -3414,7 +3422,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['4'].dilation, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['4'].dilation) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 386:
+  Guard 387:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4'].dilation"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3422,7 +3430,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['4'].dilation == (1,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 387:
+  Guard 388:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4'].groups"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EQUALS_MATCH
@@ -3430,7 +3438,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['4'].groups == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 388:
+  Guard 389:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['4'].groups"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3438,7 +3446,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['4'].groups == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 389:
+  Guard 390:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -3446,7 +3454,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['5'], ...), type=<class 'torch.nn.modules.batchnorm.BatchNorm1d'>"]
     Object Weakref: <weakref at 0x...; to 'BatchNorm1d' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BatchNorm1d)>
-  Guard 390:
+  Guard 391:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3454,7 +3462,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 391:
+  Guard 392:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3462,7 +3470,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 392:
+  Guard 393:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3470,7 +3478,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 393:
+  Guard 394:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3478,7 +3486,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 394:
+  Guard 395:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3486,18 +3494,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 395:
+  Guard 396:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 396:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -3519,6 +3519,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 399:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 400:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3526,14 +3534,6 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['5'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 400:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5'].training"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['BOOL_MATCH']
-    Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['5'].training == False"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 401:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -3543,38 +3543,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 402:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 403:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._modules"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['5']._modules, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 404:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 405:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TENSOR_MATCH
-    Guard Types: ['TENSOR_MATCH']
-    Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean'], '_dynamo_static_indices') == False"]
-    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
-    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 406:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5'].training"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3582,6 +3550,38 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['5'].training == False"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 403:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 404:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._modules"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['5']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 405:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 406:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_mean'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
   Guard 407:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -3591,6 +3591,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 408:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5'].training"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['5'].training == False"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 409:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_var']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -3598,7 +3606,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_var'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_var'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_var'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_var'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._buffers['running_var'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 409:
+  Guard 410:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -3606,7 +3614,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 410:
+  Guard 411:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -3614,7 +3622,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['5']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 411:
+  Guard 412:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3622,7 +3630,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['5'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 412:
+  Guard 413:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['5'].eps"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3630,7 +3638,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['5'].eps == 1e-05"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 413:
+  Guard 414:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['6']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -3638,7 +3646,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['6'], ...), type=<class 'torch.nn.modules.activation.GELU'>"]
     Object Weakref: <weakref at 0x...; to 'GELU' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (GELU)>
-  Guard 414:
+  Guard 415:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['6']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3646,7 +3654,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 415:
+  Guard 416:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['6']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3654,7 +3662,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 416:
+  Guard 417:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['6']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3662,7 +3670,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 417:
+  Guard 418:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['6']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3670,7 +3678,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 418:
+  Guard 419:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['6']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3678,18 +3686,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 419:
+  Guard 420:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['6']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 420:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['6']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -3703,6 +3703,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 422:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['6']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 423:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['6'].approximate"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3710,7 +3718,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['6'].approximate == 'none'"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
-  Guard 423:
+  Guard 424:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -3718,7 +3726,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['7'], ...), type=<class 'torch.nn.modules.conv.Conv1d'>"]
     Object Weakref: <weakref at 0x...; to 'Conv1d' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Conv1d)>
-  Guard 424:
+  Guard 425:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3726,7 +3734,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 425:
+  Guard 426:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3734,7 +3742,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 426:
+  Guard 427:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3742,7 +3750,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 427:
+  Guard 428:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3750,7 +3758,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 428:
+  Guard 429:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3758,18 +3766,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 429:
+  Guard 430:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 430:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -3791,6 +3791,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 433:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 434:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -3798,7 +3806,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 434:
+  Guard 435:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -3806,7 +3814,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 435:
+  Guard 436:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -3814,7 +3822,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['7']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 436:
+  Guard 437:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7'].padding_mode"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3822,7 +3830,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['7'].padding_mode == 'zeros'"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
-  Guard 437:
+  Guard 438:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7'].stride"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -3830,7 +3838,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['7'].stride, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['7'].stride) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 438:
+  Guard 439:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7'].stride"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3838,7 +3846,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['7'].stride == (1,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 439:
+  Guard 440:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7'].padding"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -3846,7 +3854,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['7'].padding, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['7'].padding) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 440:
+  Guard 441:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7'].padding"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3854,7 +3862,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['7'].padding == (0,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 441:
+  Guard 442:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7'].dilation"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -3862,7 +3870,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['7'].dilation, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['7'].dilation) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 442:
+  Guard 443:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7'].dilation"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3870,7 +3878,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['7'].dilation == (1,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 443:
+  Guard 444:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7'].groups"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EQUALS_MATCH
@@ -3878,7 +3886,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['7'].groups == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 444:
+  Guard 445:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['7'].groups"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3886,7 +3894,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['7'].groups == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 445:
+  Guard 446:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -3894,7 +3902,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['8'], ...), type=<class 'torch.nn.modules.batchnorm.BatchNorm1d'>"]
     Object Weakref: <weakref at 0x...; to 'BatchNorm1d' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BatchNorm1d)>
-  Guard 446:
+  Guard 447:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3902,7 +3910,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 447:
+  Guard 448:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3910,7 +3918,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 448:
+  Guard 449:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3918,7 +3926,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 449:
+  Guard 450:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3926,7 +3934,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 450:
+  Guard 451:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3934,18 +3942,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 451:
+  Guard 452:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 452:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -3967,6 +3967,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 455:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 456:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -3974,14 +3982,6 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['8'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 456:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8'].training"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['BOOL_MATCH']
-    Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['8'].training == False"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 457:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -3991,38 +3991,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 458:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 459:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._modules"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['8']._modules, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 460:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 461:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TENSOR_MATCH
-    Guard Types: ['TENSOR_MATCH']
-    Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean'], '_dynamo_static_indices') == False"]
-    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
-    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 462:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8'].training"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4030,6 +3998,38 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['8'].training == False"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 459:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 460:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._modules"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['8']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 461:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 462:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_mean'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
   Guard 463:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -4039,6 +4039,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 464:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8'].training"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['8'].training == False"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 465:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_var']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -4046,7 +4054,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_var'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_var'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_var'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_var'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._buffers['running_var'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 465:
+  Guard 466:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -4054,7 +4062,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 466:
+  Guard 467:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -4062,7 +4070,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['8']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 467:
+  Guard 468:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4070,7 +4078,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['8'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 468:
+  Guard 469:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['8'].eps"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4078,7 +4086,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['8'].eps == 1e-05"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 469:
+  Guard 470:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['9']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -4086,7 +4094,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['9'], ...), type=<class 'torch.nn.modules.activation.GELU'>"]
     Object Weakref: <weakref at 0x...; to 'GELU' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (GELU)>
-  Guard 470:
+  Guard 471:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['9']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4094,7 +4102,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 471:
+  Guard 472:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['9']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4102,7 +4110,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 472:
+  Guard 473:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['9']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4110,7 +4118,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 473:
+  Guard 474:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['9']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4118,7 +4126,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 474:
+  Guard 475:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['9']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4126,18 +4134,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 475:
+  Guard 476:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['9']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 476:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['9']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -4151,6 +4151,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 478:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['9']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 479:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['9'].approximate"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4158,7 +4166,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['9'].approximate == 'none'"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
-  Guard 479:
+  Guard 480:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -4166,7 +4174,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['10'], ...), type=<class 'torch.nn.modules.conv.Conv1d'>"]
     Object Weakref: <weakref at 0x...; to 'Conv1d' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Conv1d)>
-  Guard 480:
+  Guard 481:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4174,7 +4182,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 481:
+  Guard 482:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4182,7 +4190,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 482:
+  Guard 483:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4190,7 +4198,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 483:
+  Guard 484:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4198,7 +4206,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 484:
+  Guard 485:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4206,18 +4214,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 485:
+  Guard 486:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 486:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -4239,6 +4239,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 489:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 490:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -4246,7 +4254,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 490:
+  Guard 491:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -4254,7 +4262,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 491:
+  Guard 492:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -4262,7 +4270,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['10']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 492:
+  Guard 493:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10'].padding_mode"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4270,7 +4278,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['10'].padding_mode == 'zeros'"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
-  Guard 493:
+  Guard 494:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10'].stride"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -4278,7 +4286,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['10'].stride, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['10'].stride) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 494:
+  Guard 495:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10'].stride"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4286,7 +4294,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['10'].stride == (1,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 495:
+  Guard 496:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10'].padding"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -4294,7 +4302,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['10'].padding, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['10'].padding) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 496:
+  Guard 497:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10'].padding"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4302,7 +4310,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['10'].padding == (0,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 497:
+  Guard 498:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10'].dilation"
     Source: local_unspecialized_builtin_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -4310,7 +4318,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['10'].dilation, ...), type=<class 'tuple'>", "len(L['self']._modules['pair_embed']._modules['embed']._modules['10'].dilation) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 498:
+  Guard 499:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10'].dilation"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4318,7 +4326,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['10'].dilation == (1,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 499:
+  Guard 500:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10'].groups"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EQUALS_MATCH
@@ -4326,7 +4334,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['10'].groups == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 500:
+  Guard 501:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['10'].groups"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4334,7 +4342,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['10'].groups == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 501:
+  Guard 502:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -4342,7 +4350,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['11'], ...), type=<class 'torch.nn.modules.batchnorm.BatchNorm1d'>"]
     Object Weakref: <weakref at 0x...; to 'BatchNorm1d' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BatchNorm1d)>
-  Guard 502:
+  Guard 503:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4350,7 +4358,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 503:
+  Guard 504:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4358,7 +4366,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 504:
+  Guard 505:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4366,7 +4374,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 505:
+  Guard 506:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4374,7 +4382,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 506:
+  Guard 507:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4382,18 +4390,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 507:
+  Guard 508:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 508:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -4415,6 +4415,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 511:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 512:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4422,14 +4430,6 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['11'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 512:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11'].training"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['BOOL_MATCH']
-    Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['11'].training == False"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 513:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -4439,38 +4439,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 514:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 515:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._modules"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['11']._modules, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 516:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 517:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: TENSOR_MATCH
-    Guard Types: ['TENSOR_MATCH']
-    Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean'], '_dynamo_static_indices') == False"]
-    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
-    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 518:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11'].training"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4478,6 +4446,38 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['11'].training == False"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 515:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 516:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._modules"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['11']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 517:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 518:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_mean'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
   Guard 519:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -4487,6 +4487,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 520:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11'].training"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['11'].training == False"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 521:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_var']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -4494,7 +4502,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_var'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_var'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_var'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_var'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._buffers['running_var'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 521:
+  Guard 522:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -4502,7 +4510,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 522:
+  Guard 523:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -4510,7 +4518,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['pair_embed']._modules['embed']._modules['11']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 523:
+  Guard 524:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4518,7 +4526,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['11'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 524:
+  Guard 525:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['11'].eps"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4526,7 +4534,7 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['11'].eps == 1e-05"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 525:
+  Guard 526:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['12']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -4534,7 +4542,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['pair_embed']._modules['embed']._modules['12'], ...), type=<class 'torch.nn.modules.activation.GELU'>"]
     Object Weakref: <weakref at 0x...; to 'GELU' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (GELU)>
-  Guard 526:
+  Guard 527:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['12']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4542,7 +4550,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 527:
+  Guard 528:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['12']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4550,7 +4558,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 528:
+  Guard 529:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['12']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4558,7 +4566,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 529:
+  Guard 530:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['12']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4566,7 +4574,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 530:
+  Guard 531:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['12']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4574,18 +4582,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 531:
+  Guard 532:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['12']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 532:
-    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['12']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -4599,6 +4599,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 534:
+    Name: "L['self']._modules['pair_embed']._modules['embed']._modules['12']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 535:
     Name: "L['self']._modules['pair_embed']._modules['embed']._modules['12'].approximate"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4606,14 +4614,6 @@ Out Guards:
     Code List: ["L['self']._modules['pair_embed']._modules['embed']._modules['12'].approximate == 'none'"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
-  Guard 535:
-    Name: "L['uu']"
-    Source: local
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['NONE_MATCH']
-    Code List: ["L['uu'] is None"]
-    Object Weakref: None
-    Guarded Class Weakref: None
   Guard 536:
     Name: "L['self']._modules['pair_embed'].out_dim"
     Source: local_unspecialized_nn_module
@@ -5031,11 +5031,11 @@ Out Guards:
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 588:
-    Name: "G['__builtins_dict___90']['float']"
+    Name: "G['__builtins_dict___47']['float']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___90']['float'], ...), type=<class 'float'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['float'], ...), type=<class 'float'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 589:
@@ -5343,11 +5343,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (list)>
   Guard 627:
-    Name: "G['__builtins_dict___90']['any']"
+    Name: "G['__builtins_dict___47']['any']"
     Source: global
     Create Function: ID_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___90']['any'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['any'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 628:

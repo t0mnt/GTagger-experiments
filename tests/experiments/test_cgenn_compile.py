@@ -258,17 +258,11 @@ def test_breaks_and_recomp(impl):
     exp2.model.net = torch.compile(exp2.model.net, dynamic=True)
     ptr = ref["batch"]["ptr"]
     for keep in [[1, 3, 20, 40], [2, 5, 30, 25], [4, 4, 4, 4]]:
-        d = _rebuild(ref["batch"])
         rows = []
-        base = 0
         for j, n in enumerate(keep):
             n = min(n, int(ptr[j + 1] - ptr[j]))
             rows.extend(range(int(ptr[j]), int(ptr[j]) + n))
         idx = torch.tensor(rows, dtype=torch.long)
-        for key in list(d.keys()):
-            v = d[key]
-            if torch.is_tensor(v) and v.dim() >= 1 and v.shape[0] == d.x.shape[0] and key != "x":
-                pass
         d2 = _rebuild(ref["batch"])
         for key in ("x", "scalars", "batch"):
             d2[key] = d2[key].index_select(0, idx)

@@ -675,13 +675,17 @@ class ParTWrapper(TaggerWrapper):
         if getattr(self, "_compiled", False) or hasattr(self.net, "_orig_mod"):
             # dynamic=True alone never promotes the padded seq dim here: each new batch
             # max-length compiles one more static graph (RECOMP gate found [1,2,3]).
-            # mark_dynamic is the supported per-tensor hint; the marked net compiles ONE
-            # seqlen-dynamic graph (verified via the ConstraintViolation probe) at no cost
+            # maybe_mark_dynamic is the SOFT per-tensor hint: on the shipped
+            # identity-frames path nothing specializes, so the net compiles ONE
+            # seqlen-dynamic graph (RECOMP [1,1,1]); under a LEARNED framesnet the
+            # lloca transport pins the seq dim to a constant, and the hard
+            # mark_dynamic turned that into a ConstraintViolationError (final audit
+            # finding) -- the soft hint degrades to per-shape specialization instead
             for _t in (features_local, fourmomenta_local, mask):
-                torch._dynamo.mark_dynamic(_t, 2)
+                torch._dynamo.maybe_mark_dynamic(_t, 2)
             # the Frames object carries three tensors; an unmarked one re-pins the graph
             for _t in (frames.matrices, frames.det, frames.inv):
-                torch._dynamo.mark_dynamic(_t, 1)
+                torch._dynamo.maybe_mark_dynamic(_t, 1)
         score = self.net(
             x=features_local,
             frames=frames,

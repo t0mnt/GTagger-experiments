@@ -1,6 +1,10 @@
 # CGENN torch.compile support — workflow
 
-**Status: PLANNED — no work done. Companion to `docs/lgatr2-migration.md` (same record→change→prove discipline), scoped to the regular CGENN baseline.**
+**Status: EXECUTED — Stages 1–4 complete, all CPU gates green (see the dated log
+entries from "Stage-1 execution" onward; β-PERF + Gates G/H remain cluster-side).
+Companion to `docs/lgatr2-migration.md` (same record→change→prove discipline). The
+planning sections below are kept verbatim as the decision record; where execution
+superseded a plan-era sentence, the log entry is authoritative.**
 
 - **Independent of the lgatr migration** and can run before, after, or in parallel with it: the `experiments/baselines/cgenn/` package imports no lgatr (verified); `CGENNWrapper`'s only lgatr symbol is `embed_vector` (interface-stable across 1.4.4/2.0.0) and the wrapper stays eager anyway.
 - Scope: **Stage 1 = the baseline** (`experiments/baselines/cgenn/` + a `compile` knob on `CGENNWrapper`/`tag_cgenn.yaml`). Stage 2 (optional) = `tag_lorentznet` by the identical recipe. **Not here:** the hybrids' CGENN branch (whole-block compile couples to lgatr 2.0's compiled attention — post-migration task; note both hybrids share ONE stack via `CGENNLGATrGraphTransHybrid.py`, import-verified), the sparse-GP rewrite (changes numerics at tolerance level → its own workflow; **the profiling now justifies it — see the note below**), and the non-equivariant family (out of scope for THIS task per the migration runbook §8 — deferred, not rejected: no forcing event, fused-kernel profiles, uniform-or-disclosed walltime rule).
@@ -22,6 +26,10 @@ decision:
    data-dependent control flow that forced the §2 rewrites. Upstream weaver already ships
    compile support for ParT and ParticleNet, so the work there is mostly `dynamic=True` and
    confirming the RECOMP gate, not rewriting ops.
+   *(Superseded by execution: the LorentzNet-slim pair landed with the 2026-08-07 entry, and
+   the executed Stage 4 became the full non-equivariant family of eight — ParT, ParticleNet,
+   transformer, Plain pair, PN-ParT pair, with MIParT descoped by operator decision. "Mostly
+   dynamic=True" also proved optimistic: see the Stage-4 log entry's twin surgery.)*
 
 The same `dynamic=True` requirement applies at every stage and for the same reason (§2): `N`
 and `E` vary per batch. The uniform-or-disclosed walltime rule from the migration runbook §8
@@ -241,7 +249,7 @@ The premise "forward results are bit-identical, unlike lgatr 2.0" is right in th
 | BREAKS | `torch._dynamo.explain` over the net | 0 graph breaks; the explain report is committed next to the fixtures |
 | RECOMP | forward sweep over (B, P) ∈ {(2,17),(4,64),(8,128),(3,200)} with `dynamic=True` | ≤ 2 compilations total (first + one dynamic re-trace), not per-shape |
 | SUITE | full existing test suite (knob off) + one compiled CPU smoke test | 64/64 + smoke green |
-| β-PERF | cluster: it/s eager vs compiled (quick config + full-size batch), fp32/bf16-off | numbers published in this doc's log whatever they say — compile is only worth shipping if this table says so |
+| β-PERF | cluster: it/s eager vs compiled (quick config + full-size batch), fp32/bf16-off | numbers published in this doc's log whatever they say — compile is only worth shipping if this table says so *(superseded: the operator adopted compiled-dynamic defaults ahead of β-PERF, matching lgatr 2.0 / tagging-guide practice; the matrix now confirms-or-flips one-line knobs — see the posture-flip entry)* |
 
 Fixtures are trivial compared to the lgatr migration: eager outputs on a fixed seeded batch (fp32+fp64) + sha256, recorded **at current HEAD before any edit** — no state_dict, no transplant, no env swap; the whole Stage 1 fits in one session.
 
@@ -282,6 +290,7 @@ says. If compiled training is adopted for the campaign, add the walltime-disclos
 ```
 
 **Operator gate β→adopt**: adopt `compile: true` for the campaign only if β-PERF shows a real win at the training batch size; either way the numbers stay in the log, and the time-column disclosure rule applies if adoption is non-uniform across model families.
+*(Superseded by the posture-flip entry: adoption came first, operator-directed, upstream-matching; β-PERF remains the confirm-or-flip input.)*
 
 ## 5. Extensions and non-goals
 
@@ -527,7 +536,7 @@ weighted form deliberately does not need).
 **Stage 4 — the non-equivariant family (2026-08-08, operator-directed; MIParT
 descoped).** Fixtures-first for all eight padded-dense models
 (`tests/fixtures/nonequi_compile/`, BIT `torch.equal` fp32+fp64 + content hashes; the
-recording itself caught a real pre-existing bug: `config_quick/tag_particlenet.yaml`
+recording itself caught a real pre-existing bug: `config_quick/model/tag_particlenet.yaml`
 targeted the library ParticleNet, which has no `v` kwarg). Gate results, per model:
 
 - **tag_ParT (the in-repo lloca port)** needed the deepest surgery, every step
@@ -584,11 +593,19 @@ documented-splits comment (knob ready, flip on β-PERF numbers); `config_quick` 
 eager everywhere.
 
 *Honest caveat carried by both all-pairs twins (ParT + PNT PairEmbed), eval-exact,
-training-statistical*: in training mode the embed's BatchNorm computes batch statistics
-over the all-pairs multiset (each unordered pair twice + the self-pair diagonal) instead
-of the tril multiset. Exact duplication is stats-neutral (same mean, same biased
-variance); the self-pair diagonal is the real delta — an O(1/seq_len) contribution of
-`fts(a,a)` rows (finite: `lndelta = ln(eps)`), absent from eager-tril training. Compiled
+training-statistical* (corrected in the final audit — the first writing misstated both
+mechanisms): in training mode the embed's BatchNorm computes batch statistics over the
+full `seq_len²` grid instead of the eager multiset, and the delta differs per family.
+(i) **PNT hybrids** (eager = tril over all tokens incl. padding, `remove_self_pair:
+false` shipped): the grid counts every off-diagonal pair twice but the diagonal once, so
+vs the stats-neutral exact doubling the diagonal's relative weight HALVES — an
+O(1/seq_len) perturbation of `fts(a,a)` rows (finite: `lndelta = ln(eps)`); the diagonal
+itself is in both multisets. (ii) **ParT** (eager reference = the sparse gather in BOTH
+train and eval — `sparse_eval` has no training check — which feeds BN real pairs only):
+the compiled twin's grid additionally contains all PADDED pairs, a contribution that
+scales with the padding fraction (44–50% of slots at batch level pre-trim, §sparse-jet;
+smaller once the SequenceTrimmer engages after warm-up), not with 1/seq_len. Eval is
+exact in both families (running stats, elementwise; TOL-gated ≤ 9.0e-16). Compiled
 training is therefore self-consistent but not statistics-identical to eager training —
 same disclosure class as compile's own fusion-order reassociation, recorded here for the
 methods section.
@@ -605,7 +622,7 @@ everywhere, zero-padded or not — our knobs match):
 | tag_cgenn × {eager, compiled} × {einsum, matmul, sparse} | `model.compile={false,true}` `model.net.gp_impl=...` (6 runs) |
 | tag_lorentznet × {eager, compiled} | `model.compile={false,true}` (2) |
 | tag_slim compiled (shipping default) vs eager | `model.net.compile={true,false}` (2) |
-| tag_lgatr × {eager, compiled} | `+model.net.compile={false,true}` (+`compile_kwargs.dynamic=true`) (2) |
+| tag_lgatr × {eager, compiled} | `model.net.compile={false,true}` (the production yaml carries the key since the posture flip — no `+` prefix; on config_quick, where the key is absent, use `+model.net.compile=...` +`compile_kwargs.dynamic=true`) (2) |
 | CGENNLGATrGraphTrans / GPS × {eager, compiled} (gp_impl stays sparse) | `model.compile={false,true}` (4) |
 | tag_ParT / tag_particlenet / tag_transformer / tag_PlainGraphTrans / PNParTGraphTrans × {eager, compiled} | `model.compile={false,true}` (10) |
 | tag_PlainGraphGPS / PNParTGraphGPS × {eager, compiled-with-splits} | `model.compile={false,true}` (4) — decides whether the documented masked-BN splits still net a win; ships false until they do |

@@ -13,16 +13,16 @@ Fixtures (recorded at pre-gate HEAD, record-before-edit discipline):
 Gates mirror the strict Stage-1 bars: BIT (torch.equal fp32+fp64), content hashes, and
 env-gated (CGENN_COMPILE_GATES=1) TOL/DET/BREAKS (0 on a cold build, except the
 documented data-dependent class below)/RECOMP (no growth across a production-regime
-sweep; every sweep shape keeps max padded length above the quick kNN k = 4).
+sweep; every sweep shape keeps max padded length above every quick-tree kNN k, max 7).
 
 Documented break class (the only non-zero bar): the GraphGPS pair's masked BatchNorm
 normalizes over the REAL nodes only (``out[mask_bool] = norm(h[mask_bool])``,
 plaingraphgps.MaskedNorm; 'batch' is the GraphGPS-official norm). Boolean advanced
 indexing lowers to aten.nonzero, whose OUTPUT SHAPE depends on tensor data — a
-data-dependent-by-design break, same class as ParticleNet-hybrid kNN edge gathers in
-Stage 3, not a fixable tracing artifact. The bar pins the exact break-event count and
-requires every break reason to be that class, so any new break of any other kind still
-fails the gate.
+data-dependent-by-design break, same class as the Stage-3 CGENN-hybrid kNN edge builds
+(hoisted eager there; normalized-by-design here), not a fixable tracing artifact. The
+bar pins the exact break-event count and requires every break reason to be that class,
+so any new break of any other kind still fails the gate.
 """
 
 import json
@@ -201,6 +201,10 @@ def test_breaks_and_recomp(model):
     report = re.sub(r"^([\w.]+), \d+\.\d+$", r"\1, ...", report, flags=re.M)
     (FIX / f"dynamo_explain_{model}.txt").write_text(report)
     print(f"GATE-BREAKS[{model}] graph_break_count =", explanation.graph_break_count)
+    # anti-vacuous: something must actually have been traced -- a silently disabled
+    # dynamo (TORCHDYNAMO_DISABLE=1 or a fallback-suppressing regression) would
+    # otherwise pass every 0-bar below with zero graphs
+    assert explanation.graph_count >= 1, f"BREAKS[{model}]: dynamo traced nothing"
     bar = BREAK_BARS.get(model, 0)
     assert explanation.graph_break_count == bar, (
         f"BREAKS[{model}]: {explanation.graph_break_count} != pinned {bar}\n{report[:2000]}")
@@ -237,6 +241,9 @@ def test_breaks_and_recomp(model):
     print(f"GATE-RECOMP[{model}] unique_graphs per sweep shape = {graph_counts}")
     # strict for every model, including the documented-break pair: their nonzero-split
     # subgraphs take the real-node count as an unbacked dynamic dim from the first
-    # build (measured [10,10,10] / [8,8,8]), so shape sweeps must not grow any of them
+    # build (measured [10,10,10] / [8,8,8]), so shape sweeps must not grow any of them.
+    # graph_counts[0] >= 1 is the anti-vacuous half: a no-op dynamo compiles nothing
+    # and would trivially satisfy the equality.
+    assert graph_counts[0] >= 1, f"RECOMP[{model}]: nothing compiled ({graph_counts})"
     assert graph_counts[2] == graph_counts[0], (
         f"RECOMP[{model}]: re-specializing per shape ({graph_counts})")

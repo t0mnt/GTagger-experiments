@@ -257,11 +257,17 @@ class SequenceTrimmer(nn.Module):
         self._warmed = False
 
     def tick(self):
-        """Advance the warmup counter; call once per training forward, outside compile."""
+        """Advance the warmup counter; call once per forward, outside compile.
+
+        Mirrors the upstream in-forward branch exactly (increment OR start trimming):
+        with warmup_steps=5 the first five forwards stay untrimmed and the sixth is the
+        first trimmed one -- _warmed flips on the (warmup_steps+1)-th tick, not the
+        warmup_steps-th (that off-by-one was caught in the final audit)."""
         if self.enabled and not self._warmed:
-            self._counter_int += 1
-            self._counter.add_(1)
-            if self._counter_int >= self.warmup_steps:
+            if self._counter_int < self.warmup_steps:
+                self._counter_int += 1
+                self._counter.add_(1)
+            else:
                 self._warmed = True
 
     def forward(self, x, v=None, mask=None, uu=None, extra=None):
@@ -282,42 +288,54 @@ class SequenceTrimmer(nn.Module):
                 # the counter in-graph recompiles every warmup step
                 pass
             else:
-                if v is not None:
-                    if not isinstance(v, (list, tuple)):
-                        v = [v]
-                if self.training:
-                    q = min(1, random.uniform(*self.target))
-                    maxlen = torch.quantile(mask.float().sum(dim=-1), q).long()
-                    rand = torch.rand_like(mask.float())
-                    rand.masked_fill_(~mask, -1)
-                    perm = rand.argsort(dim=-1, descending=True)  # (N, 1, P)
-                    mask = torch.gather(mask, -1, perm)
-                    x = torch.gather(x, -1, perm.expand_as(x))
-                    if extra is not None:
-                        with torch.enable_grad():
-                            extra = torch.gather(extra, -1, perm.expand_as(extra))
-                    if v is not None:
-                        v = [torch.gather(_v, -1, perm.expand_as(_v)) for _v in v]
-                    if uu is not None:
-                        uu = torch.gather(uu, -2, perm.unsqueeze(-1).expand_as(uu))
-                        uu = torch.gather(uu, -1, perm.unsqueeze(-2).expand_as(uu))
-                else:
-                    maxlen = mask.sum(dim=-1).max()
-                maxlen = max(maxlen, 1)
-                if maxlen < mask.size(-1):
-                    mask = mask[:, :, :maxlen]
-                    x = x[:, :, :maxlen]
-                    if extra is not None:
-                        with torch.enable_grad():
-                            extra = extra[:, :, :maxlen]
-                    if v is not None:
-                        v = [_v[:, :, :maxlen] for _v in v]
-                    if uu is not None:
-                        uu = uu[:, :, :maxlen, :maxlen]
-                if v is not None:
-                    if len(v) == 1:
-                        v = v[0]
+                x, v, mask, uu, extra = self._trim(x, v, mask, uu, extra)
 
+        return x, v, mask, uu, extra
+
+    @torch.compiler.disable
+    def _trim(self, x, v, mask, uu, extra):
+        """The post-warm-up trim, eager by design (same hoist-eager pattern as the
+        CGENN-hybrid edge build): random.uniform + torch.quantile + tensor-valued
+        branching + data-dependent slice lengths would otherwise re-specialize the
+        compiled graph every training step (maxlen is re-randomized per batch). The
+        gates trace the un-warmed net, so this regime is disabled explicitly rather
+        than left to per-step recompile churn (final audit finding). Body is verbatim
+        upstream (+ the ``extra`` rider)."""
+        if v is not None:
+            if not isinstance(v, (list, tuple)):
+                v = [v]
+        if self.training:
+            q = min(1, random.uniform(*self.target))
+            maxlen = torch.quantile(mask.float().sum(dim=-1), q).long()
+            rand = torch.rand_like(mask.float())
+            rand.masked_fill_(~mask, -1)
+            perm = rand.argsort(dim=-1, descending=True)  # (N, 1, P)
+            mask = torch.gather(mask, -1, perm)
+            x = torch.gather(x, -1, perm.expand_as(x))
+            if extra is not None:
+                with torch.enable_grad():
+                    extra = torch.gather(extra, -1, perm.expand_as(extra))
+            if v is not None:
+                v = [torch.gather(_v, -1, perm.expand_as(_v)) for _v in v]
+            if uu is not None:
+                uu = torch.gather(uu, -2, perm.unsqueeze(-1).expand_as(uu))
+                uu = torch.gather(uu, -1, perm.unsqueeze(-2).expand_as(uu))
+        else:
+            maxlen = mask.sum(dim=-1).max()
+        maxlen = max(maxlen, 1)
+        if maxlen < mask.size(-1):
+            mask = mask[:, :, :maxlen]
+            x = x[:, :, :maxlen]
+            if extra is not None:
+                with torch.enable_grad():
+                    extra = extra[:, :, :maxlen]
+            if v is not None:
+                v = [_v[:, :, :maxlen] for _v in v]
+            if uu is not None:
+                uu = uu[:, :, :maxlen, :maxlen]
+        if v is not None:
+            if len(v) == 1:
+                v = v[0]
         return x, v, mask, uu, extra
 
 
@@ -450,9 +468,14 @@ class PairEmbed(nn.Module):
             # features are symmetric in (i, j) and the embed is pointwise per pair, so
             # the full-grid build produces the same values (GEMM rows are independent);
             # the eager default (sparse path) and the onnx/dense-eager path are untouched.
-            # no torch.no_grad() here: grad-mode transitions split the compiled graph
-            # (empty-reason breaks), and it is a semantic no-op -- the momenta are data
-            # leaves without grad, so the features are grad-free either way
+            # detach() instead of torch.no_grad(): a grad-mode transition splits the
+            # compiled graph (empty-reason breaks), while detach traces clean and is the
+            # exact gradient twin of eager's no_grad -- REQUIRED, not cosmetic: under a
+            # LEARNED framesnet the local momenta carry grad, and backward through the
+            # raw sqrt at delta==0 self-pairs is 0*inf=NaN into the framesnet (final
+            # audit finding, reproduced; eager never backprops the pair features)
+            x = x.detach() if x is not None else None
+            uu = uu.detach() if uu is not None else None
             bsz = (x if x is not None else uu).shape[0]
             slen = (x if x is not None else uu).shape[-1]
             elements = 0

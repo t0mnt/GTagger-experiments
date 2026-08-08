@@ -17,11 +17,13 @@ before the merge — reviewers need the evidence — and the compile/BIT machine
 
 ## Any time after merge (regeneratable artifacts)
 
-- `tests/fixtures/*/dynamo_explain*.txt` — large committed explain reports. Each is
-  rewritten by its BREAKS gate on every gated run (`CGENN_COMPILE_GATES=1`), so the
-  committed copies are convenience diffs, not sources of truth. Trimming them to the
-  header + break-count summary (or deleting outright) loses nothing the gates can't
-  reproduce in minutes.
+- `tests/fixtures/*/dynamo_explain*.txt` — large committed explain reports. Every
+  committed one belongs to a model in a compile-gate parametrization and is rewritten
+  by its BREAKS gate on each gated run (`CGENN_COMPILE_GATES=1`), so the committed
+  copies are convenience diffs, not sources of truth. Trimming them to the header +
+  break-count summary (or deleting outright) loses nothing the gates can't reproduce
+  in minutes. (The one artifact this did not hold for — MIParT's, descoped from the
+  gates — was deleted in the final audit; its 7-break census lives in the Stage-4 log.)
 
 ## Keep permanently (explicitly NOT cleanup)
 

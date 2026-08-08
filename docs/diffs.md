@@ -196,7 +196,10 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   (BIT/hash regression pins only; wrapper asserts `compile=False`, configs carry no knob).
   New fix families, all eager-default-preserving (BIT re-verified after every edit):
   ParT SequenceTrimmer warm-up as a wrapper-ticked bool (dynamo guards python ints BY
-  VALUE — an in-graph counter read recompiles per step); all-pairs PairEmbed twins
+  VALUE — an in-graph counter read recompiles per step; the final audit caught and fixed
+  a warm-up off-by-one in the first ticked version — first trim on forward 5 instead of
+  upstream's 6 — and the tick schedule is now proven equal to upstream's in-forward
+  counter for warmup 0/1/5); all-pairs PairEmbed twins
   (`compiled_dense`) replacing data-dependent `nonzero` / int-only `torch.tril_indices`
   paths in both ParT and the PNT-local PairEmbed (eval-exact, TOL-gated; training-mode
   BN pair-multiset caveat disclosed in the log); `sdpa_plain_attention` twin

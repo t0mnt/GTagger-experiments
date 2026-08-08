@@ -495,11 +495,17 @@ class PairEmbed(nn.Module):
             # and caveats as particletransformer.PairEmbed._forward_dense): the pair
             # features are symmetric in (i, j) and the embed is pointwise per pair, so
             # the full-grid build produces the same values, seq_len-dynamic; the diagonal
-            # is zeroed post-embed exactly like the never-written tril diagonal. No
-            # torch.no_grad(): grad-mode transitions split the graph, and the momenta
-            # are grad-free data leaves either way. is_symmetric implies
-            # pairwise_input_dim == 0, so uu never reaches this path.
+            # is zeroed post-embed exactly like the never-written tril diagonal.
+            # detach() instead of torch.no_grad(): a grad-mode transition splits the
+            # compiled graph, while detach traces clean and is the exact gradient twin
+            # of eager's no_grad -- REQUIRED, not cosmetic: under a LEARNED framesnet
+            # the local momenta carry grad, and backward through to_ptrapphim's
+            # unclamped pt=sqrt(0) at zero-padded columns is 0*inf=NaN into the
+            # framesnet (final audit finding, reproduced; eager never backprops the
+            # pair features). is_symmetric implies pairwise_input_dim == 0, so uu
+            # never reaches this path.
             assert uu is None, "compiled_dense twin: uu unsupported (is_symmetric => no uu)"
+            x = x.detach()
             bsz, _, slen = x.size()
             fts = self.pairwise_lv_fts(x.unsqueeze(-1), x.unsqueeze(-2))
             elements = self.embed(fts.reshape(bsz, -1, slen * slen))
