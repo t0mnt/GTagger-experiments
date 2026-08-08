@@ -237,6 +237,20 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
       hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
       the new path.
 
+## 4b-ter. CGENN dedup refactor — designated post-merge follow-up (recorded 2026-08-08)
+
+`CGENNLGATrGraphTransHybrid.py` carries its own copy of the CGENN machinery
+(CliffordAlgebra, MVLinear, gp/fcgp layers, sparse_gp_tables) rather than importing
+`experiments/baselines/cgenn/*`. Measured divergence: formatting only (line-wrapping
+style) plus one attribute rename (`grades` vs `grades_list`) — same math, and BOTH
+copies carry the full compile-fix family and are independently BIT-pinned by their own
+gate files, so drift is caught, not silent. The import-port is the right end state but
+was deliberately NOT done pre-merge: it would re-open ~900 audited lines after the
+final audit sealed the tree. Procedure when done (first "dev 2" item): port the hybrid
+to import from the package (reconciling the `grades_list` rename), then the existing
+fixtures make it provable — `test_cgenn_hybrid_compile.py` BIT must stay bit-identical
+and the full gate battery green, followed by an adversarial review of the port diff.
+
 ## 4b-bis. torch.compile scope — CLOSED (Stage 4 executed, 2026-08-08)
 
 The revisit trigger fired and the work is done: the non-equivariant family is now

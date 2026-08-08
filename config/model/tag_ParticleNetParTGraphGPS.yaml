@@ -4,8 +4,12 @@ out_channels: null              # init_physics -> num_outputs
 use_amp: false
 add_fourmomenta_backbone: false
 compile: false                  # knob available (twins + gates green) but the masked BatchNorm over real
-                                # nodes splits the graph (documented, pinned -- test_nonequi_compile.BREAK_BARS);
-                                # flip on beta-PERF numbers
+                                # nodes splits the graph (documented, pinned -- test_nonequi_compile.BREAK_BARS).
+                                # Split-graph compile is NOT worthless -- each segment still fuses -- but the upside
+                                # is bounded (the boolean-index nonzero is a device sync eager pays too; backward
+                                # splits again at the same sites) and NO reference ships break-laden compile as a
+                                # default (lgatr/tagging-guide ship clean-graph compile; weaver ships compile off).
+                                # Unmeasured bounded upside vs one-line reversibility -> false until beta-PERF says otherwise.
 
 net:
   _target_: experiments.baselines.particlenetpartgraphgps.ParticleNetParTGraphGPS

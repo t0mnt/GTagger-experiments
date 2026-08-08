@@ -610,6 +610,34 @@ training is therefore self-consistent but not statistics-identical to eager trai
 same disclosure class as compile's own fusion-order reassociation, recorded here for the
 methods section.
 
+**Final audit (2026-08-08, three independent legs: consistency reviewer + numerics
+reviewer + max-effort whole-diff review).** Two legs converged, with executable repros,
+on one CRITICAL find: both all-pairs PairEmbed twins computed the pair features
+grad-enabled where every eager path uses `torch.no_grad` — under a LEARNED framesnet the
+momenta carry grad and backward through `sqrt(0)` (self-pair `delta==0` in the ParT
+port; unclamped `pt` at zero-padded columns in the PNT `to_ptrapphim(eps=None)`) is
+`0·inf = NaN` into the framesnet on the first step. Invisible to every gate (identity
+frames). Fix: `detach()` at twin entry — the exact gradient twin of eager's `no_grad`,
+traceable; verified grad-into-momenta None/zero in all 8 module configs, full-model
+train grads finite, and the shipped-path gates reproduce their exact numbers. Also
+fixed: trimmer warm-up off-by-one (first trim on forward 5 vs upstream's 6; tick now
+mirrors upstream, schedules proven equal for warmup 0/1/5); the post-warm-up trim body
+hoisted into `@torch.compiler.disable` `_trim` (production training past warm-up splits
+once cleanly instead of re-specializing per random-quantile maxlen — the gates trace the
+un-warmed net, so that regime was ungated); ParTWrapper `mark_dynamic` →
+`maybe_mark_dynamic` (hard marks raised ConstraintViolationError under learned frames,
+where the lloca transport pins the seq dim; identity path keeps its single dynamic
+graph); the lgatr parity test's global S9 monkeypatch now restores in try/finally;
+anti-vacuous gate asserts (dynamo must trace ≥ 1 graph). Weaver-core cross-check
+(operator-requested): convergent design — weaver `@torch._dynamo.disable`s the whole
+trimmer forward, flips the sparse pair path off under compile (their
+`compile_model → sparse_eval`), and mitigates tril recompiles by rounding trimmed
+lengths to 32; we keep warm-up traced (0 breaks in the gated regime), disable only the
+post-warm-up trim, and make the pair grid seq-dynamic instead of quantizing lengths.
+Their `--compile` ships off with pass-through kwargs (dynamic=None automatic); our
+production-true posture follows lgatr/tagging-guide instead. Their length-rounding is
+worth a β-PERF side-glance on GPU (kernel-shape reuse), recorded here.
+
 **β-PERF cluster matrix (the one remaining CPU-side-prepared decision input; everything
 below is a one-line config override on an existing knob).** Measure it/s (the run's own
 timing line after warm-up — ignore the first estimate, compile warm-up lands there) on the

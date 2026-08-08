@@ -211,6 +211,18 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   reason asserted to be that class, RECOMP still strict ([10,10,10] / [8,8,8]).
   Posture: five clean models ship `compile: true` in production; the GPS pair ships
   `false` (knob ready, documented splits, flip on β-PERF); quick tree stays eager.
+- **Final audit (3 independent legs; log entry in docs/cgenn-compile.md)**: fixed a
+  CRITICAL latent NaN — both all-pairs PairEmbed twins computed pair features
+  grad-enabled (eager wraps them in no_grad); under a learned framesnet, backward
+  through sqrt(0) NaN'd the framesnet on step one. `detach()` at twin entry restores
+  exact eager gradient semantics (verified in all 8 module configs + full-model +
+  re-gated). Also: trimmer post-warm-up trim hoisted into `@torch.compiler.disable`
+  `_trim` (per-step re-specialization regime closed); ParTWrapper soft
+  `maybe_mark_dynamic` (hard marks crashed under learned frames); lgatr parity-test
+  monkeypatch leak fixed (try/finally); anti-vacuous gate asserts; doc/status
+  corrections and the stale MIParT explain artifact removed. Weaver-core cross-check:
+  convergent compile design (trimmer disable, sparse-pair-off-under-compile), ours
+  break-free and gate-pinned where theirs eats breaks / rounds lengths to 32.
 - **CGENN `gp_impl: einsum|matmul|sparse`** on baseline + both CGENN hybrids (default
   `sparse` = lgatr 2.0's `sparse_gp` posture; `einsum` is the BIT-pinned reference; matmul
   is the dense-GEMM form). TOL-IMPL gates per impl; only `sparse` changes the FLOPs column.

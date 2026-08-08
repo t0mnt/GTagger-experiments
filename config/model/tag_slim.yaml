@@ -21,7 +21,10 @@ net:
  attn_ratio: 1
  compile: true
  compile_kwargs:
-  dynamic: true  # M9: v1.4.4 defaulted compile_dynamic=True; v2 defaults dynamic off -> variable-length batches would recompile per shape
+  dynamic: true  # M9: v1.4.4 forced compile_dynamic=True; v2's compile_kwargs default {} means
+                 # dynamic=None = torch AUTOMATIC (static first graph, dynamic re-trace on the
+                 # 2nd distinct shape) -- not "off", but it still burns one throwaway static
+                 # graph per code path; pinning true skips that and matches the v1 posture
 
 defaults:
  - framesnet: identity
