@@ -265,13 +265,11 @@ by operator decision (BIT-pinned, no knob).
 
 ## 4c. Versioning
 
-`pyproject.toml` now reads **0.9.0** — pre-release: code complete, campaign not run,
-lgatr 2.0 merge pending. (It previously read 1.1.0, inherited from upstream
-lloca-experiments, which described *that* project's history rather than this fork's.)
-
-- [ ] **Bump to 1.0.0 when dev merges and the campaign tables exist** — that pairing is
-      what makes the number mean something: a reader can ask "which code produced the
-      table?" and get one answer.
+`pyproject.toml` now reads **1.0.0** (operator bump, 2026-08-08) with the forward
+roadmap in its comment: 1.1 once lloca 2.0 lands, 1.2 at paper (todo done, deforked,
+reproduce/readme refreshed). (History: 0.9.0 was this fork's pre-release marker; the
+1.1.0 before that was inherited from upstream lloca-experiments and described that
+project, not this fork.)
 - [ ] **Tag the pre-merge state before starting the campaign** (`git tag pre-lgatr2 &&
       git push --tags`). The campaign straddles the lgatr 1.x -> 2.0 boundary, so the
       top-tagging rows and the post-merge rows come from different code; a tag names the
