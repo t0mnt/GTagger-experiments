@@ -20,7 +20,7 @@ pytorch_optimizer>=3.2.0
 torchdiffeq
 xformers # might be challenging to install, see https://github.com/facebookresearch/xformers
 pelican-lite
-lgatr[xformers-attention]>=2.0.0  # uncapped, matching upstream tagging-guide (no 3.x exists or is planned); gates verified against 2.0.0 (docs/lgatr2-migration.md decision log)
+lgatr[xformers-attention]>=2.0.0  # upgraded to 2.0 (not backwards compatabible)
 lloca[xformers-attention]>=1.3.6  # jet_frames uses fn.mass_regularize (first in 1.3.6)
 
 # weaver packages
