@@ -605,10 +605,21 @@ class ParTWrapper(TaggerWrapper):
         net,
         *args,
         use_amp=False,
+        compile=False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+        if compile:
+            # compiled ParT runs the DENSE pair path: the default sparse path gathers
+            # real pairs via nonzero (data-dependent by design, untraceable); the dense
+            # twin is the same function at reassociation level (measured 2.2e-15, TOL
+            # gate bar 1e-10 -- tests/experiments/test_nonequi_compile.py)
+            if hasattr(self.net, "pair_embed") and self.net.pair_embed is not None:
+                self.net.pair_embed.sparse_eval = False
+                self.net.pair_embed.compiled_dense = True
+            self.net.compile(dynamic=True)
+            self._compiled = True
 
     def forward(self, embedding):
         (
@@ -649,6 +660,18 @@ class ParTWrapper(TaggerWrapper):
         mask = mask.unsqueeze(1).float()
 
         # network
+        if hasattr(self.net, "trimmer"):
+            self.net.trimmer.tick()  # warmup bookkeeping, eager by design (see trimmer)
+        if getattr(self, "_compiled", False) or hasattr(self.net, "_orig_mod"):
+            # dynamic=True alone never promotes the padded seq dim here: each new batch
+            # max-length compiles one more static graph (RECOMP gate found [1,2,3]).
+            # mark_dynamic is the supported per-tensor hint; the marked net compiles ONE
+            # seqlen-dynamic graph (verified via the ConstraintViolation probe) at no cost
+            for _t in (features_local, fourmomenta_local, mask):
+                torch._dynamo.mark_dynamic(_t, 2)
+            # the Frames object carries three tensors; an unmarked one re-pins the graph
+            for _t in (frames.matrices, frames.det, frames.inv):
+                torch._dynamo.mark_dynamic(_t, 1)
         score = self.net(
             x=features_local,
             frames=frames,

@@ -108,6 +108,17 @@ def test_fixture_content_hashes():
         assert live == expected, f"{fname}: fixture content changed"
 
 
+
+
+# per-model pre-compile adjustments mirroring the wrappers' compile knobs: ParT's default
+# sparse pair path gathers real pairs via nonzero (data-dependent by design); compiled
+# ParT runs the dense twin (same function, 2.2e-15 -- see ParTWrapper)
+def _pre_compile(model, net):
+    if model in ("tag_ParT",) and getattr(net, "pair_embed", None) is not None:
+        net.pair_embed.sparse_eval = False
+        net.pair_embed.compiled_dense = True
+
+
 @pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile smoke gates: set CGENN_COMPILE_GATES=1")
 @pytest.mark.parametrize("model", MODELS)
 def test_tol_det_compiled_vs_eager(model):
@@ -116,6 +127,7 @@ def test_tol_det_compiled_vs_eager(model):
     exp = _build(model, float64=True)
     exp.model.load_state_dict(ref["sd"], strict=True)
     y_eager = _forward(exp, _rebuild(ref["batch"]))
+    _pre_compile(model, exp.model.net)
     exp.model.net = torch.compile(exp.model.net, dynamic=True)
     y1 = _forward(exp, _rebuild(ref["batch"]))
     y2 = _forward(exp, _rebuild(ref["batch"]))
@@ -147,6 +159,7 @@ def test_breaks_and_recomp(model):
     exp.model.net.forward = orig_forward
     exp_cold = _build(model, float64=True)
     exp_cold.model.load_state_dict(ref["sd"], strict=True)
+    _pre_compile(model, exp_cold.model.net)
     explanation = dynamo.explain(exp_cold.model.net)(*captured["args"], **captured["kwargs"])
     report = str(explanation)
     report = re.sub(r"0x[0-9a-fA-F]+", "0x...", report)
@@ -161,6 +174,7 @@ def test_breaks_and_recomp(model):
     dyn_counters.clear()
     exp2 = _build(model, float64=True)
     exp2.model.load_state_dict(ref["sd"], strict=True)
+    _pre_compile(model, exp2.model.net)
     exp2.model.net = torch.compile(exp2.model.net, dynamic=True)
     ptr = ref["batch"]["ptr"]
     graph_counts = []

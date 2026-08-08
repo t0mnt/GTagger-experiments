@@ -1,0 +1,3400 @@
+Graph Count: 1
+Graph Break Count: 0
+Op Count: 28
+Break Reasons:
+Ops per Graph:
+  Ops 1:
+    <built-in function linear>
+    <function layer_norm at 0x...>
+    <built-in function linear>
+    <built-in function getitem>
+    <built-in function getitem>
+    <built-in function getitem>
+    <built-in function scaled_dot_product_attention>
+    <built-in function linear>
+    <built-in function add>
+    <function layer_norm at 0x...>
+    <built-in function linear>
+    <built-in function gelu>
+    <built-in function linear>
+    <built-in function add>
+    <function layer_norm at 0x...>
+    <built-in function linear>
+    <built-in function getitem>
+    <built-in function getitem>
+    <built-in function getitem>
+    <built-in function scaled_dot_product_attention>
+    <built-in function linear>
+    <built-in function add>
+    <function layer_norm at 0x...>
+    <built-in function linear>
+    <built-in function gelu>
+    <built-in function linear>
+    <built-in function add>
+    <built-in function linear>
+Out Guards:
+  Guard 1:
+    Name: ''
+    Source: shape_env
+    Create Function: SHAPE_ENV
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 2:
+    Name: ''
+    Source: global
+    Create Function: DETERMINISTIC_ALGORITHMS
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 3:
+    Name: ''
+    Source: global
+    Create Function: GRAD_MODE
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 4:
+    Name: ''
+    Source: global
+    Create Function: DEFAULT_DEVICE
+    Guard Types: ['DEFAULT_DEVICE']
+    Code List: ['utils_device.CURRENT_DEVICE == None']
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 5:
+    Name: ''
+    Source: global
+    Create Function: GLOBAL_STATE
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 6:
+    Name: ''
+    Source: global
+    Create Function: TORCH_FUNCTION_STATE
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 7:
+    Name: ''
+    Source: global
+    Create Function: AUTOGRAD_SAVED_TENSORS_HOOKS
+    Guard Types: ['AUTOGRAD_SAVED_TENSORS_HOOKS']
+    Code List: ['torch._functorch.aot_autograd.utils.top_saved_tensors_hooks ids == None']
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 8:
+    Name: "L['self']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self'], ...), type=<class 'lloca.backbone.transformer.Transformer'>"]
+    Object Weakref: <weakref at 0x...; to 'Transformer' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Transformer)>
+  Guard 9:
+    Name: "L['self']._parameters"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 10:
+    Name: "L['self']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 11:
+    Name: "L['self']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['attention'], ...), type=<class 'lloca.backbone.attention.LLoCaAttention'>"]
+    Object Weakref: <weakref at 0x...; to 'LLoCaAttention' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (LLoCaAttention)>
+  Guard 12:
+    Name: "L['self']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 13:
+    Name: "G['__import_lloca_dot_utils_dot_misc']"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_utils_dot_misc'], ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 14:
+    Name: "G['__import_lloca_dot_utils_dot_misc'].torch"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_utils_dot_misc'].torch, ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 15:
+    Name: "G['__import_lloca_dot_utils_dot_misc'].torch.is_autocast_enabled"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_utils_dot_misc'].torch.is_autocast_enabled, ...), type=<class 'builtin_function_or_method'>"]
+    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
+  Guard 16:
+    Name: "G['__import_lloca_dot_utils_dot_misc'].torch.is_autocast_cpu_enabled"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_utils_dot_misc'].torch.is_autocast_cpu_enabled, ...), type=<class 'builtin_function_or_method'>"]
+    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
+  Guard 17:
+    Name: "dict(type(L['self']._modules['attention']).__dict__)['prepare_frames'].__closure__[2].cell_contents"
+    Source: local_unspecialized_nn_module
+    Create Function: CLOSURE_MATCH
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 18:
+    Name: "L['frames']"
+    Source: local
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['frames'], ...), type=<class 'lloca.framesnet.frames.Frames'>"]
+    Object Weakref: <weakref at 0x...; to 'Frames' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Frames)>
+  Guard 19:
+    Name: "L['self']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 20:
+    Name: "L['self']._modules['attention'].__dict__['_parameters']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['attention'].__dict__['_parameters'], ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 21:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_module']"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_module'], ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 22:
+    Name: "G['__builtins_dict___47']['isinstance']"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['isinstance'], ...), type=<class 'builtin_function_or_method'>"]
+    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
+  Guard 23:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_module'].Parameter"
+    Source: global
+    Create Function: CLASS_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_module'].Parameter, ...), type=<class 'torch.nn.parameter.Parameter'>"]
+    Object Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (_ParameterMeta)>
+  Guard 24:
+    Name: "L['self']._modules['attention'].__dict__['_parameters']"
+    Source: local_unspecialized_nn_module
+    Create Function: DICT_NOT_CONTAINS
+    Guard Types: ['DICT_NOT_CONTAINS']
+    Code List: ["not ___dict_contains('frames', L['self']._modules['attention'].__dict__['_parameters'])"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 25:
+    Name: "L['self']._modules['attention'].__dict__['_modules']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['attention'].__dict__['_modules'], ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 26:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_module'].Module"
+    Source: global
+    Create Function: CLASS_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_module'].Module, ...), type=<class 'torch.nn.modules.module.Module'>"]
+    Object Weakref: <weakref at 0x...; to 'type' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
+  Guard 27:
+    Name: "L['self']._modules['attention'].__dict__['_modules']"
+    Source: local_unspecialized_nn_module
+    Create Function: DICT_NOT_CONTAINS
+    Guard Types: ['DICT_NOT_CONTAINS']
+    Code List: ["not ___dict_contains('frames', L['self']._modules['attention'].__dict__['_modules'])"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 28:
+    Name: "L['self']._modules['attention'].__dict__['_buffers']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['attention'].__dict__['_buffers'], ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 29:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_module'].Buffer"
+    Source: global
+    Create Function: CLASS_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_module'].Buffer, ...), type=<class 'torch.nn.parameter.Buffer'>"]
+    Object Weakref: <weakref at 0x...; to '_BufferMeta' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (_BufferMeta)>
+  Guard 30:
+    Name: "L['self']._modules['attention'].__dict__['_buffers']"
+    Source: local_unspecialized_nn_module
+    Create Function: DICT_NOT_CONTAINS
+    Guard Types: ['DICT_NOT_CONTAINS']
+    Code List: ["not ___dict_contains('frames', L['self']._modules['attention'].__dict__['_buffers'])"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 31:
+    Name: "G['__builtins_dict___47']['super']"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['super'], ...), type=<class 'super'>"]
+    Object Weakref: <weakref at 0x...; to 'type' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
+  Guard 32:
+    Name: "L['frames'].is_global"
+    Source: local
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['frames'].is_global == True"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 33:
+    Name: "L['self']._modules['linear_in']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['linear_in'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
+    Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
+  Guard 34:
+    Name: "L['self']._modules['linear_in']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 35:
+    Name: "L['self']._modules['linear_in']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 36:
+    Name: "L['self']._modules['linear_in']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 37:
+    Name: "L['self']._modules['linear_in']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 38:
+    Name: "L['self']._modules['linear_in']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 39:
+    Name: "L['self']._modules['linear_in']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 40:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_module']._global_backward_pre_hooks"
+    Source: global
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(G['__import_torch_dot_nn_dot_modules_dot_module']._global_backward_pre_hooks, ...), type=<class 'collections.OrderedDict'>"]
+    Object Weakref: <weakref at 0x...; to 'OrderedDict' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (OrderedDict)>
+  Guard 41:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_module']._global_backward_hooks"
+    Source: global
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(G['__import_torch_dot_nn_dot_modules_dot_module']._global_backward_hooks, ...), type=<class 'collections.OrderedDict'>"]
+    Object Weakref: <weakref at 0x...; to 'OrderedDict' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (OrderedDict)>
+  Guard 42:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_module']._global_forward_hooks"
+    Source: global
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(G['__import_torch_dot_nn_dot_modules_dot_module']._global_forward_hooks, ...), type=<class 'collections.OrderedDict'>"]
+    Object Weakref: <weakref at 0x...; to 'OrderedDict' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (OrderedDict)>
+  Guard 43:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_module']._global_forward_pre_hooks"
+    Source: global
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(G['__import_torch_dot_nn_dot_modules_dot_module']._global_forward_pre_hooks, ...), type=<class 'collections.OrderedDict'>"]
+    Object Weakref: <weakref at 0x...; to 'OrderedDict' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (OrderedDict)>
+  Guard 44:
+    Name: "L['self']._modules['linear_in']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 45:
+    Name: "L['self']._modules['linear_in']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 46:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_linear']"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_linear'], ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 47:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_linear'].F"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_linear'].F, ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 48:
+    Name: "L['self']._modules['linear_in']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['linear_in']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 49:
+    Name: "L['self']._modules['linear_in']._parameters['weight']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['linear_in']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['linear_in']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['linear_in']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['linear_in']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['linear_in']._parameters['weight'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 50:
+    Name: "L['self']._modules['linear_in']._parameters['bias']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['linear_in']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['linear_in']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['linear_in']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['linear_in']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['linear_in']._parameters['bias'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 51:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_linear'].F.linear"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_linear'].F.linear, ...), type=<class 'builtin_function_or_method'>"]
+    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
+  Guard 52:
+    Name: "L['inputs']"
+    Source: local
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['inputs'], '_dynamo_dynamic_indices') == False", "hasattr(L['inputs'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['inputs'], '_dynamo_unbacked_indices') == False", "hasattr(L['inputs'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['inputs'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
+  Guard 53:
+    Name: "L['self']._modules['blocks']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks'], ...), type=<class 'torch.nn.modules.container.ModuleList'>"]
+    Object Weakref: <weakref at 0x...; to 'ModuleList' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (ModuleList)>
+  Guard 54:
+    Name: "L['self']._modules['blocks']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 55:
+    Name: "L['self']._modules['blocks']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 56:
+    Name: "L['self']._modules['blocks']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 57:
+    Name: "L['self']._modules['blocks']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: DICT_KEYS_MATCH
+    Guard Types: ['SEQUENCE_LENGTH', 'DICT_KEYS_MATCH']
+    Code List: ["len(L['self']._modules['blocks']._modules) == 2", "list(dict.keys(L['self']._modules['blocks']._modules)) == ['0', '1']"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 58:
+    Name: "G['__builtins_dict___47']['iter']"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['iter'], ...), type=<class 'builtin_function_or_method'>"]
+    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
+  Guard 59:
+    Name: "L['self'].checkpoint_blocks"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['self'].checkpoint_blocks == False"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 60:
+    Name: "L['attn_kwargs']"
+    Source: local
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['attn_kwargs'], ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 61:
+    Name: "L['attn_kwargs']"
+    Source: local
+    Create Function: DICT_KEYS_MATCH
+    Guard Types: ['SEQUENCE_LENGTH', 'DICT_KEYS_MATCH']
+    Code List: ["len(L['attn_kwargs']) == 1", "list(dict.keys(L['attn_kwargs'])) == ['attn_mask']"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 62:
+    Name: "L['self']._modules['blocks']._modules['0']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0'], ...), type=<class 'lloca.backbone.transformer.BaselineTransformerBlock'>"]
+    Object Weakref: <weakref at 0x...; to 'BaselineTransformerBlock' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BaselineTransformerBlock)>
+  Guard 63:
+    Name: "L['self']._modules['blocks']._modules['0']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 64:
+    Name: "L['self']._modules['blocks']._modules['0']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 65:
+    Name: "L['self']._modules['blocks']._modules['0']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 66:
+    Name: "L['self']._modules['blocks']._modules['0']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 67:
+    Name: "L['self']._modules['blocks']._modules['0']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 68:
+    Name: "L['self']._modules['blocks']._modules['0']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 69:
+    Name: "L['self']._modules['blocks']._modules['0']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 70:
+    Name: "L['self']._modules['blocks']._modules['0']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 71:
+    Name: "L['self']._modules['blocks']._modules['0']._parameters"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 72:
+    Name: "L['self']._modules['blocks']._modules['0']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 73:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['norm1'], ...), type=<class 'lloca.backbone.transformer.BaselineLayerNorm'>"]
+    Object Weakref: <weakref at 0x...; to 'BaselineLayerNorm' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BaselineLayerNorm)>
+  Guard 74:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 75:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 76:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 77:
+    Name: "dict(type(L['self']._modules['blocks']._modules['0']._modules['norm1']).__mro__[1].__dict__)['_compiled_call_impl']"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['NONE_MATCH']
+    Code List: ["dict(type(L['self']._modules['blocks']._modules['0']._modules['norm1']).__mro__[1].__dict__)['_compiled_call_impl'] is None"]
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 78:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 79:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_module'].torch"
+    Source: global
+    Create Function: DUPLICATE_INPUT
+    Guard Types: ['DUPLICATE_INPUT']
+    Code List: ["G['__import_lloca_dot_utils_dot_misc'].torch is G['__import_torch_dot_nn_dot_modules_dot_module'].torch"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 80:
+    Name: "G['__import_lloca_dot_utils_dot_misc'].torch._C"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_utils_dot_misc'].torch._C, ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 81:
+    Name: "G['__import_lloca_dot_utils_dot_misc'].torch._C._get_tracing_state"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_utils_dot_misc'].torch._C._get_tracing_state, ...), type=<class 'builtin_function_or_method'>"]
+    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
+  Guard 82:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 83:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm1']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 84:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm1']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 85:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm1']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 86:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm1']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 87:
+    Name: "dict(type(L['self']._modules['blocks']._modules['0']._modules['norm1']).__dict__)['forward'].__func__"
+    Source: local_unspecialized_nn_module
+    Create Function: CLOSURE_MATCH
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 88:
+    Name: "G['torch']"
+    Source: global
+    Create Function: DUPLICATE_INPUT
+    Guard Types: ['DUPLICATE_INPUT']
+    Code List: ["G['__import_lloca_dot_utils_dot_misc'].torch is G['torch']"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 89:
+    Name: "G['__import_lloca_dot_utils_dot_misc'].torch.nn"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_utils_dot_misc'].torch.nn, ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 90:
+    Name: "G['__import_lloca_dot_utils_dot_misc'].torch.nn.functional"
+    Source: global
+    Create Function: DUPLICATE_INPUT
+    Guard Types: ['DUPLICATE_INPUT']
+    Code List: ["G['__import_torch_dot_nn_dot_modules_dot_linear'].F is G['__import_lloca_dot_utils_dot_misc'].torch.nn.functional"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 91:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_linear'].F.layer_norm"
+    Source: global
+    Create Function: CLOSURE_MATCH
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 92:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['attention'], ...), type=<class 'lloca.backbone.transformer.BaselineSelfAttention'>"]
+    Object Weakref: <weakref at 0x...; to 'BaselineSelfAttention' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BaselineSelfAttention)>
+  Guard 93:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 94:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 95:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 96:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 97:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 98:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 99:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 100:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 101:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._parameters"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['attention']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 102:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['attention']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 103:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear'], ...), type=<class 'lloca.backbone.transformer.MultiHeadQKVLinear'>"]
+    Object Weakref: <weakref at 0x...; to 'MultiHeadQKVLinear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (MultiHeadQKVLinear)>
+  Guard 104:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 105:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 106:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 107:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 108:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 109:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 110:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 111:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 112:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._parameters"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 113:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 114:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
+    Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
+  Guard 115:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 116:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 117:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 118:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 119:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 120:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 121:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 122:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 123:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 124:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 125:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 126:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear'].num_heads"
+    Source: local_unspecialized_nn_module
+    Create Function: EQUALS_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear'].num_heads == 2"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
+  Guard 127:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear'].num_heads"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear'].num_heads == 2"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
+  Guard 128:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear'].num_heads"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["L['self']._modules['blocks']._modules['0']._modules['attention']._modules['qkv_linear'].num_heads == 2"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
+  Guard 129:
+    Name: "G['__builtins_dict___47']['len']"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['len'], ...), type=<class 'builtin_function_or_method'>"]
+    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
+  Guard 130:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: DUPLICATE_INPUT
+    Guard Types: ['DUPLICATE_INPUT']
+    Code List: ["L['self']._modules['attention'] is L['self']._modules['blocks']._modules['0']._modules['attention']._modules['attention']"]
+    Object Weakref: <weakref at 0x...; to 'LLoCaAttention' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (LLoCaAttention)>
+  Guard 131:
+    Name: "L['self']._modules['attention']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 132:
+    Name: "L['self']._modules['attention']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 133:
+    Name: "L['self']._modules['attention']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 134:
+    Name: "L['self']._modules['attention']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 135:
+    Name: "L['self']._modules['attention']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 136:
+    Name: "L['self']._modules['attention']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 137:
+    Name: "L['self']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 138:
+    Name: "L['self']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 139:
+    Name: "L['frames'].is_global"
+    Source: local
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['frames'].is_global == True"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
+  Guard 140:
+    Name: "G['__import_lloca_dot_backbone_dot_attention']"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_backbone_dot_attention'], ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 141:
+    Name: "G['__import_lloca_dot_backbone_dot_attention'].scaled_dot_product_attention"
+    Source: global
+    Create Function: CLOSURE_MATCH
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 142:
+    Name: "G['__import_lloca_dot_backbone_dot_attention'].get_attention_backend"
+    Source: global
+    Create Function: CLOSURE_MATCH
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 143:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends']"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_backbone_dot_attention_backends'], ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 144:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends']._REGISTRY"
+    Source: global
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(G['__import_lloca_dot_backbone_dot_attention_backends']._REGISTRY, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 145:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends']._REGISTRY"
+    Source: global
+    Create Function: DICT_NOT_CONTAINS
+    Guard Types: ['DICT_NOT_CONTAINS']
+    Code List: ["not ___dict_contains(None, G['__import_lloca_dot_backbone_dot_attention_backends']._REGISTRY)"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 146:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS"
+    Source: global
+    Create Function: SEQUENCE_LENGTH
+    Guard Types: ['TYPE_MATCH', 'SEQUENCE_LENGTH']
+    Code List: ["___check_type_id(G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS, ...), type=<class 'list'>", "len(G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS) == 4"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (list)>
+  Guard 147:
+    Name: "G['__builtins_dict___47']['any']"
+    Source: global
+    Create Function: ID_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['any'], ...), type=<class 'builtin_function_or_method'>"]
+    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
+  Guard 148:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS[0]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS[0] == 'cu_seq_q'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 149:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS[1]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS[1] == 'cu_seq_k'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 150:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS[2]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS[2] == 'max_q'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 151:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS[3]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].VARLEN_KWARGS[3] == 'max_k'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 152:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].XFORMERS_KWARGS"
+    Source: global
+    Create Function: SEQUENCE_LENGTH
+    Guard Types: ['TYPE_MATCH', 'SEQUENCE_LENGTH']
+    Code List: ["___check_type_id(G['__import_lloca_dot_backbone_dot_attention_backends'].XFORMERS_KWARGS, ...), type=<class 'list'>", "len(G['__import_lloca_dot_backbone_dot_attention_backends'].XFORMERS_KWARGS) == 2"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (list)>
+  Guard 153:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].XFORMERS_KWARGS[0]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].XFORMERS_KWARGS[0] == 'attn_bias'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 154:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].XFORMERS_KWARGS[1]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].XFORMERS_KWARGS[1] == 'op'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 155:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].FLEX_KWARGS"
+    Source: global
+    Create Function: SEQUENCE_LENGTH
+    Guard Types: ['TYPE_MATCH', 'SEQUENCE_LENGTH']
+    Code List: ["___check_type_id(G['__import_lloca_dot_backbone_dot_attention_backends'].FLEX_KWARGS, ...), type=<class 'list'>", "len(G['__import_lloca_dot_backbone_dot_attention_backends'].FLEX_KWARGS) == 2"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (list)>
+  Guard 156:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].FLEX_KWARGS[0]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].FLEX_KWARGS[0] == 'score_mod'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 157:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].FLEX_KWARGS[1]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].FLEX_KWARGS[1] == 'block_mask'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 158:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS"
+    Source: global
+    Create Function: SEQUENCE_LENGTH
+    Guard Types: ['TYPE_MATCH', 'SEQUENCE_LENGTH']
+    Code List: ["___check_type_id(G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS, ...), type=<class 'list'>", "len(G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS) == 4"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (list)>
+  Guard 159:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS[0]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS[0] == 'cu_seqlens_q'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 160:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS[1]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS[1] == 'cu_seqlens_k'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 161:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS[2]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS[2] == 'max_seqlen_q'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 162:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS[3]"
+    Source: global
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["G['__import_lloca_dot_backbone_dot_attention_backends'].FLASH_KWARGS[3] == 'max_seqlen_k'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 163:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends']._REGISTRY['native']"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_backbone_dot_attention_backends']._REGISTRY['native'], ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 164:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends']._REGISTRY['native'].attention"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_lloca_dot_backbone_dot_attention_backends']._REGISTRY['native'].attention, ...), type=<class 'builtin_function_or_method'>"]
+    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
+  Guard 165:
+    Name: "L['attn_kwargs']['attn_mask']"
+    Source: local
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['attn_kwargs']['attn_mask'], '_dynamo_dynamic_indices') == False", "hasattr(L['attn_kwargs']['attn_mask'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['attn_kwargs']['attn_mask'], '_dynamo_unbacked_indices') == False", "hasattr(L['attn_kwargs']['attn_mask'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['attn_kwargs']['attn_mask'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
+  Guard 166:
+    Name: "G['__builtins_dict___47']['range']"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__builtins_dict___47']['range'], ...), type=<class 'range'>"]
+    Object Weakref: <weakref at 0x...; to 'type' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
+  Guard 167:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
+    Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
+  Guard 168:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 169:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 170:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 171:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 172:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 173:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 174:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 175:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 176:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 177:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['weight']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['weight'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 178:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['bias']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['attention']._modules['out_linear']._parameters['bias'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 179:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['attention'].dropout"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['NONE_MATCH']
+    Code List: ["L['self']._modules['blocks']._modules['0']._modules['attention'].dropout is None"]
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 180:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['norm2'], ...), type=<class 'lloca.backbone.transformer.BaselineLayerNorm'>"]
+    Object Weakref: <weakref at 0x...; to 'BaselineLayerNorm' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BaselineLayerNorm)>
+  Guard 181:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 182:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 183:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 184:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 185:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 186:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm2']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 187:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm2']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 188:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm2']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 189:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['norm2']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 190:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['mlp'], ...), type=<class 'torch.nn.modules.container.Sequential'>"]
+    Object Weakref: <weakref at 0x...; to 'Sequential' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Sequential)>
+  Guard 191:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 192:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 193:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 194:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 195:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 196:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 197:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 198:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 199:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 200:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 201:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 202:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: DICT_KEYS_MATCH
+    Guard Types: ['SEQUENCE_LENGTH', 'DICT_KEYS_MATCH']
+    Code List: ["len(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules) == 5", "list(dict.keys(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules)) == ['0', '1', '2', '3', '4']"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 203:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
+    Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
+  Guard 204:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 205:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 206:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 207:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 208:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 209:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 210:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 211:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 212:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 213:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['weight']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['weight'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 214:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['bias']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['0']._parameters['bias'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 215:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['1']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['1'], ...), type=<class 'torch.nn.modules.linear.Identity'>"]
+    Object Weakref: <weakref at 0x...; to 'Identity' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Identity)>
+  Guard 216:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['1']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 217:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['1']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 218:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['1']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 219:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['1']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 220:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['1']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 221:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['1']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 222:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['1']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 223:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['1']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 224:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2'], ...), type=<class 'torch.nn.modules.activation.GELU'>"]
+    Object Weakref: <weakref at 0x...; to 'GELU' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (GELU)>
+  Guard 225:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 226:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 227:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 228:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 229:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 230:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 231:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 232:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 233:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_activation']"
+    Source: global
+    Create Function: MODULE_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_activation'], ...), type=<class 'module'>"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 234:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_activation'].F"
+    Source: global
+    Create Function: DUPLICATE_INPUT
+    Guard Types: ['DUPLICATE_INPUT']
+    Code List: ["G['__import_torch_dot_nn_dot_modules_dot_linear'].F is G['__import_torch_dot_nn_dot_modules_dot_activation'].F"]
+    Object Weakref: <weakref at 0x...; to 'module' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
+  Guard 235:
+    Name: "G['__import_torch_dot_nn_dot_modules_dot_linear'].F.gelu"
+    Source: global
+    Create Function: BUILTIN_MATCH
+    Guard Types: ['ID_MATCH']
+    Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_linear'].F.gelu, ...), type=<class 'builtin_function_or_method'>"]
+    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
+  Guard 236:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2'].approximate"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['2'].approximate == 'none'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 237:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
+    Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
+  Guard 238:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 239:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 240:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 241:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 242:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 243:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 244:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 245:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 246:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 247:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['weight']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['weight'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 248:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['bias']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['3']._parameters['bias'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 249:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['4']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['4'], ...), type=<class 'torch.nn.modules.linear.Identity'>"]
+    Object Weakref: <weakref at 0x...; to 'Identity' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Identity)>
+  Guard 250:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['4']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 251:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['4']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 252:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['4']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 253:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['4']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 254:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['4']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 255:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['4']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 256:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['4']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 257:
+    Name: "L['self']._modules['blocks']._modules['0']._modules['mlp']._modules['4']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 258:
+    Name: "L['self']._modules['blocks']._modules['1']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1'], ...), type=<class 'lloca.backbone.transformer.BaselineTransformerBlock'>"]
+    Object Weakref: <weakref at 0x...; to 'BaselineTransformerBlock' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BaselineTransformerBlock)>
+  Guard 259:
+    Name: "L['self']._modules['blocks']._modules['1']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 260:
+    Name: "L['self']._modules['blocks']._modules['1']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 261:
+    Name: "L['self']._modules['blocks']._modules['1']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 262:
+    Name: "L['self']._modules['blocks']._modules['1']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 263:
+    Name: "L['self']._modules['blocks']._modules['1']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 264:
+    Name: "L['self']._modules['blocks']._modules['1']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 265:
+    Name: "L['self']._modules['blocks']._modules['1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 266:
+    Name: "L['self']._modules['blocks']._modules['1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 267:
+    Name: "L['self']._modules['blocks']._modules['1']._parameters"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 268:
+    Name: "L['self']._modules['blocks']._modules['1']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 269:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['norm1'], ...), type=<class 'lloca.backbone.transformer.BaselineLayerNorm'>"]
+    Object Weakref: <weakref at 0x...; to 'BaselineLayerNorm' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BaselineLayerNorm)>
+  Guard 270:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 271:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 272:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 273:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 274:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 275:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm1']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 276:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm1']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 277:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm1']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 278:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm1']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 279:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['attention'], ...), type=<class 'lloca.backbone.transformer.BaselineSelfAttention'>"]
+    Object Weakref: <weakref at 0x...; to 'BaselineSelfAttention' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BaselineSelfAttention)>
+  Guard 280:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 281:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 282:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 283:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 284:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 285:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 286:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 287:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 288:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._parameters"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['attention']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 289:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['attention']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 290:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear'], ...), type=<class 'lloca.backbone.transformer.MultiHeadQKVLinear'>"]
+    Object Weakref: <weakref at 0x...; to 'MultiHeadQKVLinear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (MultiHeadQKVLinear)>
+  Guard 291:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 292:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 293:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 294:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 295:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 296:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 297:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 298:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 299:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._parameters"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 300:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 301:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
+    Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
+  Guard 302:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 303:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 304:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 305:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 306:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 307:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 308:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 309:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 310:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 311:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['weight'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 312:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear']._modules['linear']._parameters['bias'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 313:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear'].num_heads"
+    Source: local_unspecialized_nn_module
+    Create Function: EQUALS_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear'].num_heads == 2"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
+  Guard 314:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear'].num_heads"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear'].num_heads == 2"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
+  Guard 315:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear'].num_heads"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["L['self']._modules['blocks']._modules['1']._modules['attention']._modules['qkv_linear'].num_heads == 2"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
+  Guard 316:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: DUPLICATE_INPUT
+    Guard Types: ['DUPLICATE_INPUT']
+    Code List: ["L['self']._modules['attention'] is L['self']._modules['blocks']._modules['1']._modules['attention']._modules['attention']"]
+    Object Weakref: <weakref at 0x...; to 'LLoCaAttention' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (LLoCaAttention)>
+  Guard 317:
+    Name: "L['self']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 318:
+    Name: "L['self']._modules['attention']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 319:
+    Name: "G['__import_lloca_dot_backbone_dot_attention_backends']._REGISTRY"
+    Source: global
+    Create Function: DICT_NOT_CONTAINS
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 320:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
+    Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
+  Guard 321:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 322:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 323:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 324:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 325:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 326:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 327:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 328:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 329:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 330:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['weight']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['weight'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 331:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['bias']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['attention']._modules['out_linear']._parameters['bias'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 332:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['attention'].dropout"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['NONE_MATCH']
+    Code List: ["L['self']._modules['blocks']._modules['1']._modules['attention'].dropout is None"]
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 333:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['norm2'], ...), type=<class 'lloca.backbone.transformer.BaselineLayerNorm'>"]
+    Object Weakref: <weakref at 0x...; to 'BaselineLayerNorm' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BaselineLayerNorm)>
+  Guard 334:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 335:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 336:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 337:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 338:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm2']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 339:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm2']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 340:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm2']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 341:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm2']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 342:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['norm2']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 343:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['mlp'], ...), type=<class 'torch.nn.modules.container.Sequential'>"]
+    Object Weakref: <weakref at 0x...; to 'Sequential' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Sequential)>
+  Guard 344:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._backward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 345:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._backward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 346:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._forward_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 347:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 348:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._forward_pre_hooks"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 349:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 350:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 351:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 352:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 353:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 354:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 355:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: DICT_KEYS_MATCH
+    Guard Types: ['SEQUENCE_LENGTH', 'DICT_KEYS_MATCH']
+    Code List: ["len(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules) == 5", "list(dict.keys(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules)) == ['0', '1', '2', '3', '4']"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 356:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
+    Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
+  Guard 357:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 358:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 359:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 360:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 361:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 362:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 363:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 364:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 365:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 366:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['weight']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['weight'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 367:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['bias']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['0']._parameters['bias'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 368:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['1']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['1'], ...), type=<class 'torch.nn.modules.linear.Identity'>"]
+    Object Weakref: <weakref at 0x...; to 'Identity' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Identity)>
+  Guard 369:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['1']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 370:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['1']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 371:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['1']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 372:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['1']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 373:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['1']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 374:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['1']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 375:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['1']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 376:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['1']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 377:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2'], ...), type=<class 'torch.nn.modules.activation.GELU'>"]
+    Object Weakref: <weakref at 0x...; to 'GELU' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (GELU)>
+  Guard 378:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 379:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 380:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 381:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 382:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 383:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 384:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 385:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 386:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2'].approximate"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['2'].approximate == 'none'"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
+  Guard 387:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
+    Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
+  Guard 388:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 389:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 390:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 391:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 392:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 393:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 394:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 395:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 396:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 397:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['weight']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['weight'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 398:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['bias']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['3']._parameters['bias'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 399:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['4']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['4'], ...), type=<class 'torch.nn.modules.linear.Identity'>"]
+    Object Weakref: <weakref at 0x...; to 'Identity' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Identity)>
+  Guard 400:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['4']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 401:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['4']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 402:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['4']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 403:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['4']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 404:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['4']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 405:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['4']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 406:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['4']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 407:
+    Name: "L['self']._modules['blocks']._modules['1']._modules['mlp']._modules['4']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 408:
+    Name: "L['self']._modules['linear_out']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['linear_out'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
+    Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
+  Guard 409:
+    Name: "L['self']._modules['linear_out']._backward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 410:
+    Name: "L['self']._modules['linear_out']._backward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 411:
+    Name: "L['self']._modules['linear_out']._forward_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 412:
+    Name: "L['self']._modules['linear_out']._forward_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 413:
+    Name: "L['self']._modules['linear_out']._forward_pre_hooks"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 414:
+    Name: "L['self']._modules['linear_out']._forward_pre_hooks_with_kwargs"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 415:
+    Name: "L['self']._modules['linear_out']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 416:
+    Name: "L['self']._modules['linear_out']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 417:
+    Name: "L['self']._modules['linear_out']._parameters"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['linear_out']._parameters, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 418:
+    Name: "L['self']._modules['linear_out']._parameters['weight']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['linear_out']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['linear_out']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['linear_out']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['linear_out']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['linear_out']._parameters['weight'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 419:
+    Name: "L['self']._modules['linear_out']._parameters['bias']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['self']._modules['linear_out']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['linear_out']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['linear_out']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['linear_out']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['linear_out']._parameters['bias'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+Compile Times: TorchDynamo compilation metrics:
+Function, Runtimes (s)
+_compile.compile_inner, ...
+compile_attempt_0, ...
+bytecode_tracing, ...
+get_fake_value, ...
+create_proxy, ...
+wrap_to_fake_tensor_and_record, ...
+variable_builder_call, ...
+insert_deferred_runtime_asserts, ...
+OutputGraph.call_user_compiler, ...
+build_guards, ...
+gc, ...

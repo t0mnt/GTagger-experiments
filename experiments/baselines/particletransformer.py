@@ -247,6 +247,22 @@ class SequenceTrimmer(nn.Module):
         self.target = target
         self.warmup_steps = warmup_steps
         self.register_buffer("_counter", torch.LongTensor([0]), persistent=False)
+        # python-int mirror of _counter: branching on the buffer is a tensor-valued jump
+        # (a graph break under compile); the int carries the same value, the buffer stays
+        # for state compat and is kept in sync. The BRANCH reads _warmed -- a bool that
+        # flips exactly once -- because dynamo guards python attributes by VALUE, so
+        # branching on the incrementing int recompiles every warmup step (found by
+        # guard_fail_fn: `_counter_int == 0`, `== 1`, ...).
+        self._counter_int = 0
+        self._warmed = False
+
+    def tick(self):
+        """Advance the warmup counter; call once per training forward, outside compile."""
+        if self.enabled and not self._warmed:
+            self._counter_int += 1
+            self._counter.add_(1)
+            if self._counter_int >= self.warmup_steps:
+                self._warmed = True
 
     def forward(self, x, v=None, mask=None, uu=None, extra=None):
         # x: (N, C, P)
@@ -260,8 +276,11 @@ class SequenceTrimmer(nn.Module):
         mask = mask.bool()
 
         if self.enabled:
-            if self._counter < self.warmup_steps:
-                self._counter.add_(1)
+            if not self._warmed:
+                # warmup bookkeeping lives in tick(), called by the wrapper OUTSIDE the
+                # compiled region: dynamo guards python ints by value, so even reading
+                # the counter in-graph recompiles every warmup step
+                pass
             else:
                 if v is not None:
                     if not isinstance(v, (list, tuple)):
@@ -374,6 +393,9 @@ class PairEmbed(nn.Module):
         self.remove_self_pair = remove_self_pair
         self.for_onnx = for_onnx
         self.sparse_eval = (not for_onnx) if sparse_eval is None else sparse_eval
+        # set (with sparse_eval=False) by the compile knob / gates: routes the dense path
+        # through the all-pairs twin below, which traces seqlen-dynamic
+        self.compiled_dense = False
         self.out_dim = dims[-1]
 
         if pairwise_lv_type == "pp":
@@ -421,6 +443,31 @@ class PairEmbed(nn.Module):
         # x: (batch, v_dim, seq_len)
         # uu: (batch, v_dim, seq_len, seq_len)
         assert x is not None or uu is not None
+        if self.is_symmetric and not self.for_onnx and self.compiled_dense:
+            # compiled twin of the tril-compute-then-mirror below: torch.tril_indices
+            # takes only python ints, which pins seq_len to a constant under compile
+            # (the real cause behind the old blanket @torch.compiler.disable). The pair
+            # features are symmetric in (i, j) and the embed is pointwise per pair, so
+            # the full-grid build produces the same values (GEMM rows are independent);
+            # the eager default (sparse path) and the onnx/dense-eager path are untouched.
+            # no torch.no_grad() here: grad-mode transitions split the compiled graph
+            # (empty-reason breaks), and it is a semantic no-op -- the momenta are data
+            # leaves without grad, so the features are grad-free either way
+            bsz = (x if x is not None else uu).shape[0]
+            slen = (x if x is not None else uu).shape[-1]
+            elements = 0
+            if x is not None:
+                fts = self.pairwise_lv_fts(x.unsqueeze(-1), x.unsqueeze(-2))
+                # embed's BatchNorm1d wants (batch, channels, num_pairs)
+                elements = elements + self.embed(fts.reshape(bsz, -1, slen * slen))
+            if uu is not None:
+                elements = elements + self.fts_embed(uu.reshape(bsz, -1, slen * slen))
+            y = elements.reshape(bsz, self.out_dim, slen, slen)
+            if self.remove_self_pair:
+                di = torch.arange(slen, device=y.device)
+                y = y.clone()
+                y[:, :, di, di] = 0
+            return y
         with torch.no_grad():
             if x is not None:
                 batch_size, _, seq_len = x.size()
@@ -524,7 +571,6 @@ class PairEmbed(nn.Module):
 
         return y
 
-    @torch.compiler.disable()  # torch.compile fails to make this seqlen-dynamic
     def forward(self, x, uu=None, mask=None):
         if self.sparse_eval:
             return self._forward_sparse(x, uu=uu, mask=mask)
