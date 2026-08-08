@@ -951,7 +951,7 @@ terminal + Jupyter at the CCV portal) and VS Code Remote-SSH (docs: "Remote IDE"
 On the login node, inside the venv/overlay you certified in §2/§2.9:
 
 ```bash
-pip install --upgrade 'lgatr[xformers-attention]>=2.0.0,<3'
+pip install --upgrade 'lgatr[xformers-attention]>=2.0.0'
 pip uninstall -y opt_einsum einops   # optional: v2 dropped both requirements (torch-only);
                                      # keep them if any OTHER package in the env needs them
 python -c "import lgatr; print(lgatr.__version__)"   # expect 2.0.x

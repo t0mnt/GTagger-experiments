@@ -171,7 +171,7 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   weaver-verbatim on this one feature.
 
 ## lgatr 2.0 migration + the compile program (2026-08-07/08, dev)
-- **lgatr 1.4.4 → 2.0 (Posture B / v2-native)**: pins relaxed to `lgatr[xformers-attention]>=2.0.0,<3`;
+- **lgatr 1.4.4 → 2.0 (Posture B / v2-native)**: pins relaxed to `lgatr[xformers-attention]>=2.0.0` (uncapped, upstream practice);
   configs adopt v2 defaults implicitly (sigmoid vector gate, affine norms, sparse geometric
   product, tanh-GeLU); every behavioral choice verified against the lgatr authors' own
   tagging-guide environment (docs/lgatr2-migration.md, H16 addendum). Gates A–F green
