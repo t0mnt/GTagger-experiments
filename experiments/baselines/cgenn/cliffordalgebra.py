@@ -12,6 +12,19 @@ from experiments.baselines.cgenn.metric import (
 )
 
 
+def sparse_gp_tables(algebra, path_idx):
+    """(_sp_path, _sp_val) for the sparse gp_impl: for each (left blade i, output blade j)
+    the unique right blade is algebra.gp_k_idx[i, j]; the weight that entry sees is the
+    compact path weight of the grade triple (g_i, g_j, g_k), or zero where product_paths
+    masks the triple. One definition per self-contained file (review finding: this was
+    copy-pasted at every layer)."""
+    g = algebra.bbo_grades.long()
+    lookup = torch.full((algebra.n_subspaces,) * 3, -1, dtype=torch.long)
+    lookup[path_idx[0], path_idx[1], path_idx[2]] = torch.arange(path_idx.shape[1])
+    p = lookup[g[:, None], g[None, :], g[algebra.gp_k_idx]]
+    return p.clamp(min=0), algebra.gp_val * (p >= 0)
+
+
 class CliffordAlgebra(nn.Module):
     def __init__(self, metric):
         super().__init__()

@@ -275,7 +275,8 @@ class SequenceTrimmer(nn.Module):
                     mask = torch.gather(mask, -1, perm)
                     x = torch.gather(x, -1, perm.expand_as(x))
                     if extra is not None:
-                        extra = torch.gather(extra, -1, perm.expand_as(extra))
+                        with torch.enable_grad():
+                            extra = torch.gather(extra, -1, perm.expand_as(extra))
                     if v is not None:
                         v = [torch.gather(_v, -1, perm.expand_as(_v)) for _v in v]
                     if uu is not None:
@@ -288,7 +289,8 @@ class SequenceTrimmer(nn.Module):
                     mask = mask[:, :, :maxlen]
                     x = x[:, :, :maxlen]
                     if extra is not None:
-                        extra = extra[:, :, :maxlen]
+                        with torch.enable_grad():
+                            extra = extra[:, :, :maxlen]
                     if v is not None:
                         v = [_v[:, :, :maxlen] for _v in v]
                     if uu is not None:
@@ -1071,25 +1073,29 @@ class ParticleTransformer(nn.Module):
                 # permutes and truncates the sequence, and preparing frames on the
                 # untrimmed order transports each token with another token's frame
                 # (adversarial-review finding; upstream lloca 1.3.6 has the same bug --
-                # crash on trimmed batches, silent frame misassignment on permuted ones)
+                # crash on trimmed batches, silent frame misassignment on permuted ones).
+                # All frame tensor ops run under enable_grad: the surrounding no_grad is
+                # for data prep, but learned framesnets train THROUGH these matrices.
                 B, _, P = x.shape
-                fm = frames.matrices.reshape(B, P, 16).transpose(1, 2)
+                with torch.enable_grad():
+                    fm = frames.matrices.reshape(B, P, 16).transpose(1, 2)
                 x, v, mask, uu, fm = self.trimmer(x, v, mask, uu, extra=fm)
                 # BATCH-shaped (B, P', 4, 4): prepare_frames inserts the head dim as
                 # (*batch, H, N), so flat (B*P, 4, 4) frames flatten in (H, B, P) order
                 # while q/k/v flatten in (B, H, P) -- a systematic token/frame
                 # misalignment for B>1 (third inherited library bug; the wrapper's flat
                 # framesnet output hits it too, which is why frames are re-shaped here)
-                frames = Frames(
-                    matrices=fm.transpose(1, 2).reshape(x.shape[0], -1, 4, 4),
-                    is_global=frames.is_global,
-                    is_identity=frames.is_identity,
-                )
+                with torch.enable_grad():
+                    frames = Frames(
+                        matrices=fm.transpose(1, 2).reshape(x.shape[0], -1, 4, 4),
+                        is_global=frames.is_global,
+                        is_identity=frames.is_identity,
+                    )
             padding_mask = ~mask.squeeze(1)  # (batch_size, seq_len)
         if frames is not None:
             self.attention.prepare_frames(frames)
 
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(x.device.type, enabled=self.use_amp):
             # input embedding
             x = self.embed(x).masked_fill(
                 ~mask.transpose(1, 2), 0
@@ -1119,7 +1125,7 @@ class ParticleTransformer(nn.Module):
         return x, padding_mask
 
     def _forward_aggregator(self, x, padding_mask):
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(x.device.type, enabled=self.use_amp):
             if self.cls_blocks is not None:
                 # for classification: extract using class token
                 cls_tokens = self.cls_token.expand(x.size(0), 1, -1)  # (batch, 1, embed_dim)
@@ -1163,7 +1169,7 @@ class ParticleTransformer(nn.Module):
             # padding_mask: (batch, seq_len)
             return x, padding_mask
 
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(x.device.type, enabled=self.use_amp):
             # === for segmentation ===
             if self.for_segmentation:
                 x = self.norm(x)

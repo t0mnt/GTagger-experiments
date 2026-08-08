@@ -131,6 +131,17 @@ def construct_gmt(index_to_bitmap, bitmap_to_index, signature):
         indices=coords, values=mult_table_vals, size=(n, n, n)
     )
 
+def sparse_gp_tables(algebra, path_idx):
+    """(_sp_path, _sp_val) for the sparse gp_impl -- one definition per self-contained
+    file (review finding: previously copy-pasted per layer); see the twin in
+    experiments/baselines/cgenn/cliffordalgebra.py."""
+    g = algebra.bbo_grades.long()
+    lookup = torch.full((algebra.n_subspaces,) * 3, -1, dtype=torch.long)
+    lookup[path_idx[0], path_idx[1], path_idx[2]] = torch.arange(path_idx.shape[1])
+    p = lookup[g[:, None], g[None, :], g[algebra.gp_k_idx]]
+    return p.clamp(min=0), algebra.gp_val * (p >= 0)
+
+
 class CliffordAlgebra(nn.Module):
     def __init__(self, metric):
         super().__init__()
@@ -495,13 +506,9 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
         self.register_buffer("_path_idx", self.product_paths.nonzero().T.contiguous(),
                              persistent=False)
         self.gp_impl = getattr(algebra, "gp_impl", "einsum")
-        g = algebra.bbo_grades.long()
-        lookup = torch.full((algebra.n_subspaces,) * 3, -1, dtype=torch.long)
-        lookup[self._path_idx[0], self._path_idx[1], self._path_idx[2]] = torch.arange(
-            self._path_idx.shape[1])
-        pth = lookup[g[:, None], g[None, :], g[algebra.gp_k_idx]]
-        self.register_buffer("_sp_path", pth.clamp(min=0), persistent=False)
-        self.register_buffer("_sp_val", algebra.gp_val * (pth >= 0), persistent=False)
+        sp_path, sp_val = sparse_gp_tables(algebra, self._path_idx)
+        self.register_buffer("_sp_path", sp_path, persistent=False)
+        self.register_buffer("_sp_val", sp_val, persistent=False)
         self.weight = nn.Parameter(
             torch.empty(out_features, in_features, self.product_paths.sum())
         )
@@ -575,13 +582,9 @@ class SteerableGeometricProductLayer(nn.Module):
         self.register_buffer("_path_idx", self.product_paths.nonzero().T.contiguous(),
                              persistent=False)
         self.gp_impl = getattr(algebra, "gp_impl", "einsum")
-        g = algebra.bbo_grades.long()
-        lookup = torch.full((algebra.n_subspaces,) * 3, -1, dtype=torch.long)
-        lookup[self._path_idx[0], self._path_idx[1], self._path_idx[2]] = torch.arange(
-            self._path_idx.shape[1])
-        pth = lookup[g[:, None], g[None, :], g[algebra.gp_k_idx]]
-        self.register_buffer("_sp_path", pth.clamp(min=0), persistent=False)
-        self.register_buffer("_sp_val", algebra.gp_val * (pth >= 0), persistent=False)
+        sp_path, sp_val = sparse_gp_tables(algebra, self._path_idx)
+        self.register_buffer("_sp_path", sp_path, persistent=False)
+        self.register_buffer("_sp_val", sp_val, persistent=False)
         self.weight = nn.Parameter(torch.empty(features, self.product_paths.sum()))
         self.reset_parameters()
 

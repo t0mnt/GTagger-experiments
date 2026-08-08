@@ -4,6 +4,7 @@ import math
 import torch
 from torch import nn
 
+from experiments.baselines.cgenn.cliffordalgebra import sparse_gp_tables
 from experiments.baselines.cgenn.linear import MVLinear
 from experiments.baselines.cgenn.normalization import NormalizationLayer
 
@@ -28,15 +29,9 @@ class SteerableGeometricProductLayer(nn.Module):
         self.register_buffer("_path_idx", self.product_paths.nonzero().T.contiguous(),
                              persistent=False)
         self.gp_impl = getattr(algebra, "gp_impl", "einsum")
-        # sparse tables -- same construction as fcgp: unique right blade per (i, j) plus
-        # the compact path index its weight comes from (zero where the path is masked)
-        g = algebra.bbo_grades.long()
-        lookup = torch.full((algebra.n_subspaces,) * 3, -1, dtype=torch.long)
-        lookup[self._path_idx[0], self._path_idx[1], self._path_idx[2]] = torch.arange(
-            self._path_idx.shape[1])
-        p = lookup[g[:, None], g[None, :], g[algebra.gp_k_idx]]
-        self.register_buffer("_sp_path", p.clamp(min=0), persistent=False)
-        self.register_buffer("_sp_val", algebra.gp_val * (p >= 0), persistent=False)
+        sp_path, sp_val = sparse_gp_tables(algebra, self._path_idx)
+        self.register_buffer("_sp_path", sp_path, persistent=False)
+        self.register_buffer("_sp_val", sp_val, persistent=False)
         self.weight = nn.Parameter(torch.empty(features, self.product_paths.sum()))
 
         self.reset_parameters()
