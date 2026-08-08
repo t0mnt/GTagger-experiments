@@ -492,6 +492,38 @@ use in-place `nn.Module.compile(dynamic=True)`, which keeps `state_dict` keys by
 verified: compiled-knob build loads eager-recorded fixtures `strict=True` and runs. Knob
 matrix (composed via hydra over both trees) asserts the full posture table.
 
+**Sparse-jet assessment (2026-08-08, operator-directed).** Census: tag_lgatr / tag_slim
+/ tag_lorentznet are ALREADY sparse (flat token/row lists, block-diagonal attention or
+ptr-derived edges — no padding reaches those nets). The padded world is the MPNN/kNN side
+(46 deliberate `to_dense_batch` sites): the CGENN family, the slim hybrids' dense top-k,
+and the padded-attention transformers. Measured padded-slot waste under the
+pad-to-batch-max policy (mini top-tagging set): **44% aggregate at batchsize 32, 50% at
+128** (max 64%) — that is the entire theoretical ceiling of a sparse conversion. Verdict:
+**not worth it as an optimization program.** (a) Where it is free it is already done;
+(b) where it would pay most — the CGENN family — padding is load-bearing for official-repo
+parity (theta_h BatchNorm runs over padded nodes and the readout divides by the padded
+max, both documented parity locks), so sparse there is an ablation-class MODEL change, not
+an optimization; (c) ParT already carries its own anti-waste mechanism (SequenceTrimmer
+quantile-trims per batch); (d) length-bucketed batching could reclaim most of the 44-50%
+without touching the per-batch function, but it changes batch composition (and therefore
+the BN-over-padded training distribution) versus the official random-batch recipe —
+recorded as a disclosed post-campaign option, not applied.
+
+**CGENN speedup round 2 (2026-08-08).** Fresh angles after the round-1 CPU closure, all
+measured: (i) fused right+left MVLinear (one concatenated einsum + split) wins 24% on the
+pair micro-benchmark (680→516 µs) but the pair is <1% of the 173 ms forward — rejected;
+(ii) sparse-impl pair-gather and weight-gather layouts re-checked — already optimal
+(round 1); (iii) the parity-locked padded compute above (44–50% of slots) is the honest
+remaining headroom, unlockable only as a disclosed model/recipe change; (iv) the GPU
+levers stay with β-PERF (max-autotune-on-GPU column, batch-size refind, and the
+`gp_impl` matrix). Independent confirmation this round: the 2-op chains are BITWISE equal
+to the raw 3-operand einsum at the full table and every grade subset on random shapes
+(0.00e+00), the three `gp_impl` forms agree to ≤5.3e-15 (fp64) across random channel
+dims and both `include_first_order` branches, and lgatr 2.0's own `_GeometricProductSparse`
+uses the identical quasigroup construction (`gp.abs().argmax(-1)` + gathered signs; label
+convention transposed, unweighted, with a memory-saving custom autograd Function that our
+weighted form deliberately does not need).
+
 **β-PERF cluster matrix (the one remaining CPU-side-prepared decision input; everything
 below is a one-line config override on an existing knob).** Measure it/s (the run's own
 timing line after warm-up — ignore the first estimate, compile warm-up lands there) on the
