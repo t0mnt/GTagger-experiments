@@ -55,6 +55,15 @@ def test_tagging(framesnet, model_list, equivectors, jet_size=50):
         if framesnet != "identity":
             overrides.append(f"model/framesnet/equivectors={equivectors}")
         cfg = hydra.compose(config_name="toptagging", overrides=overrides)
+        # FLOPs are compile-independent by construction (docs/cgenn-compile.md, table
+        # policy) and FX cannot symbolically trace a dynamo-compiled module -- force the
+        # eager build regardless of the production configs' compiled-dynamic defaults
+        from omegaconf import OmegaConf, open_dict
+        with open_dict(cfg):
+            if OmegaConf.select(cfg, "model.compile") is not None:
+                cfg.model.compile = False
+            if OmegaConf.select(cfg, "model.net.compile") is not None:
+                cfg.model.net.compile = False
         exp = TopTaggingExperiment(cfg)
     exp._init()
     exp.init_physics()
