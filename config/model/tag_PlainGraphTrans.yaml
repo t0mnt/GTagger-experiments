@@ -3,6 +3,7 @@ in_channels: null               # init_physics -> 7 + extra_scalars
 out_channels: null              # init_physics -> num_outputs
 use_amp: false
 add_fourmomenta_backbone: false
+compile: true                   # torch.compile(net, dynamic=True); Stage-4 gates green (operator-adopted default)
 
 net:
   _target_: experiments.baselines.plaingraphtrans.PlainGraphTrans

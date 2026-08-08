@@ -2,6 +2,7 @@ _target_: experiments.tagging.wrappers.ParticleNetWrapper
 in_channels: null
 out_channels: null
 add_fourmomenta_backbone: false
+compile: true                   # torch.compile(net, dynamic=True); Stage-4 gates green (operator-adopted default)
 
 net:
  _target_: experiments.baselines.particlenet.ParticleNet

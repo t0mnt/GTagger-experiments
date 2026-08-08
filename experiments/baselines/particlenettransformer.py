@@ -46,6 +46,34 @@ from lloca.utils.lorentz import lorentz_eye
 _logger = logging.getLogger(__name__)
 
 
+def sdpa_plain_attention(x, mha, key_padding_mask=None, attn_mask=None, dropout_p=0.0):
+    """Compiled twin of the identity-frames ``nn.MultiheadAttention`` call: the same
+    weights and math via explicit in_proj -> scaled_dot_product_attention -> out_proj.
+    nn.MHA's mask preamble hits ``warnings.warn`` (dynamo-skipped -> one graph break per
+    block) whenever a bool key_padding_mask meets a float attn_mask -- exactly the ParT
+    pairwise-bias case; this twin canonicalizes both masks with the traceable helper
+    (check_other=False) instead. Eager keeps the nn.MHA call (BIT-pinned); compiled
+    routes here, TOL-gated like every compiled path. ``x`` is batch-first ``(B, S, E)``;
+    ``attn_mask`` may be a 4D ``(B, num_heads, S, S)`` additive bias."""
+    if mha.bias_k is not None or mha.add_zero_attn:
+        raise NotImplementedError("sdpa_plain_attention: bias_kv/add_zero_attn not supported")
+    bsz, seqlen, embed = x.shape
+    num_heads = mha.num_heads
+    head_dim = embed // num_heads
+    key_padding_mask = _canonical_mask(key_padding_mask, "key_padding_mask", None, "", x.dtype, False)
+    attn_mask = _canonical_mask(attn_mask, "attn_mask", None, "", x.dtype, False)
+    if key_padding_mask is not None:
+        kpm = key_padding_mask.view(bsz, 1, 1, seqlen).expand(-1, num_heads, -1, -1)
+        attn_mask = kpm if attn_mask is None else attn_mask + kpm
+    q, k, v = F._in_projection_packed(x, x, x, mha.in_proj_weight, mha.in_proj_bias)
+    q = q.reshape(bsz, seqlen, num_heads, head_dim).transpose(1, 2)
+    k = k.reshape(bsz, seqlen, num_heads, head_dim).transpose(1, 2)
+    v = v.reshape(bsz, seqlen, num_heads, head_dim).transpose(1, 2)
+    out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=dropout_p)
+    out = out.transpose(1, 2).reshape(bsz, seqlen, embed)
+    return mha.out_proj(out)
+
+
 def lloca_transport_attention(x, mha, lloca_attn, key_padding_mask=None, attn_mask=None, dropout_p=0.0):
     """LLoCa tensorial attention reusing an ``nn.MultiheadAttention``'s own weights.
 
@@ -393,6 +421,11 @@ def build_sparse_tensor(uu, idx, seq_len):
 
 
 class PairEmbed(nn.Module):
+    # compile knob (wrapper-set): route the symmetric path through the all-pairs twin
+    # in forward() -- torch.tril_indices takes only python ints, which pins seq_len
+    # under compile (one recompile per padded length). Eager default untouched.
+    compiled_dense = False
+
     def __init__(
             self, pairwise_lv_dim, pairwise_input_dim, dims,
             remove_self_pair=False, use_pre_activation_pair=True, mode='sum',
@@ -457,6 +490,28 @@ class PairEmbed(nn.Module):
         # x: (batch, v_dim, seq_len)
         # uu: (batch, v_dim, seq_len, seq_len)
         assert (x is not None or uu is not None)
+        if self.is_symmetric and not self.for_onnx and self.compiled_dense and x is not None:
+            # compiled twin of the tril-compute-then-mirror path below (same rationale
+            # and caveats as particletransformer.PairEmbed._forward_dense): the pair
+            # features are symmetric in (i, j) and the embed is pointwise per pair, so
+            # the full-grid build produces the same values, seq_len-dynamic; the diagonal
+            # is zeroed post-embed exactly like the never-written tril diagonal. No
+            # torch.no_grad(): grad-mode transitions split the graph, and the momenta
+            # are grad-free data leaves either way. is_symmetric implies
+            # pairwise_input_dim == 0, so uu never reaches this path.
+            assert uu is None, "compiled_dense twin: uu unsupported (is_symmetric => no uu)"
+            bsz, _, slen = x.size()
+            fts = self.pairwise_lv_fts(x.unsqueeze(-1), x.unsqueeze(-2))
+            elements = self.embed(fts.reshape(bsz, -1, slen * slen))
+            y = elements.reshape(bsz, self.out_dim, slen, slen)
+            if self.remove_self_pair:
+                di = torch.arange(slen, device=y.device)
+                y = y.clone()
+                y[:, :, di, di] = 0
+            y_padded = torch.zeros(bsz, self.out_dim, slen + 1, slen + 1,
+                                   dtype=y.dtype, device=y.device)
+            y_padded[:, :, 1:, 1:] = y
+            return y_padded
         with torch.no_grad():
             if x is not None:
                 batch_size, _, seq_len = x.size()
@@ -518,6 +573,10 @@ class PairEmbed(nn.Module):
 
 
 class Block(nn.Module):
+    # compile knob (wrapper-set): route the identity-frames attention through the
+    # sdpa_plain_attention twin instead of nn.MHA's forward (see the twin's docstring)
+    compiled_attention = False
+
     def __init__(self, embed_dim=128, num_heads=8, ffn_ratio=4,
                  dropout=0.1, attn_dropout=0.1, activation_dropout=0.1,
                  add_bias_kv=False, activation='gelu',
@@ -570,12 +629,21 @@ class Block(nn.Module):
         residual = x
         x = self.pre_attn_norm(x)
         if lloca_attn is None:
-            # identity / global frames: ordinary multi-head attention (the original path)
-            am = attn_mask
-            if am is not None and am.dim() == 4:
-                am = am.reshape(-1, am.size(-2), am.size(-1))  # (batch*num_heads, seq, seq)
-            x = self.attn(x, x, x, key_padding_mask=padding_mask,
-                          attn_mask=am)[0]  # (seq_len, batch, embed_dim)
+            if self.compiled_attention:
+                # compiled twin -- see sdpa_plain_attention (skipped-fn break in nn.MHA)
+                xb = sdpa_plain_attention(
+                    x.transpose(0, 1), self.attn,
+                    key_padding_mask=padding_mask, attn_mask=attn_mask,
+                    dropout_p=self.attn.dropout if self.training else 0.0,
+                )
+                x = xb.transpose(0, 1)
+            else:
+                # identity / global frames: ordinary multi-head attention (the original path)
+                am = attn_mask
+                if am is not None and am.dim() == 4:
+                    am = am.reshape(-1, am.size(-2), am.size(-1))  # (batch*num_heads, seq, seq)
+                x = self.attn(x, x, x, key_padding_mask=padding_mask,
+                              attn_mask=am)[0]  # (seq_len, batch, embed_dim)
         else:
             # learned frames: tensorial transport, reusing this block's MHA projection weights
             xb = lloca_transport_attention(

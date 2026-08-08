@@ -190,6 +190,24 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   hoisted out of the compiled CGENN-hybrid nets (`build_edges`, wrapper-side).
   Wrapper knobs use in-place `nn.Module.compile()` so `state_dict` keys are unchanged
   between compiled and eager runs.
+- **Compile program, Stage 4 (non-equivariant family; `test_nonequi_compile.py`)**: same
+  gate battery for tag_ParT / tag_particlenet / tag_transformer / tag_PlainGraphTrans /
+  tag_PlainGraphGPS / the PN-ParT hybrid pair; **MIParT descoped by operator decision**
+  (BIT/hash regression pins only; wrapper asserts `compile=False`, configs carry no knob).
+  New fix families, all eager-default-preserving (BIT re-verified after every edit):
+  ParT SequenceTrimmer warm-up as a wrapper-ticked bool (dynamo guards python ints BY
+  VALUE — an in-graph counter read recompiles per step); all-pairs PairEmbed twins
+  (`compiled_dense`) replacing data-dependent `nonzero` / int-only `torch.tril_indices`
+  paths in both ParT and the PNT-local PairEmbed (eval-exact, TOL-gated; training-mode
+  BN pair-multiset caveat disclosed in the log); `sdpa_plain_attention` twin
+  (`compiled_attention`) for identity-frames `nn.MultiheadAttention` whose bool-mask +
+  float-ParT-bias preamble fires a dynamo-skipped `warnings.warn` per block; wrapper-side
+  `mark_dynamic` on every ParT net input including all three `Frames` tensors. The
+  GraphGPS pair's masked BatchNorm over real nodes is a **documented data-dependent break
+  class** (GraphGPS-official `norm: batch`): break-event counts pinned (11 / 7), every
+  reason asserted to be that class, RECOMP still strict ([10,10,10] / [8,8,8]).
+  Posture: five clean models ship `compile: true` in production; the GPS pair ships
+  `false` (knob ready, documented splits, flip on β-PERF); quick tree stays eager.
 - **CGENN `gp_impl: einsum|matmul|sparse`** on baseline + both CGENN hybrids (default
   `sparse` = lgatr 2.0's `sparse_gp` posture; `einsum` is the BIT-pinned reference; matmul
   is the dense-GEMM form). TOL-IMPL gates per impl; only `sparse` changes the FLOPs column.

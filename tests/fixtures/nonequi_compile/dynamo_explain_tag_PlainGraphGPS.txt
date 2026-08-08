@@ -203,19 +203,19 @@ Out Guards:
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
   Guard 9:
-    Name: "G['__builtins_dict___58']['max']"
+    Name: "G['__builtins_dict___113']['max']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___58']['max'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___113']['max'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 10:
-    Name: "G['__builtins_dict___58']['min']"
+    Name: "G['__builtins_dict___113']['min']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___58']['min'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___113']['min'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 11:
@@ -283,11 +283,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dtype)>
   Guard 19:
-    Name: "G['__builtins_dict___58']['float']"
+    Name: "G['__builtins_dict___113']['float']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___58']['float'], ...), type=<class 'float'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___113']['float'], ...), type=<class 'float'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 20:
@@ -787,11 +787,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
   Guard 82:
-    Name: "G['__builtins_dict___63']['iter']"
+    Name: "G['__builtins_dict___118']['iter']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___63']['iter'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___118']['iter'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 83:
@@ -2827,11 +2827,11 @@ Out Guards:
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 337:
-    Name: "G['__builtins_dict___73']['float']"
+    Name: "G['__builtins_dict___128']['float']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___73']['float'], ...), type=<class 'float'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___128']['float'], ...), type=<class 'float'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 338:
@@ -3059,11 +3059,11 @@ Out Guards:
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 366:
-    Name: "G['__builtins_dict___73']['all']"
+    Name: "G['__builtins_dict___128']['all']"
     Source: global
     Create Function: ID_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___73']['all'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___128']['all'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 367:
@@ -3107,11 +3107,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 372:
-    Name: "G['__builtins_dict___73']['any']"
+    Name: "G['__builtins_dict___128']['any']"
     Source: global
     Create Function: ID_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___73']['any'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___128']['any'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 373:
@@ -4075,11 +4075,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
   Guard 493:
-    Name: "G['__builtins_dict___83']['iter']"
+    Name: "G['__builtins_dict___138']['iter']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___83']['iter'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___138']['iter'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 494:
@@ -5140,15 +5140,15 @@ Out Guards:
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
 Compile Times: TorchDynamo compilation metrics:
 Function, Runtimes (s)
-_compile.compile_inner, 0.1978, 0.0494, 0.0310, 0.2317, 0.0458, 0.0492, 0.1974, 0.0804, 0.0486, 0.1278, 0.0841, 0.0548, 0.0214
-compile_attempt_0, 0.1904, 0.0376, 0.0211, 0.1039, 0.0168, 0.0358, 0.1005, 0.0432, 0.0325, 0.0575, 0.0446, 0.0380, 0.0109
-bytecode_tracing, 0.1848, 0.0285, 0.0126, 0.1022, 0.0817, 0.0153, 0.0055, 0.0265, 0.0982, 0.0509, 0.0413, 0.0148, 0.0252, 0.0551, 0.0312, 0.0425, 0.0178, 0.0304, 0.0041
-get_fake_value, 0.0473, 0.0097, 0.0041, 0.0190, 0.0153, 0.0015, 0.0004, 0.0086, 0.0426, 0.0104, 0.0175, 0.0057, 0.0016, 0.0173, 0.0055, 0.0124, 0.0072, 0.0018, 0.0004
-create_proxy, 0.0219, 0.0045, 0.0016, 0.0074, 0.0072, 0.0007, 0.0003, 0.0001, 0.0011, 0.0025, 0.0019, 0.0002, 0.0006, 0.0003, 0.0001, 0.0010, 0.0021, 0.0018, 0.0001, 0.0006, 0.0003, 0.0001, 0.0011, 0.0003
-wrap_to_fake_tensor_and_record, 0.0132, 0.0033, 0.0019, 0.0109, 0.0095, 0.0032, 0.0015, 0.0008, 0.0067, 0.0053, 0.0042, 0.0021, 0.0125, 0.0057, 0.0007, 0.0136, 0.0066, 0.0051, 0.0007, 0.0182, 0.0072, 0.0008, 0.0182, 0.0022
-variable_builder_call, 0.0469, 0.0064, 0.0034, 0.0328, 0.0282, 0.0054, 0.0032, 0.0013, 0.0116, 0.0199, 0.0171, 0.0030, 0.0149, 0.0074, 0.0011, 0.0188, 0.0163, 0.0144, 0.0011, 0.0206, 0.0087, 0.0011, 0.0236, 0.0029
-gc, 0.0001, 0.0007, 0.0004, 0.0009, 0.0009, 0.0005, 0.0007, 0.0011, 0.0005, 0.0004, 0.0010, 0.0005, 0.0004
-insert_deferred_runtime_asserts, 0.0016, 0.0022, 0.0040, 0.0010, 0.0013, 0.0024, 0.0010, 0.0011, 0.0013, 0.0011, 0.0011, 0.0009
-OutputGraph.call_user_compiler, 0.0002, 0.0002, 0.0003, 0.0004, 0.0003, 0.0004, 0.0002, 0.0002, 0.0002, 0.0002, 0.0002, 0.0002
-build_guards, 0.0098, 0.0084, 0.0214, 0.0092, 0.0111, 0.0194, 0.0098, 0.0137, 0.0153, 0.0104, 0.0142, 0.0083
-compile_attempt_1, 0.1038, 0.0175, 0.0741, 0.0246, 0.0518, 0.0266
+_compile.compile_inner, 0.1853, 0.0613, 0.0420, 0.2535, 0.0581, 0.0565, 0.2190, 0.0856, 0.0566, 0.1377, 0.0947, 0.0705, 0.0314
+compile_attempt_0, 0.1776, 0.0386, 0.0201, 0.1085, 0.0181, 0.0324, 0.1082, 0.0394, 0.0301, 0.0541, 0.0434, 0.0404, 0.0101
+bytecode_tracing, 0.1737, 0.0293, 0.0129, 0.1068, 0.0865, 0.0166, 0.0056, 0.0239, 0.1065, 0.0533, 0.0375, 0.0142, 0.0232, 0.0526, 0.0316, 0.0412, 0.0180, 0.0325, 0.0041
+get_fake_value, 0.0489, 0.0097, 0.0043, 0.0186, 0.0167, 0.0016, 0.0004, 0.0080, 0.0463, 0.0107, 0.0156, 0.0054, 0.0015, 0.0153, 0.0050, 0.0122, 0.0073, 0.0017, 0.0004
+create_proxy, 0.0149, 0.0052, 0.0021, 0.0078, 0.0072, 0.0008, 0.0003, 0.0001, 0.0010, 0.0025, 0.0019, 0.0002, 0.0005, 0.0002, 0.0001, 0.0010, 0.0020, 0.0017, 0.0001, 0.0005, 0.0003, 0.0001, 0.0011, 0.0003
+wrap_to_fake_tensor_and_record, 0.0119, 0.0031, 0.0020, 0.0117, 0.0105, 0.0032, 0.0015, 0.0007, 0.0058, 0.0058, 0.0047, 0.0024, 0.0110, 0.0055, 0.0006, 0.0122, 0.0068, 0.0055, 0.0007, 0.0177, 0.0070, 0.0006, 0.0193, 0.0021
+variable_builder_call, 0.0437, 0.0061, 0.0032, 0.0357, 0.0321, 0.0056, 0.0034, 0.0012, 0.0107, 0.0204, 0.0182, 0.0034, 0.0131, 0.0070, 0.0010, 0.0171, 0.0160, 0.0151, 0.0010, 0.0200, 0.0088, 0.0010, 0.0253, 0.0028
+gc, 0.0005, 0.0006, 0.0004, 0.0009, 0.0007, 0.0004, 0.0007, 0.0009, 0.0004, 0.0004, 0.0013, 0.0005, 0.0003
+insert_deferred_runtime_asserts, 0.0016, 0.0016, 0.0037, 0.0011, 0.0012, 0.0014, 0.0009, 0.0010, 0.0013, 0.0013, 0.0011, 0.0008
+OutputGraph.call_user_compiler, 0.0003, 0.0002, 0.0003, 0.0005, 0.0005, 0.0005, 0.0002, 0.0002, 0.0002, 0.0002, 0.0002, 0.0002
+build_guards, 0.0209, 0.0202, 0.0335, 0.0199, 0.0218, 0.0306, 0.0206, 0.0242, 0.0282, 0.0217, 0.0275, 0.0191
+compile_attempt_1, 0.1089, 0.0179, 0.0769, 0.0233, 0.0522, 0.0267

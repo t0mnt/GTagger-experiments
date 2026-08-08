@@ -304,6 +304,7 @@ class TransformerWrapper(AggregatedTaggerWrapper):
         use_amp=False,
         attention_backend="xformers",
         mean_aggregation=True,
+        compile=False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -314,6 +315,10 @@ class TransformerWrapper(AggregatedTaggerWrapper):
 
         if attention_backend == "flex":
             compile_flex_attention(package_name="lloca")
+        if compile:
+            # compile the net only, net-level like tag_lgatr (Stage-4 gates:
+            # tests/experiments/test_nonequi_compile.py)
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         # precompute attention mask to avoid cudaStreamSynchronize
@@ -428,10 +433,15 @@ class ParticleNetWrapper(AggregatedTaggerWrapper):
         self,
         net,
         *args,
+        compile=False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.net = net(input_dims=self.in_channels, num_classes=self.out_channels)
+        if compile:
+            # compile the net only; dense top-k kNN is shape-static and traces clean
+            # (Stage-4 gates: tests/experiments/test_nonequi_compile.py)
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         (
@@ -683,6 +693,10 @@ class ParTWrapper(TaggerWrapper):
 
 class MIParTWrapper(ParTWrapper):
     def __init__(self, *args, **kwargs):
+        # compile support was not pursued for MIParT (operator decision): its backbone
+        # keeps nn.MHA warn-breaks + trimmer counters that were only fixed in the local
+        # ParT port, and ParTWrapper's twin flags do not exist on its PairEmbed
+        assert not kwargs.get("compile", False), "MIParT has no compile support"
         super().__init__(*args, **kwargs)
         assert isinstance(self.framesnet, IdentityFrames)
 
@@ -1125,12 +1139,22 @@ class ParticleNetParTGraphTransWrapper(TaggerWrapper):
     points for the EdgeConv kNN, which we read off the local four-momenta.
     """
 
-    def __init__(self, net, *args, use_amp=False, **kwargs):
+    def __init__(self, net, *args, use_amp=False, compile=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.use_amp = use_amp
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
         # the prepended class token rides in the covariant jet frame -> request it
         self.compute_jet_frames = True
+        if compile:
+            # route the identity-frames nn.MHA blocks and the tril PairEmbed through
+            # their compiled twins (eager default untouched, TOL-gated -- Stage-4 gates:
+            # tests/experiments/test_nonequi_compile.py)
+            for m in self.net.modules():
+                if hasattr(m, "compiled_attention"):
+                    m.compiled_attention = True
+                if hasattr(m, "compiled_dense"):
+                    m.compiled_dense = True
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         (
@@ -1314,12 +1338,16 @@ class PlainGraphTransWrapper(TaggerWrapper):
     for the deltaR kNN. The prepended class token rides in the covariant jet frame.
     """
 
-    def __init__(self, net, *args, use_amp=False, **kwargs):
+    def __init__(self, net, *args, use_amp=False, compile=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.use_amp = use_amp
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
         # the prepended class token rides in the covariant jet frame -> request it
         self.compute_jet_frames = True
+        if compile:
+            # compile the net only; static kNN + torch-MHA trace clean (Stage-4 gates:
+            # tests/experiments/test_nonequi_compile.py)
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         (
@@ -1379,10 +1407,16 @@ class PlainGraphGPSWrapper(TaggerWrapper):
     mean-pool readout over invariant local features is already invariant.
     """
 
-    def __init__(self, net, *args, use_amp=False, **kwargs):
+    def __init__(self, net, *args, use_amp=False, compile=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.use_amp = use_amp
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+        if compile:
+            # compile the net only. KNOWN SPLITS: the masked BatchNorm over real nodes
+            # (MaskedNorm, norm='batch') is data-dependent by design -> a pinned number
+            # of documented graph splits, not a clean single graph (Stage-4 gates:
+            # tests/experiments/test_nonequi_compile.py, BREAK_BARS)
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         (
@@ -1441,10 +1475,22 @@ class ParticleNetParTGraphGPSWrapper(TaggerWrapper):
     needed -- the mean-pool readout over invariant local features is already invariant.
     """
 
-    def __init__(self, net, *args, use_amp=False, **kwargs):
+    def __init__(self, net, *args, use_amp=False, compile=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.use_amp = use_amp
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+        if compile:
+            # route the identity-frames nn.MHA calls + the tril PairEmbed through their
+            # compiled twins (eager default untouched, TOL-gated). KNOWN SPLITS: the
+            # masked BatchNorm over real nodes (MaskedNorm, norm='batch') is
+            # data-dependent by design -> a pinned number of documented graph splits
+            # (Stage-4 gates: tests/experiments/test_nonequi_compile.py, BREAK_BARS)
+            for m in self.net.modules():
+                if hasattr(m, "compiled_attention"):
+                    m.compiled_attention = True
+                if hasattr(m, "compiled_dense"):
+                    m.compiled_dense = True
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         (

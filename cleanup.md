@@ -26,10 +26,13 @@ before the merge — reviewers need the evidence — and the compile/BIT machine
 ## Keep permanently (explicitly NOT cleanup)
 
 - All compile gate files (`test_cgenn_compile.py`, `test_lorentznet_compile.py`,
-  `test_cgenn_hybrid_compile.py`, `test_lorentznet_hybrid_compile.py`) and their
-  `tests/fixtures/*_compile/` BIT fixture packs — these are the regression guards that
-  make any future refactor of the model code provable-safe (record-before-edit +
-  `torch.equal`).
+  `test_cgenn_hybrid_compile.py`, `test_lorentznet_hybrid_compile.py`,
+  `test_nonequi_compile.py`) and their `tests/fixtures/*_compile/` BIT fixture packs —
+  these are the regression guards that make any future refactor of the model code
+  provable-safe (record-before-edit + `torch.equal`). This includes the MIParT fixtures
+  (compile was descoped for it, but the BIT/hash pins still guard its eager path) and
+  the two large ParT packs (`tag_ParT_fp64.pt` ≈ 17 MB — the price of pinning a 2M-param
+  model bit-exactly; do not trim).
 - The decision logs: `docs/lgatr2-migration.md`, `docs/cgenn-compile.md`,
   `docs/audit-ledger.md`, `docs/diffs.md` — the paper's methods section and any future
   migration lean on these.

@@ -2,6 +2,7 @@ _target_: experiments.tagging.wrappers.ParticleNetWrapper
 in_channels: null
 out_channels: null
 add_fourmomenta_backbone: false
+compile: false                  # quick tree stays eager; compile smoke is env-gated (CGENN_COMPILE_GATES=1)
 
 net:
  _target_: experiments.baselines.particlenet.ParticleNet

@@ -524,6 +524,75 @@ uses the identical quasigroup construction (`gp.abs().argmax(-1)` + gathered sig
 convention transposed, unweighted, with a memory-saving custom autograd Function that our
 weighted form deliberately does not need).
 
+**Stage 4 — the non-equivariant family (2026-08-08, operator-directed; MIParT
+descoped).** Fixtures-first for all eight padded-dense models
+(`tests/fixtures/nonequi_compile/`, BIT `torch.equal` fp32+fp64 + content hashes; the
+recording itself caught a real pre-existing bug: `config_quick/tag_particlenet.yaml`
+targeted the library ParticleNet, which has no `v` kwarg). Gate results, per model:
+
+- **tag_ParT (the in-repo lloca port)** needed the deepest surgery, every step
+  fixture-guarded: (i) SequenceTrimmer's tensor counter branch is a `generic_jump` break —
+  and the obvious int mirror STILL recompiled per step because dynamo guards python int
+  attributes **by value** (guard-fail log: `_counter_int == 0`, `== 1`, …); the fix is a
+  `_warmed` bool plus hoisting the `tick()` to the wrapper, outside the compiled region.
+  (ii) PairEmbed's sparse pair path gathers real pairs via `nonzero` (data-dependent by
+  design), and the dense path pins `seq_len` through int-only `torch.tril_indices`;
+  compiled ParT therefore routes an **all-pairs broadcast twin** (`compiled_dense`) that
+  is the same function at reassociation level (dense-vs-sparse probe 2.2e-15). (iii)
+  `torch.compiler.is_compiling()` cannot be used for the routing — it does not
+  constant-fold under `dynamo.explain` and manufactures reasonless splits; plain bool
+  attributes do. (iv) `dynamic=True` alone never promoted the padded dim: the wrapper
+  `mark_dynamic`s every net input INCLUDING all three `Frames` tensors (matrices/det/inv
+  — one unmarked container tensor re-pins the whole graph). End state: TOL 9.0e-16 · DET
+  ✓ · **BREAKS 0 · RECOMP [1,1,1]**.
+- **tag_particlenet, tag_transformer, tag_PlainGraphTrans**: born compile-clean, zero
+  code changes — BREAKS 0, RECOMP [1,1,1] (dense top-k kNN traces; `torch.eye(SymInt)`
+  is fine; the lloca transformer's SDPA path traces whole).
+- **tag_ParticleNetParTGraphTrans / tag_ParticleNetParTGraphGPS**: `nn.MultiheadAttention`
+  breaks once per block — not in SDPA but in the mask preamble: a bool
+  `key_padding_mask` meeting the float ParT pair bias fires the mismatched-mask
+  deprecation `warnings.warn`, which is dynamo-skipped (PlainGPS, which passes no float
+  bias, never warns and traces `nn.MHA` whole — that asymmetry located the break).
+  Compiled routing goes through **`sdpa_plain_attention`**, a twin of the identity-frames
+  MHA call (same weights: packed in_proj → SDPA → out_proj, masks canonicalized by the
+  traceable `check_other=False` helper; bias_kv/add_zero_attn guarded off). The PNT-local
+  PairEmbed had the same `tril_indices` pin as ParT and got the same all-pairs twin (CLS
+  row/col padding preserved). Eager paths untouched (BIT re-verified). GraphTrans: TOL
+  5.1e-16 · **BREAKS 0 · RECOMP [1,1,1]**.
+- **tag_PlainGraphGPS / tag_ParticleNetParTGraphGPS — a documented break class, not
+  zero**: the masked BatchNorm normalizes over REAL nodes only
+  (`out[mask_bool] = norm(h[mask_bool])`, `norm: batch` is GraphGPS-official), and boolean
+  advanced indexing lowers to `aten.nonzero` — data-dependent **by design**, same class as
+  the Stage-3 kNN edge gathers. The gate pins the exact event counts (**11 / 7**) and
+  asserts every break reason is that class, so any new break of any other kind still
+  fails. RECOMP is strict for them too: the nonzero-split subgraphs take the real-node
+  count as an unbacked dynamic dim from the first build — measured **[10,10,10] /
+  [8,8,8]**, no per-shape growth. TOL 0.0 / 2.1e-17.
+- **tag_MIParT — descoped (operator: "MIParT will not be done")**: BIT/hash fixtures stay
+  as regression pins; excluded from the compile-gate parametrization; the wrapper asserts
+  `compile=False` and its configs carry no knob (hydra struct rejects an override).
+
+Knobs (all in-place `net.compile(dynamic=True)`, state_dict keys stable): `ParTWrapper`
+(twin flags + trimmer tick + mark_dynamic) — already shipped; new: `ParticleNetWrapper`,
+`TransformerWrapper` (net-level, like tag_lgatr), `PlainGraphTransWrapper`,
+`PlainGraphGPSWrapper`, and the PN-ParT pair (twin-flag loop over
+`compiled_attention`/`compiled_dense`). End-to-end knob probe (hydra-composed quick tree,
+`model.compile=true`, fixture weights): all seven ≤ 9.0e-16 vs the eager fixtures,
+deterministic, twin flags exactly where expected. **Posture**: the five clean models ship
+`compile: true` in the production tree; the GPS pair ships `compile: false` with the
+documented-splits comment (knob ready, flip on β-PERF numbers); `config_quick` stays
+eager everywhere.
+
+*Honest caveat carried by both all-pairs twins (ParT + PNT PairEmbed), eval-exact,
+training-statistical*: in training mode the embed's BatchNorm computes batch statistics
+over the all-pairs multiset (each unordered pair twice + the self-pair diagonal) instead
+of the tril multiset. Exact duplication is stats-neutral (same mean, same biased
+variance); the self-pair diagonal is the real delta — an O(1/seq_len) contribution of
+`fts(a,a)` rows (finite: `lndelta = ln(eps)`), absent from eager-tril training. Compiled
+training is therefore self-consistent but not statistics-identical to eager training —
+same disclosure class as compile's own fusion-order reassociation, recorded here for the
+methods section.
+
 **β-PERF cluster matrix (the one remaining CPU-side-prepared decision input; everything
 below is a one-line config override on an existing knob).** Measure it/s (the run's own
 timing line after warm-up — ignore the first estimate, compile warm-up lands there) on the
@@ -538,6 +607,8 @@ everywhere, zero-padded or not — our knobs match):
 | tag_slim compiled (shipping default) vs eager | `model.net.compile={true,false}` (2) |
 | tag_lgatr × {eager, compiled} | `+model.net.compile={false,true}` (+`compile_kwargs.dynamic=true`) (2) |
 | CGENNLGATrGraphTrans / GPS × {eager, compiled} (gp_impl stays sparse) | `model.compile={false,true}` (4) |
+| tag_ParT / tag_particlenet / tag_transformer / tag_PlainGraphTrans / PNParTGraphTrans × {eager, compiled} | `model.compile={false,true}` (10) |
+| tag_PlainGraphGPS / PNParTGraphGPS × {eager, compiled-with-splits} | `model.compile={false,true}` (4) — decides whether the documented masked-BN splits still net a win; ships false until they do |
 
 Decisions the table makes: every `compile:` default; the campaign `gp_impl` (sparse is the
 lgatr-2.0-posture default — GPU numbers confirm or flip to matmul in one line; only
