@@ -703,7 +703,7 @@ class LorentzNetWrapper(nn.Module):
         if compile:
             # compile the net only; the wrapper's edge building stays eager by design
             # (Stage-2 gates: tests/experiments/test_lorentznet_compile.py)
-            self.net = torch.compile(self.net, dynamic=True)
+            self.net.compile(dynamic=True)
 
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
@@ -809,7 +809,7 @@ class CGENNWrapper(nn.Module):
             # net only -- the wrapper stays eager: pair.nonzero, the spurion rescale and
             # to_dense_batch are data-dependent by design (docs/cgenn-compile.md section 2).
             # dynamic=True: N = B*P and the fully-connected E vary per batch.
-            self.net = torch.compile(self.net, dynamic=True)
+            self.net.compile(dynamic=True)
         self.framesnet = framesnet
         assert isinstance(framesnet, IdentityFrames)
 
@@ -999,7 +999,7 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         if compile:
             # compile the net only; edge building is hoisted in forward (data-dependent
             # nonzero, eager by design -- tests/experiments/test_cgenn_hybrid_compile.py)
-            self.net = torch.compile(self.net, dynamic=True)
+            self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1050,7 +1050,7 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
         if compile:
             # compile the net only; edge building is hoisted in forward (data-dependent
             # nonzero, eager by design -- tests/experiments/test_cgenn_hybrid_compile.py)
-            self.net = torch.compile(self.net, dynamic=True)
+            self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1177,9 +1177,13 @@ class LorentzNetLGATrSlimGraphTransWrapper(nn.Module):
     knn_metric='deltaR'.
     """
 
-    def __init__(self, net, framesnet, out_channels):
+    def __init__(self, net, framesnet, out_channels, compile=False):
         super().__init__()
         self.net = net(num_classes=out_channels)
+        if compile:
+            # compile the net only (dense top-k kNN inside the net is shape-static and
+            # traces clean -- tests/experiments/test_lorentznet_hybrid_compile.py)
+            self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1229,9 +1233,13 @@ class LorentzNetLGATrSlimGraphGPSWrapper(nn.Module):
     by 1/20, and reorders four-momenta to the (px, py, pz, E) the model expects.
     """
 
-    def __init__(self, net, framesnet, out_channels):
+    def __init__(self, net, framesnet, out_channels, compile=False):
         super().__init__()
         self.net = net(num_classes=out_channels)
+        if compile:
+            # compile the net only (dense top-k kNN inside the net is shape-static and
+            # traces clean -- tests/experiments/test_lorentznet_hybrid_compile.py)
+            self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 

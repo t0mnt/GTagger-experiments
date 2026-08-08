@@ -1,5 +1,6 @@
 _target_: experiments.tagging.wrappers.CGENNWrapper
 out_channels: null
+compile: false  # quick tree stays eager; compile smoke is env-gated (CGENN_COMPILE_GATES=1)
 
 net:
  _target_: experiments.baselines.cgenn.cgenn.CGENN

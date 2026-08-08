@@ -24,6 +24,11 @@ net:
  mlp:
   nonlinearity: gelu
   mlp_ratio: 2
+ # net-level compile, upstream tagging-guide practice (their tag_lgatr ships exactly this);
+ # operator-adopted default -- supersedes the earlier Gate-H parking (docs/cgenn-compile.md)
+ compile: true
+ compile_kwargs:
+  dynamic: true
 
 defaults:
  - framesnet: identity

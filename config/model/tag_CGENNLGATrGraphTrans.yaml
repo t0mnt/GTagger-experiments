@@ -1,6 +1,6 @@
 _target_: experiments.tagging.wrappers.CGENNLGATrGraphTransWrapper
 out_channels: null              # init_physics -> num_outputs 
-compile: false  # torch.compile(net, dynamic=True); edges hoisted eager -- flip on beta-PERF numbers
+compile: true  # torch.compile(net, dynamic=True); edges hoisted eager (operator-adopted default)
 
 net:
   _target_: experiments.baselines.CGENNLGATrGraphTransHybrid.CGENNLGATrGraphTrans

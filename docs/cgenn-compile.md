@@ -474,6 +474,24 @@ TOL 0.000e+00 (bit-equal, recorded as bonus) · DET ✓ · BREAKS 0 (cold) · RE
 unique_graphs = 1**. `compile: false` knob wired in `tag_lorentznet.yaml` (CGENNWrapper
 pattern — net only, wrapper edges stay eager); flip on β-PERF numbers.
 
+**LorentzNet-slim hybrid pair + table-wide posture flip + review pass (2026-08-07,
+operator-directed).** (1) `tag_LorentzNetLGATrSlimGraphTrans/GPS` gated via
+`test_lorentznet_hybrid_compile.py` — recon found them born compile-clean (dense top-k kNN
+with `idx`/`nbr_mask`, no `nonzero`; 2-operand einsums only; no cached properties), and the
+gates confirmed with ZERO code changes: BIT ✓ · TOL 6.6e-18 / 0.0 · DET ✓ · BREAKS 0 ·
+RECOMP [1, 1, 1]. Compile knobs wired. (2) Per operator directive (lgatr 2.0 + tagging-guide
+practice: dynamic compilation everywhere, zero-padded or not), the **production tree now
+ships compiled-dynamic for all eight models** — tag_lgatr (net-level, superseding the
+Gate-H parking), tag_slim (already), tag_cgenn, tag_lorentznet, and all four hybrids —
+while **config_quick stays eager** (CPU test tree; compile-on-CPU is the env-gated smoke).
+(3) The review pass caught a real bug in the wrapper knobs: `self.net =
+torch.compile(self.net)` wraps in OptimizedModule and prefixes every parameter with
+`_orig_mod.` — breaking checkpoint interchange between compiled and eager runs (and the
+production parameter-manifest gate, which is how it surfaced). All six wrapper sites now
+use in-place `nn.Module.compile(dynamic=True)`, which keeps `state_dict` keys byte-stable;
+verified: compiled-knob build loads eager-recorded fixtures `strict=True` and runs. Knob
+matrix (composed via hydra over both trees) asserts the full posture table.
+
 **β-PERF cluster matrix (the one remaining CPU-side-prepared decision input; everything
 below is a one-line config override on an existing knob).** Measure it/s (the run's own
 timing line after warm-up — ignore the first estimate, compile warm-up lands there) on the

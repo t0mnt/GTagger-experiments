@@ -1,5 +1,6 @@
 _target_: experiments.tagging.wrappers.LorentzNetLGATrSlimGraphGPSWrapper
 out_channels: null              # init_physics -> num_outputs
+compile: true  # torch.compile(net, dynamic=True); operator-adopted default; gates green
 
 net:
   _target_: experiments.baselines.lorentznetlgatrslimgraphgps.LorentzNetLGATrSlimGraphGPS
