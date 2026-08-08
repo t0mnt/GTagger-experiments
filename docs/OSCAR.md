@@ -945,3 +945,23 @@ irreplaceable parts.
 
 Alternatives to raw SSH that CCV supports, if you prefer them: Open OnDemand (browser
 terminal + Jupyter at the CCV portal) and VS Code Remote-SSH (docs: "Remote IDE").
+
+## Appendix: upgrading the environment lgatr 1.4.4 → 2.0 (the dev branch requirement)
+
+On the login node, inside the venv/overlay you certified in §2/§2.9:
+
+```bash
+pip install --upgrade 'lgatr[xformers-attention]>=2.0.0,<3'
+pip uninstall -y opt_einsum einops   # optional: v2 dropped both requirements (torch-only);
+                                     # keep them if any OTHER package in the env needs them
+python -c "import lgatr; print(lgatr.__version__)"   # expect 2.0.x
+```
+
+Nothing else on dev needs a new install — the compile program, gp_impl, and trial
+machinery are pure-repo changes on the packages you already have (torch, PyG, xformers,
+weaver, lloca). Then re-certify per §2.9 (`utils/env_check.py`) — the CUDA-gated backend
+checks must pass on a COMPUTE node — and run the repo suite once
+(`python -m pytest tests/ -q`): expected state is the 15 known pelican-FLOPs environment
+failures and nothing else; the lgatr144 parity file (`test_lgatr_migration_parity.py`)
+is the migration's own acceptance gate and must be fully green. The `.sif` route (§2) is
+now a standard PyPI install — no source build needed for 2.0.

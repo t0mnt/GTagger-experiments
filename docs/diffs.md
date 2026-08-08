@@ -169,3 +169,31 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
 - **`deta` uses an unconditional sign flip** (`-(eta_i - eta_jet)`), not weaver's
   hemisphere-dependent flip -- internally consistent, but the input pipeline is not
   weaver-verbatim on this one feature.
+
+## lgatr 2.0 migration + the compile program (2026-08-07/08, dev)
+- **lgatr 1.4.4 → 2.0 (Posture B / v2-native)**: pins relaxed to `lgatr[xformers-attention]>=2.0.0,<3`;
+  configs adopt v2 defaults implicitly (sigmoid vector gate, affine norms, sparse geometric
+  product, tanh-GeLU); every behavioral choice verified against the lgatr authors' own
+  tagging-guide environment (docs/lgatr2-migration.md, H16 addendum). Gates A–F green
+  (composition, manifests, full suite, identity-frames bit-exactness, blade-table);
+  G (training parity) and H (throughput) remain cluster-side.
+- **Compile program (docs/cgenn-compile.md)**: all eight lgatr-family + baseline models are
+  torch.compile-gated with committed fixtures and per-model gate files
+  (`test_{cgenn,lorentznet}_compile.py`, `test_{cgenn,lorentznet}_hybrid_compile.py`):
+  BIT (`torch.equal` vs pre-change recordings, fp32+fp64) · TOL ≤ 1e-10 · DET ·
+  BREAKS 0 on cold builds · RECOMP (no per-shape re-specialization, `dynamic=True`).
+  Production configs ship compiled-dynamic for all eight; `config_quick` stays eager.
+  Fix families: cached-property RLock warm-up, in-trace `.item()`/tensor-iteration ints,
+  bool-mask scatter → integer indices, tensor-valued `repeat_interleave` → precomputed
+  gathers, 3-operand einsums → opt_einsum-path-equivalent 2-op chains (bit-identical),
+  dense-mask net interfaces, PyG aggregation `dim_size` from `ptr`, and kNN edge building
+  hoisted out of the compiled CGENN-hybrid nets (`build_edges`, wrapper-side).
+  Wrapper knobs use in-place `nn.Module.compile()` so `state_dict` keys are unchanged
+  between compiled and eager runs.
+- **CGENN `gp_impl: einsum|matmul|sparse`** on baseline + both CGENN hybrids (default
+  `sparse` = lgatr 2.0's `sparse_gp` posture; `einsum` is the BIT-pinned reference; matmul
+  is the dense-GEMM form). TOL-IMPL gates per impl; only `sparse` changes the FLOPs column.
+- **Trials/error bars**: shared-run-dir warm-start trials are the canonical mechanism
+  (lineage-keyed raw scalars in `table_metrics_*.json`); `utils/aggregate_table.py` also
+  groups independent run dirs at parse time with refuse-to-pool guards (disagreeing
+  iters/params/FLOPs, identical-metric seed clones, mixed in-run rows). GUIDE §8 + OSCAR §6.
