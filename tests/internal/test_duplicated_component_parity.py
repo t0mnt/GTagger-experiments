@@ -399,3 +399,41 @@ def test_edgeconv_block_matches_the_live_lloca_baseline():
         a = hybrid(points, features, knn_metric="deltaR", mask=None, frames=None)
         b = lloca(points, features, frames=frames)
     assert torch.equal(a, b), f"outputs differ, max |delta| {(a - b).abs().max():.3e}"
+
+
+def test_local_part_pins_the_library_identity_path():
+    """The in-repo ParT (tag_ParT's executed class) must stay forward-bit-identical to
+    lloca.backbone.particletransformer on the identity-frames path -- the shipped row.
+    The local file deliberately diverges on per-particle frames (the trimmer fix, see its
+    module docstring), so this pins exactly the path that must never drift silently."""
+    import torch
+    from lloca.backbone.particletransformer import ParticleTransformer as LibParT
+    from lloca.framesnet.nonequi_frames import IdentityFrames
+
+    from experiments.baselines.particletransformer import ParticleTransformer as LocParT
+
+    kw = dict(input_dim=7, num_classes=2, attn_reps="8x0n+2x1n", trim=True,
+              use_pre_activation_pair=False, pair_input_dim=4,
+              cls_block_params=dict(dropout=0, attn_dropout=0, activation_dropout=0),
+              version=1)
+    torch.manual_seed(7)
+    lib = LibParT(**kw)
+    torch.manual_seed(7)
+    loc = LocParT(**kw)
+    assert list(lib.state_dict()) == list(loc.state_dict())
+    assert all(torch.equal(a, b)
+               for (_, a), (_, b) in zip(lib.state_dict().items(), loc.state_dict().items()))
+    lib.eval()
+    loc.eval()
+    torch.manual_seed(1)
+    B, P = 3, 17
+    x = torch.randn(B, 7, P)
+    v = torch.randn(B, 4, P)
+    mask = (torch.rand(B, 1, P) > 0.2).float()
+    mask[..., :3] = 1
+    fr = IdentityFrames()(fourmomenta=v.permute(0, 2, 1).reshape(-1, 4), scalars=None,
+                          ptr=torch.arange(0, (B + 1) * P, P))
+    with torch.no_grad():
+        a = lib(x, fr, v=v, mask=mask)
+        b = loc(x, fr, v=v, mask=mask)
+    assert torch.equal(a, b), f"identity-path drift, max |delta| {(a - b).abs().max():.3e}"

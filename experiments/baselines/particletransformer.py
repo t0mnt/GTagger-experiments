@@ -2,20 +2,30 @@
 
 Port of lloca.backbone.particletransformer (lloca 1.3.6), following the same pattern as
 particlenet.py: the repo executes code it can fix, rather than a library copy it cannot.
-The port is mechanical -- the module tree, parameter names, and forward semantics are
-byte-faithful to the library file except for exactly two fixes, both forward-bit-identical
-on this repo's paths:
+The module tree and parameter names are identical to the library class, and the shipped
+identity-frames row is forward-bit-identical to it (pinned by
+tests/internal/test_duplicated_component_parity.py). Deltas vs the library, all found or
+validated by the adversarial review:
 
 1. `for_inference` single-logit heads use sigmoid. Softmax over a 1-wide dim is
    identically 1, so an exported top-tagging head (out=1, BCE-trained) would emit a
-   constant; sigmoid is the correct inverse link. Inert in training/eval here
-   (for_inference=False throughout the table).
-2. `pairwise_lv_fts` guards the delta sqrt with a STRAIGHT-THROUGH clamp: delta_r2 is
-   exactly 0 for bit-identical pairs and sqrt'(0)=inf, so the backward is 0*inf=NaN.
-   Unlike particlenettransformer.py's plain clamp-before-sqrt (safe there, where the
-   pair set has no real zero-delta pairs), ParT's PairEmbed includes the self-pair
-   diagonal, and a plain clamp measurably shifts those features -- so the forward here
-   is the raw sqrt (bit-identical to the library) and only the backward is clamped.
+   constant; sigmoid is the correct inverse link. Inert in training/eval here.
+2. Per-particle frames ride the SequenceTrimmer with x/v/mask AND are re-shaped to
+   batch form (B, P, 4, 4) before prepare_frames. The library prepares frames on the
+   untrimmed, unpermuted order (crash on trimmed batches; wrong frames on
+   permutation-only steps), and flat (B*P, 4, 4) frames -- the framesnet wrapper
+   convention -- additionally flatten as (H, B, P) inside LLoCaAttention's head
+   expansion while q/k/v flatten as (B, H, P): a systematic token/frame misalignment
+   for B > 1. With both fixed, the port passes permutation equivariance at 1e-6 (fp32)
+   and Lorentz invariance at 3e-15 (fp64) with per-particle frames; the library fails
+   both. Identity/global frames take the library's exact path (bit-parity pinned).
+3. `Attention._load_from_state_dict` snapshots keys before its legacy in_proj rename
+   loop -- the library mutates the dict while iterating it, which raises (interleaved
+   checkpoint layouts) or silently skips keys (blocked layouts).
+4. A PN-style clamp-before-sqrt in `pairwise_lv_fts` was evaluated and REJECTED: both
+   call sites run under torch.no_grad(), so the NaN-backward it would guard against
+   cannot occur, and the forward clamp shifts self-pair diagonal features. The raw
+   library sqrt is kept.
 
 Original upstream: https://github.com/hqucms/weaver-core (ParT, arXiv:2202.03772), with
 LLoCa's tensorial frame transport (Attention wraps a prepare_frames-d LLoCaAttention).
@@ -52,6 +62,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.checkpoint import checkpoint
 
+from lloca.framesnet.frames import Frames
 from lloca.reps.tensorreps import TensorReps
 from lloca.backbone.attention import LLoCaAttention
 
@@ -142,15 +153,12 @@ def pairwise_lv_fts_pp(xi, xj, num_outputs=4, eps=1e-8):
         outputs = [lnm2]
 
     if num_outputs > 1:
-        # straight-through clamp around the sqrt: sqrt'(0)=inf makes the backward NaN on
-        # bit-identical pairs (ParT's PairEmbed includes the self-pair diagonal, so a plain
-        # clamp-before-sqrt would SHIFT real diagonal lnkt features -- measured 3.7e-3 at
-        # the output; particlenettransformer.py's plain clamp is safe only because its
-        # pair set excludes that case). Forward is the raw sqrt, bit-identical to the
-        # library; backward flows through the clamped branch only, so it is finite.
-        d2 = delta_r2(rapi, phii, rapj, phij)
-        delta_safe = d2.clamp(min=eps**2).sqrt()
-        delta = delta_safe + (d2.sqrt() - delta_safe).detach()
+        # NOTE (adversarial review): a PN-style clamp-before-sqrt was evaluated here and
+        # REJECTED. Both pairwise_lv_fts call sites run under torch.no_grad() (PairEmbed's
+        # dense and sparse paths), so the sqrt'(0) NaN-backward the clamp would guard
+        # against cannot occur -- and a forward clamp measurably shifts the self-pair
+        # diagonal lnkt features (3.7e-3 at the output). The library's raw sqrt is kept.
+        delta = delta_r2(rapi, phii, rapj, phij).sqrt()
         lndelta = torch.log(delta.clamp(min=eps))
         ptmin = torch.minimum(pti, ptj)
         lnkt = torch.log((ptmin * delta).clamp(min=eps))
@@ -240,11 +248,13 @@ class SequenceTrimmer(nn.Module):
         self.warmup_steps = warmup_steps
         self.register_buffer("_counter", torch.LongTensor([0]), persistent=False)
 
-    def forward(self, x, v=None, mask=None, uu=None):
+    def forward(self, x, v=None, mask=None, uu=None, extra=None):
         # x: (N, C, P)
         # v: (N, 4, P) [px,py,pz,energy]
         # mask: (N, 1, P) -- real particle = 1, padded = 0
         # uu: (N, C', P, P)
+        # extra: (N, C'', P) or None -- rides along through the same permutation and
+        # truncation (used for per-particle frame matrices; adversarial-review fix)
         if mask is None:
             mask = torch.ones_like(x[:, :1])
         mask = mask.bool()
@@ -264,6 +274,8 @@ class SequenceTrimmer(nn.Module):
                     perm = rand.argsort(dim=-1, descending=True)  # (N, 1, P)
                     mask = torch.gather(mask, -1, perm)
                     x = torch.gather(x, -1, perm.expand_as(x))
+                    if extra is not None:
+                        extra = torch.gather(extra, -1, perm.expand_as(extra))
                     if v is not None:
                         v = [torch.gather(_v, -1, perm.expand_as(_v)) for _v in v]
                     if uu is not None:
@@ -275,6 +287,8 @@ class SequenceTrimmer(nn.Module):
                 if maxlen < mask.size(-1):
                     mask = mask[:, :, :maxlen]
                     x = x[:, :, :maxlen]
+                    if extra is not None:
+                        extra = extra[:, :, :maxlen]
                     if v is not None:
                         v = [_v[:, :, :maxlen] for _v in v]
                     if uu is not None:
@@ -283,7 +297,7 @@ class SequenceTrimmer(nn.Module):
                     if len(v) == 1:
                         v = v[0]
 
-        return x, v, mask, uu
+        return x, v, mask, uu, extra
 
 
 class SwiGLUFFN(nn.Module):
@@ -577,7 +591,10 @@ class Attention(torch.nn.Module):
         unexpected_keys,
         error_msgs,
     ):
-        for k in state_dict.keys():
+        # snapshot: the loop pops/inserts while renaming, and iterating the live
+        # dict either raises or silently skips keys (adversarial-review finding;
+        # upstream lloca 1.3.6 has the same bug)
+        for k in list(state_dict.keys()):
             if k.endswith("in_proj_weight"):
                 state_dict[k.replace("_weight", ".weight")] = state_dict.pop(k)
             elif k.endswith("in_proj_bias"):
@@ -1041,13 +1058,36 @@ class ParticleTransformer(nn.Module):
             "cls_token",
         }
 
-    def _forward_encoder(self, x, v=None, mask=None, uu=None, uu_idx=None):
+    def _forward_encoder(self, x, v=None, mask=None, uu=None, uu_idx=None, frames=None):
         with torch.no_grad():
             if not self.for_inference:
                 if uu_idx is not None:
                     uu = build_sparse_tensor(uu, uu_idx, x.size(-1))
-            x, v, mask, uu = self.trimmer(x, v, mask, uu)
+            if frames is None or frames.is_identity or frames.is_global:
+                # identity/global frames are token-independent: no need to ride the trimmer
+                x, v, mask, uu, _ = self.trimmer(x, v, mask, uu)
+            else:
+                # per-particle frames MUST ride the trimmer with x/v/mask: the trimmer
+                # permutes and truncates the sequence, and preparing frames on the
+                # untrimmed order transports each token with another token's frame
+                # (adversarial-review finding; upstream lloca 1.3.6 has the same bug --
+                # crash on trimmed batches, silent frame misassignment on permuted ones)
+                B, _, P = x.shape
+                fm = frames.matrices.reshape(B, P, 16).transpose(1, 2)
+                x, v, mask, uu, fm = self.trimmer(x, v, mask, uu, extra=fm)
+                # BATCH-shaped (B, P', 4, 4): prepare_frames inserts the head dim as
+                # (*batch, H, N), so flat (B*P, 4, 4) frames flatten in (H, B, P) order
+                # while q/k/v flatten in (B, H, P) -- a systematic token/frame
+                # misalignment for B>1 (third inherited library bug; the wrapper's flat
+                # framesnet output hits it too, which is why frames are re-shaped here)
+                frames = Frames(
+                    matrices=fm.transpose(1, 2).reshape(x.shape[0], -1, 4, 4),
+                    is_global=frames.is_global,
+                    is_identity=frames.is_identity,
+                )
             padding_mask = ~mask.squeeze(1)  # (batch_size, seq_len)
+        if frames is not None:
+            self.attention.prepare_frames(frames)
 
         with torch.autocast("cuda", enabled=self.use_amp):
             # input embedding
@@ -1114,9 +1154,9 @@ class ParticleTransformer(nn.Module):
         # mask: (batch_size, 1, seq_len) -- real particle = 1, padded = 0
         # for pytorch: uu (batch_size, C', num_pairs), uu_idx (batch_size, 2, num_pairs)
         # for onnx: uu (batch_size, C', seq_len, seq_len), uu_idx=None
-        self.attention.prepare_frames(frames)
-
-        x, padding_mask = self._forward_encoder(x, v=v, mask=mask, uu=uu, uu_idx=uu_idx)
+        x, padding_mask = self._forward_encoder(
+            x, v=v, mask=mask, uu=uu, uu_idx=uu_idx, frames=frames
+        )
 
         if self.cls_blocks is None and self.fc is None:
             # x: (batch, seq_len, embed_dim)
