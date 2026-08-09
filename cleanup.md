@@ -18,14 +18,31 @@ file's docstring.
 
 ---
 
-## Order matters — do these in sequence
+## RUNBOOK — merge to campaign, in order
 
-1. **todo §4b-ter CGENN dedup port.** Consumes `test_cgenn_hybrid_compile.py` and its
-   fixtures; it is the last thing that needs them.
-2. **todo §4b-septies training smoke + checkpoint round-trip**, paired with the
-   §4b-sexies fixes. This is the one regime with zero coverage.
-3. **β-PERF** (`utils/bperf.py`), then commit whatever knob flips it decides.
-4. **Then** the deletions below.
+Copy-paste sequence. Steps 1–3 are the go/no-go; step 4 is the wipe; step 5 is the run.
+
+    # 1. MERGE (squash or merge commit, your preference), then tag the pre-2.0 state
+    git tag pre-lgatr2 origin/main && git push --tags     # BEFORE main moves
+    #    ...merge PR #18 on GitHub...
+    git checkout main && git pull
+
+    # 2. SMOKE TEST — the go/no-go. 8 real optimizer steps per model, production configs.
+    CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_training_smoke.py -q -s
+    #    Expect: 16 passed, every model "nonzero-grad params 100%" (>=50% is the bar).
+    #    A failure here means a severed backward -- do not start the campaign.
+
+    # 3. CONFIRM the rest still holds on main
+    python -m pytest tests/ -q                            # expect 0 failures
+    python utils/bperf.py                                 # optional: knob decisions
+    #    paste bperf's table into docs/cgenn-compile.md, commit any knob flips
+
+    # 4. WIPE the vestigial bits (everything below), commit once
+    # 5. RUN the campaign
+
+Nothing in step 4 is required before step 5 -- deleting is hygiene, not a prerequisite.
+The only hard ordering is: if you want the OPTIONAL todo 4b-ter dedup, do it before you
+delete `tests/fixtures/cgenn_hybrid_compile/`, because BIT is what proves that port safe.
 
 ---
 
@@ -83,8 +100,17 @@ file's docstring.
 
 ## Not cleanup — tracked in todo.md
 
-- §4b-ter dedup port · §4b-quater mask-aware pair BatchNorm (the path to compiled ParT) ·
-  §4b-quinquies + §4b-sexies pre-existing main-side bugs · §4b-septies training smoke.
+- §4b-septies training smoke — BUILT (`tests/experiments/test_training_smoke.py`), it is
+  step 2 of the runbook above.
+- §4b-ter dedup port — OPTIONAL, no longer blocks anything (the drift risk it addressed is
+  now covered permanently by `test_device_hygiene.py`).
+- ~~§4b-quater mask-aware pair BatchNorm~~ DROPPED: it would have made *compiled* ParT
+  reproduce the eager statistics, but ParT ships `compile: false`, so it already runs the
+  reference recipe — our eager `sparse_eval` default is byte-identical to lloca's. Nothing
+  to fix; the only thing forgone is compile speed on that row.
+- Pre-existing `main`-side defects (finetune weight_decay, the EMA/dtype family incl. the
+  fp64 restore truncation) are NOT in `todo.md` — out of this branch's scope. Diagnoses
+  live in `docs/audit-ledger.md` for whenever someone wants them.
 - ~~15 known pelican-FLOPs failures~~ RESOLVED 2026-08-09: a misdiagnosed harness gap
   (unforced nested compile knobs), not an environment class. Expected suite state is now
   zero failures.

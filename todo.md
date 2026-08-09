@@ -237,123 +237,40 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
       hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
       the new path.
 
-## 4b-septies. Post-merge test #1: training smoke + gradient-flow + checkpoint round-trip
+## 4b-septies. Post-merge confirmation: the training smoke — BUILT, just run it
 
-The one regime with ZERO coverage, and where the four §4b-sexies bugs live: nothing in
-`tests/` runs an optimizer step, a scheduler step, an EMA update, or a save→load→evaluate
-cycle. Build it FIRST post-merge, paired with the §4b-sexies fixes (it will fail on them
-by design, which is the point — that is also why it is not in the merge).
+`tests/experiments/test_training_smoke.py` exists and is the go/no-go before the
+campaign. It runs 8 real optimizer steps per model on the PRODUCTION config tree and
+asserts finite losses plus a non-degenerate nonzero-gradient fraction.
 
-Three assertions, in order of value:
-1. **Gradient flow**: every model, N steps, assert the fraction of parameters receiving
-   NONZERO gradient. Run it on the PRODUCTION config shapes, not `config_quick`.
-   Measured 2026-08-09: `tag_PlainGraphGPS` is 230/230 on `config/` but **1/54** on
-   `config_quick` — the quick config's `dim: 16` narrows the SAN head to 4 units and all
-   4 pre-activations start negative, so the ReLU zeroes the backward. A benign
-   small-width init accident in a test-only config, but it means a quick-config training
-   smoke silently proves nothing for that model. (Sibling check for whoever writes this:
-   `tag_PlainGraphTrans` is 71/71 on quick, so the head narrowing is the discriminator.)
-2. **Checkpoint round-trip**: save → load → forward, assert bit-identical output. This is
-   what catches §4b-sexies #3 (fp64 truncating to fp32 on restore).
-3. **EMA semantics**: assert `self.ema is not None` when configured, and that shadow
-   dtype matches model dtype — §4b-sexies #1 and #2.
+    CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_training_smoke.py -q -s
 
-## 4b-sexies. PRE-EXISTING (main-side) EMA / dtype-ordering defects — recorded, not fixed here
+Two things it encodes, both learned the hard way:
+- it runs on `config/`, not `config_quick`: `tag_PlainGraphGPS` gets gradient on 230/230
+  parameters under production but 1/54 under quick (`dim: 16` narrows the SAN head to
+  4 units and a dead ReLU at init severs the backward — a test-config artifact, but it
+  makes a quick-tree smoke prove nothing for that model);
+- it asserts on GRADIENTS, not parameter movement: AdamW's decoupled weight decay moves
+  a parameter whose gradient is exactly zero, which is how that case first looked fine.
 
-All four verified on `origin/main` as well as dev, so they are NOT introduced by this PR
-and are deliberately left out of the merge (each changes an existing recipe and wants its
-own commit + test). Found by the final audit's aliasing/state sweep.
+EMA and checkpoint round-trip are deliberately NOT asserted here — those fail on
+pre-existing `main` defects (docs/audit-ledger.md), which are out of this branch's scope.
 
-1. **Finetune EMA is silently disabled.** `finetuneexperiment.py` does
-   `self.ema = ExponentialMovingAverage(...).to(self.device)`, but `torch_ema`'s `.to()`
-   returns `None` — so `self.ema` is `None` immediately after logging "Re-initializing
-   EMA". Every `if self.ema is not None` then takes the non-EMA branch: no updates, no
-   EMA validation, `"ema": None` in every finetune checkpoint. `base_experiment` does it
-   correctly (construct, then `.to()` on a separate line). One-line fix.
-2. **EMA shadow params are float32 under `use_float64: true`.** `init_model` builds the
-   EMA *before* `self.model.to(dtype=self.dtype)`, and torch_ema's `.to()` is called with
-   device only, so the shadows stay fp32 and `sub_`/`copy_to` silently truncate. Fix =
-   build the EMA after the dtype conversion (or pass dtype).
-3. **fp64 checkpoints truncate to fp32 on restore.** `load_state_dict` runs on the
-   freshly-instantiated fp32 model and only afterwards is the model widened; `copy_` casts
-   down and the widening cannot recover it (measured max rel error 5.4e-08 = fp32 eps).
-   Affects warm-start continuation, eval-reload and finetune backbone loading. Fix =
-   `.to(dtype)` before `load_state_dict`.
-4. **Amplitude standardization overwritten after warm start.** `AmplitudeWrapper` /
-   `GraphNetWrapper.init_standardization` have no `inited` guard (every tagging
-   equivalent does), and `init_data` runs after `init_model` has loaded the checkpoint.
+## 4b-ter. CGENN dedup refactor — OPTIONAL, and no longer blocks anything
 
-Also recorded (inherited from lloca/pelican, not our code): `self.__class__ =
-torch.compile(self.__class__)` in the ParT port and in `pelican/nets.py` mutates the
-CLASS in place, so one instance with `compile=True` routes every instance of that class
-in the process through dynamo — including instances whose own config says false. This is
-why the FLOPs harness's force-eager walk can be defeated within a single pytest process
-if a pelican model was built compiled earlier in the run. Not currently observed as a
-failure (the FLOPs suite passes 64/0/36), but it makes process-order a hidden variable.
+`CGENNLGATrGraphTransHybrid.py` keeps its own copy of the CGENN machinery
+(CliffordAlgebra, MVLinear, gp/fcgp layers) instead of importing
+`experiments/baselines/cgenn/*`. Measured divergence: formatting only, plus one attribute
+rename (`grades` vs `grades_list`) — same math.
 
-## 4b-quinquies. PRE-EXISTING (main-side) bug: finetune LGATr branch ignores weight_decay
+**Demoted to optional (2026-08-09).** The reason to do it was drift: the `b()` device fix
+initially reached only one of the two copies. That risk is now covered by
+`tests/experiments/test_device_hygiene.py`, which is permanent and catches exactly that
+class on either copy. So this is cosmetic hygiene, not a correctness need.
 
-Found in the final audit; **not introduced by the dev PR** (`git log origin/main` shows
-the file's grouping predates it), so deliberately NOT fixed inside the merge — recorded
-for a separate, testable change because it silently alters an existing recipe.
-
-`experiments/tagging/finetuneexperiment.py::_init_optimizer`, the
-`LGATrWrapper`/`LGATrSlimWrapper` branch builds its param groups with `lr` only — no
-`weight_decay` key. No optimizer in `base_experiment._init_optimizer` passes a top-level
-`weight_decay=`, so those groups fall back to **torch's own default**: 0.01 for AdamW,
-0 for Adam/RAdam — never `cfg.training.weight_decay`. So finetuning an L-GATr backbone
-silently ignores the configured decay (and, with AdamW, decays the norm gains that the
-H15 exemption exists to protect). The ParT and Transformer branches in the same function
-set the key correctly, so this is a per-branch omission, not a design choice.
-
-Fix when taken: add `"weight_decay": self.cfg.training.weight_decay` (and the framesnet
-variant where applicable) to that branch, plus a test asserting every group returned by
-each `_init_optimizer` branch carries an explicit `weight_decay`. Note it CHANGES
-finetune results, so it wants its own commit and a line in the methods notes.
-
-## 4b-quater. Mask-aware pair BatchNorm — the path to compiled ParT (recorded 2026-08-09)
-
-`tag_ParT` / `tag_ParticleNetParTGraphTrans` / `tag_ParticleNetParTGraphGPS` ship
-`compile: false` because the PairEmbed twin changes TRAINING numerics: the eager sparse
-path feeds the pair BatchNorm real pairs only, the twin feeds the padded PxP grid
-(measured 6.5e-01 / 1.5e-02 / 4.4e-04 output divergence, BN buffers 15.0 / 1.1 / 1.1;
-docs/cgenn-compile.md train-mode finding). This is the ONLY thing standing between those
-three models and a compiled campaign row.
-
-The fix is tractable and traceable: replace the embed's leading `nn.BatchNorm1d` with a
-**mask-aware** variant computing `mean = (x*m).sum()/m.sum()` and the matching masked
-variance. Those are tensor reductions — `m.sum()` is a scalar tensor, not a shape — so
-unlike the sparse gather they carry no data-dependent shapes and trace cleanly. Fed the
-same real-pair mask, the masked statistics equal the sparse path's statistics up to
-reduction order, which makes the twin train-exact and lets the knob flip back.
-
-Requirements when done: match `nn.BatchNorm1d` semantics exactly (momentum, eps, affine,
-running-buffer update rule); keep the eager default bit-identical (BIT); prove train
-equality with `test_train_mode_differential` (remove the model from
-`TWIN_TRAIN_DIVERGENT` only when it is genuinely bit-zero — the gate asserts a listed
-model still diverges, so a silent pass is impossible); then re-run the full battery.
-Do NOT flip the config knob without this — the gate fails on a bare flip, by design.
-
-## 4b-ter. CGENN dedup refactor — designated post-merge follow-up (recorded 2026-08-08)
-
-`CGENNLGATrGraphTransHybrid.py` carries its own copy of the CGENN machinery
-(CliffordAlgebra, MVLinear, gp/fcgp layers, sparse_gp_tables) rather than importing
-`experiments/baselines/cgenn/*`. Measured divergence: formatting only (line-wrapping
-style) plus one attribute rename (`grades` vs `grades_list`) — same math, and BOTH
-copies carry the full compile-fix family and are independently BIT-pinned by their own
-gate files, so drift is caught, not silent. The import-port is the right end state but
-was deliberately NOT done pre-merge: it would re-open ~900 audited lines after the
-final audit sealed the tree. Procedure when done (first "dev 2" item):
-1. **Formatting alignment first** (operator-requested): normalize the hybrid's copies
-   to the package's formatting (line-wrapping, `2**n`, comment spacing) in a
-   no-op-by-construction commit, so the remaining diff is pure `grades`/`grades_list`
-   rename + deletions. BIT after this step already proves the alignment changed nothing.
-2. Port the hybrid to import from `experiments/baselines/cgenn/*` (reconciling the
-   rename), delete the duplicated definitions.
-3. The existing fixtures make both steps provable — `test_cgenn_hybrid_compile.py` BIT
-   must stay bit-identical and the full gate battery green — followed by an adversarial
-   review of the port diff. (Note: this is the one consumer that needs the compile
-   fixtures kept until it lands; see cleanup.md ordering.)
+Consequence for cleanup: it no longer holds the compile fixtures hostage. If you want the
+dedup, do it BEFORE deleting `tests/fixtures/cgenn_hybrid_compile/` (BIT proves the port
+changed nothing). If you don't, delete the fixtures on schedule and drop this entry.
 
 ## 4b-bis. torch.compile scope — CLOSED (Stage 4 executed, 2026-08-08)
 
