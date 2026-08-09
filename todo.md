@@ -246,10 +246,17 @@ style) plus one attribute rename (`grades` vs `grades_list`) — same math, and 
 copies carry the full compile-fix family and are independently BIT-pinned by their own
 gate files, so drift is caught, not silent. The import-port is the right end state but
 was deliberately NOT done pre-merge: it would re-open ~900 audited lines after the
-final audit sealed the tree. Procedure when done (first "dev 2" item): port the hybrid
-to import from the package (reconciling the `grades_list` rename), then the existing
-fixtures make it provable — `test_cgenn_hybrid_compile.py` BIT must stay bit-identical
-and the full gate battery green, followed by an adversarial review of the port diff.
+final audit sealed the tree. Procedure when done (first "dev 2" item):
+1. **Formatting alignment first** (operator-requested): normalize the hybrid's copies
+   to the package's formatting (line-wrapping, `2**n`, comment spacing) in a
+   no-op-by-construction commit, so the remaining diff is pure `grades`/`grades_list`
+   rename + deletions. BIT after this step already proves the alignment changed nothing.
+2. Port the hybrid to import from `experiments/baselines/cgenn/*` (reconciling the
+   rename), delete the duplicated definitions.
+3. The existing fixtures make both steps provable — `test_cgenn_hybrid_compile.py` BIT
+   must stay bit-identical and the full gate battery green — followed by an adversarial
+   review of the port diff. (Note: this is the one consumer that needs the compile
+   fixtures kept until it lands; see cleanup.md ordering.)
 
 ## 4b-bis. torch.compile scope — CLOSED (Stage 4 executed, 2026-08-08)
 

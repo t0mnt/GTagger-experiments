@@ -63,6 +63,10 @@ COMPILE_MODELS = [m for m in MODELS if m != "tag_MIParT"]
 # documented data-dependent break class (module docstring): masked BatchNorm over real
 # nodes in the GraphGPS pair. Event counts are pinned exactly (deterministic on the
 # fixed fixture batch); every break reason must be this class -- any other break fails.
+# The counts are a property of the torch version too (measured on torch 2.13): a torch
+# upgrade that changes dynamo's break accounting will fail this gate ON PURPOSE -- the
+# upgrade re-pins these numbers consciously, with the reason-class assert as the guard
+# that only the documented class is present in the new census.
 BREAK_BARS = {
     "tag_PlainGraphGPS": 11,
     "tag_ParticleNetParTGraphGPS": 7,

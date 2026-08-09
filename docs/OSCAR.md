@@ -961,7 +961,9 @@ Nothing else on dev needs a new install — the compile program, gp_impl, and tr
 machinery are pure-repo changes on the packages you already have (torch, PyG, xformers,
 weaver, lloca). Then re-certify per §2.9 (`utils/env_check.py`) — the CUDA-gated backend
 checks must pass on a COMPUTE node — and run the repo suite once
-(`python -m pytest tests/ -q`): expected state is the 15 known pelican-FLOPs environment
-failures and nothing else; the lgatr144 parity file (`test_lgatr_migration_parity.py`)
+(`python -m pytest tests/ -q`): expected state is ZERO failures (the old "15 known
+pelican-FLOPs environment failures" were a misdiagnosis — unforced nested compile knobs
+in the FLOPs harness, fixed in the final operator round; migration log has the
+correction); the lgatr144 parity file (`test_lgatr_migration_parity.py`)
 is the migration's own acceptance gate and must be fully green. The `.sif` route (§2) is
 now a standard PyPI install — no source build needed for 2.0.

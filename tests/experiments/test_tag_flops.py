@@ -57,13 +57,21 @@ def test_tagging(framesnet, model_list, equivectors, jet_size=50):
         cfg = hydra.compose(config_name="toptagging", overrides=overrides)
         # FLOPs are compile-independent by construction (docs/cgenn-compile.md, table
         # policy) and FX cannot symbolically trace a dynamo-compiled module -- force the
-        # eager build regardless of the production configs' compiled-dynamic defaults
-        from omegaconf import OmegaConf, open_dict
-        with open_dict(cfg):
-            if OmegaConf.select(cfg, "model.compile") is not None:
-                cfg.model.compile = False
-            if OmegaConf.select(cfg, "model.net.compile") is not None:
-                cfg.model.net.compile = False
+        # eager build regardless of the production configs' compiled-dynamic defaults.
+        # Recursive on purpose: nested knobs (e.g. framesnet.equivectors.net.compile in
+        # the pelican equivectors config) produced FX's 'symbolically trace a
+        # dynamo-optimized function' failure, which sat misdiagnosed inside the 'known
+        # pelican environment failures' set until the final operator round.
+        from omegaconf import DictConfig, open_dict
+        def _force_eager(node):
+            if isinstance(node, DictConfig):
+                with open_dict(node):
+                    for k in list(node.keys()):
+                        if k == "compile" and isinstance(node[k], bool):
+                            node[k] = False
+                        elif isinstance(node[k], DictConfig):
+                            _force_eager(node[k])
+        _force_eager(cfg.model)
         exp = TopTaggingExperiment(cfg)
     exp._init()
     exp.init_physics()

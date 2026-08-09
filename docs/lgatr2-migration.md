@@ -596,6 +596,14 @@ decompose exactly into three known classes, none an unexplained migration break:
   any traceback; no dependency path from the lgatr version to pelican internals; the
   `learnedpd-lgatr` equivectors FLOPs rows all PASS on v2. Same environment-only family as
   the container FLOPs failures already in `docs/audit-ledger.md`.
+  *(CORRECTED 2026-08-09, final operator round: "environment class" was a misdiagnosis.
+  The internal pelican compile fires because the CONFIG says so — the FLOPs harness forced
+  only `model.compile`/`model.net.compile` eager and missed the nested knobs
+  (`framesnet.equivectors.net.compile: true` in the pelican equivectors config, and
+  pelican_fair's own nesting). With the recursive compile-forcing walk now in both FLOPs
+  tests, ALL FIFTEEN rows pass on this same container: 64 passed / 0 failed / 36
+  environment-skips across the two files. The expected full-suite state is now ZERO
+  failures.)*
 - **1 × `test_transplant_parity[equivectors_lgatr]`** — the flagged item above appearing
   under its default tier-1 invocation; it stayed red until the operator's S10 ruling and is
   green under it (per-jet: strict for n≥2, tripwire for the n=1 jet).

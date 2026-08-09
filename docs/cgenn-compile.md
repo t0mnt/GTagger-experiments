@@ -342,7 +342,9 @@ an interface change beyond the session's knob-only scope.
 Final Stage-1 gate numbers: **BIT `torch.equal` fp32+fp64 ✓ · TOL 4.283e-16 (bar 1e-10) ·
 DET ✓ · BREAKS 0 (cold build) · RECOMP unique_graphs = 1 across the (B, P) sweep (bar ≤ 2)
 · SUITE 625 passed / 15 failed / 39 skipped** — the 15 are exactly the known pelican-FLOPs
-environment class (migration decision log), nothing CGENN-related. β-PERF (cluster it/s)
+environment class (migration decision log), nothing CGENN-related *(superseded 2026-08-09:
+that class was a misdiagnosed harness gap — unforced nested compile knobs; all 15 now pass
+and the expected suite state is zero failures; see the migration log's correction)*. β-PERF (cluster it/s)
 remains the open Stage-1 item and gates whether `compile: true` ships in `tag_cgenn.yaml` —
 the knob currently stays `false`.
 

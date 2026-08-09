@@ -223,6 +223,23 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   corrections and the stale MIParT explain artifact removed. Weaver-core cross-check:
   convergent compile design (trimmer disable, sparse-pair-off-under-compile), ours
   break-free and gate-pinned where theirs eats breaks / rounds lengths to 32.
+- **Final operator round (2026-08-09)**: the "15 known pelican-FLOPs environment
+  failures" were a MISDIAGNOSIS — the FLOPs harness forced only
+  `model.compile`/`model.net.compile` eager and missed nested knobs (the pelican
+  equivectors config ships `net.compile: true`), so FX hit dynamo-compiled modules.
+  Recursive compile-forcing in both FLOPs tests → all 15 pass; expected suite state is
+  now ZERO failures (correction markers in the migration log, OSCAR, cgenn-compile,
+  cleanup). Hardening ports, both BIT/gate-sealed: the CGENN hybrid's `CliffordAlgebra.b()`
+  gets the vendored copy's on-device index tensors (live per forward via MVLayerNorm;
+  was a per-forward host→device transfer on GPU eager); vendored `MVSiLU` switched to
+  `grades_list[1:]` per cliffordalgebra's own compiled-region convention (identical
+  values). `scripts/bperf.py` added — the post-merge β-PERF matrix runner
+  (measures the 10→100-iteration steady-state window, emits the table + one-line knob
+  recommendations, `--apply` edits the yamls; scheduled for deletion in cleanup.md once
+  its numbers land in the log). BREAK_BARS annotated as torch-2.13-measured pins.
+  Operator ruling recorded in cleanup.md: compile gate files + fixture packs are
+  port instruments and get DELETED post-merge (after the §4b-ter dedup port and β-PERF
+  consume them), trading away provable-safe refactors knowingly.
 - **CGENN `gp_impl: einsum|matmul|sparse`** on baseline + both CGENN hybrids (default
   `sparse` = lgatr 2.0's `sparse_gp` posture; `einsum` is the BIT-pinned reference; matmul
   is the dense-GEMM form). TOL-IMPL gates per impl; only `sparse` changes the FLOPs column.
