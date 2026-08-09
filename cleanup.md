@@ -22,10 +22,14 @@ file's docstring.
 
 Copy-paste sequence. Steps 1–3 are the go/no-go; step 4 is the wipe; step 5 is the run.
 
-    # 1. MERGE (squash or merge commit, your preference), then tag the pre-2.0 state
-    git tag pre-lgatr2 origin/main && git push --tags     # BEFORE main moves
+    # 1. MERGE (squash or merge commit, your preference)
     #    ...merge PR #18 on GitHub...
     git checkout main && git pull
+    #    OPTIONAL: `git tag pre-lgatr2 <pre-merge main sha> && git push --tags`.
+    #    Convenience only -- main's history already preserves the pre-2.0 state (it is the
+    #    merge commit's first parent), and every run archives its own source zip +
+    #    config.yaml. The tag just spares you resolving a sha later when the paper needs to
+    #    say which code produced the pre-migration top-tagging rows. Skip it if you prefer.
 
     # 2. SMOKE TEST — the go/no-go. 8 real optimizer steps per model, production configs.
     CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_training_smoke.py -q -s
@@ -41,8 +45,8 @@ Copy-paste sequence. Steps 1–3 are the go/no-go; step 4 is the wipe; step 5 is
     # 5. RUN the campaign
 
 Nothing in step 4 is required before step 5 -- deleting is hygiene, not a prerequisite.
-The only hard ordering is: if you want the OPTIONAL todo 4b-ter dedup, do it before you
-delete `tests/fixtures/cgenn_hybrid_compile/`, because BIT is what proves that port safe.
+The CGENN dedup that used to gate this is DONE (landed pre-merge, BIT bit-identical), so
+there is no longer any ordering constraint on the fixture deletion.
 
 ---
 
@@ -102,12 +106,14 @@ delete `tests/fixtures/cgenn_hybrid_compile/`, because BIT is what proves that p
 
 - §4b-septies training smoke — BUILT (`tests/experiments/test_training_smoke.py`), it is
   step 2 of the runbook above.
-- §4b-ter dedup port — OPTIONAL, no longer blocks anything (the drift risk it addressed is
-  now covered permanently by `test_device_hygiene.py`).
-- ~~§4b-quater mask-aware pair BatchNorm~~ DROPPED: it would have made *compiled* ParT
-  reproduce the eager statistics, but ParT ships `compile: false`, so it already runs the
-  reference recipe — our eager `sparse_eval` default is byte-identical to lloca's. Nothing
-  to fix; the only thing forgone is compile speed on that row.
+- ~~§4b-ter dedup port~~ DONE pre-merge: the hybrid now imports the CGENN machinery from
+  `experiments/baselines/cgenn/*` instead of duplicating it (1354 -> 728 lines). It had
+  already drifted twice — the `b()` device fix and the `_as_int_grades` coercion each
+  reached only one copy — so the import is the correct end state. BIT bit-identical,
+  full CGENN battery 26/26.
+- §4b-quater mask-aware pair BatchNorm — **REQUIRED** (operator ruling): compile must be
+  numerically faithful to the reference, not merely fast. Spec + acceptance criterion in
+  todo.md; `test_train_mode_differential` is the executable gate.
 - Pre-existing `main`-side defects (finetune weight_decay, the EMA/dtype family incl. the
   fp64 restore truncation) are NOT in `todo.md` — out of this branch's scope. Diagnoses
   live in `docs/audit-ledger.md` for whenever someone wants them.

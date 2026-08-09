@@ -237,6 +237,40 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
       hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
       the new path.
 
+## 4b-quater. Mask-aware pair BatchNorm — REQUIRED (operator ruling 2026-08-09)
+
+**Ruling: compile must be numerically faithful to the reference, not merely fast.** I had
+proposed dropping this on the grounds that ParT ships `compile: false` and therefore
+already trains on the reference recipe. Overruled, and correctly: a compile knob whose
+semantics differ from eager is a trap regardless of the current default, and the campaign
+should be free to enable it.
+
+**The defect.** The eager pair path (`sparse_eval=True`, byte-identical to lloca's
+default) feeds the pair BatchNorm only the real pairs of the lower triangle. The compiled
+twin feeds the full padded `seq_len^2` grid, so BN batch statistics differ: measured
+train-mode divergence 6.5e-01 (ParT), 1.5e-02 (PNParTGraphTrans), 4.4e-04
+(PNParTGraphGPS), with BN running buffers -- persistent state -- diverging by 15.0 / 1.1
+/ 1.1.
+
+**The fix, and why it is tractable.** Replace the `nn.BatchNorm1d` layers inside the twin's
+`embed` walk with a mask-aware variant whose statistics are computed over a WEIGHT tensor
+rather than over all grid entries. Use the tril weight `w_ij = 1 if (i <= j and real_i and
+real_j) else 0`; then the weighted mean/var over the grid are *identical* to the
+unweighted mean/var over the eager tril multiset, which is the reference. This is fully
+traceable -- `w.sum()` is a scalar tensor, not a shape, so unlike the sparse gather it
+introduces no data-dependent shapes. Conv and activation layers stay untouched (they are
+pointwise, so applying them to the full grid and masking only the STATISTICS is correct).
+
+**Care required**: match `nn.BatchNorm1d` semantics exactly -- momentum, eps, affine, and
+the unbiased (`n/(n-1)`) correction applied to `running_var` but not to the normalization.
+
+**Acceptance criterion, already written and executable**: `test_train_mode_differential`
+in `tests/experiments/test_nonequi_compile.py` currently asserts these three models
+DIVERGE and ship `compile: false`. When the masked BN is correct, they become bit-zero;
+remove them from `TWIN_TRAIN_DIVERGENT` only then -- the gate asserts a listed model still
+diverges, so a silent pass is impossible. Then re-run the full battery and let beta-PERF
+decide the knob.
+
 ## 4b-septies. Post-merge confirmation: the training smoke — BUILT, just run it
 
 `tests/experiments/test_training_smoke.py` exists and is the go/no-go before the
@@ -255,22 +289,6 @@ Two things it encodes, both learned the hard way:
 
 EMA and checkpoint round-trip are deliberately NOT asserted here — those fail on
 pre-existing `main` defects (docs/audit-ledger.md), which are out of this branch's scope.
-
-## 4b-ter. CGENN dedup refactor — OPTIONAL, and no longer blocks anything
-
-`CGENNLGATrGraphTransHybrid.py` keeps its own copy of the CGENN machinery
-(CliffordAlgebra, MVLinear, gp/fcgp layers) instead of importing
-`experiments/baselines/cgenn/*`. Measured divergence: formatting only, plus one attribute
-rename (`grades` vs `grades_list`) — same math.
-
-**Demoted to optional (2026-08-09).** The reason to do it was drift: the `b()` device fix
-initially reached only one of the two copies. That risk is now covered by
-`tests/experiments/test_device_hygiene.py`, which is permanent and catches exactly that
-class on either copy. So this is cosmetic hygiene, not a correctness need.
-
-Consequence for cleanup: it no longer holds the compile fixtures hostage. If you want the
-dedup, do it BEFORE deleting `tests/fixtures/cgenn_hybrid_compile/` (BIT proves the port
-changed nothing). If you don't, delete the fixtures on schedule and drop this entry.
 
 ## 4b-bis. torch.compile scope — CLOSED (Stage 4 executed, 2026-08-08)
 
