@@ -8348,15 +8348,15 @@ Out Guards:
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
 Compile Times: TorchDynamo compilation metrics:
 Function, Runtimes (s)
-_compile.compile_inner, 2.2864, 0.0125
-compile_attempt_0, 1.1293, 0.0081
-bytecode_tracing, 1.1242, 0.8510, 0.0047
-get_fake_value, 0.5079, 0.2512
-create_proxy, 0.0840, 0.0803, 0.0001
-wrap_to_fake_tensor_and_record, 0.0671, 0.0642, 0.0029
-variable_builder_call, 0.2028, 0.2009, 0.0039
+_compile.compile_inner, 1.9858, 0.0117
+compile_attempt_0, 0.9726, 0.0072
+bytecode_tracing, 0.9697, 0.7290, 0.0044
+get_fake_value, 0.4469, 0.2150
+create_proxy, 0.0739, 0.0739, 0.0001
+wrap_to_fake_tensor_and_record, 0.0554, 0.0556, 0.0028
+variable_builder_call, 0.1722, 0.1714, 0.0038
 compile_attempt_1, ...
 insert_deferred_runtime_asserts, ...
 OutputGraph.call_user_compiler, ...
 build_guards, ...
-gc, 0.0004, 0.0003
+gc, 0.0007, 0.0002

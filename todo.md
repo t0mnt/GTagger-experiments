@@ -237,6 +237,27 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
       hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
       the new path.
 
+## 4b-septies. Post-merge test #1: training smoke + gradient-flow + checkpoint round-trip
+
+The one regime with ZERO coverage, and where the four §4b-sexies bugs live: nothing in
+`tests/` runs an optimizer step, a scheduler step, an EMA update, or a save→load→evaluate
+cycle. Build it FIRST post-merge, paired with the §4b-sexies fixes (it will fail on them
+by design, which is the point — that is also why it is not in the merge).
+
+Three assertions, in order of value:
+1. **Gradient flow**: every model, N steps, assert the fraction of parameters receiving
+   NONZERO gradient. Run it on the PRODUCTION config shapes, not `config_quick`.
+   Measured 2026-08-09: `tag_PlainGraphGPS` is 230/230 on `config/` but **1/54** on
+   `config_quick` — the quick config's `dim: 16` narrows the SAN head to 4 units and all
+   4 pre-activations start negative, so the ReLU zeroes the backward. A benign
+   small-width init accident in a test-only config, but it means a quick-config training
+   smoke silently proves nothing for that model. (Sibling check for whoever writes this:
+   `tag_PlainGraphTrans` is 71/71 on quick, so the head narrowing is the discriminator.)
+2. **Checkpoint round-trip**: save → load → forward, assert bit-identical output. This is
+   what catches §4b-sexies #3 (fp64 truncating to fp32 on restore).
+3. **EMA semantics**: assert `self.ema is not None` when configured, and that shadow
+   dtype matches model dtype — §4b-sexies #1 and #2.
+
 ## 4b-sexies. PRE-EXISTING (main-side) EMA / dtype-ordering defects — recorded, not fixed here
 
 All four verified on `origin/main` as well as dev, so they are NOT introduced by this PR
