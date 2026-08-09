@@ -226,6 +226,23 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   requires the clean models to stay bit-zero, and asserts the divergent models keep
   `compile: false` (verified to fail on a bare flip). Equivariant models re-checked with
   the real compile knob in train mode: 2.9e-15 / 3.3e-16 / 2.8e-17 — clean.
+- **Round 4: no gate ever ran a backward** — the gap behind the gap. The round-3
+  train-mode gate is itself `no_grad`, and no tagging model anywhere in `tests/` calls
+  `.backward()`. Under `no_grad` inductor lowers the INFERENCE graph fine; with autograd
+  on it must lower the joint graph, and **two models that shipped `compile: true` raise
+  InductorError at the first `loss.backward()`** (`tag_PlainGraphTrans`,
+  `tag_LorentzNetLGATrSlimGraphGPS` — symbolic shapes under `dynamic=True`). They would
+  have died at the first training step. Both flipped to `false`; a backward matrix over
+  all 13 knob-bearing models confirms the other 11 are fine. New gates:
+  `test_compile_true_is_backward_verified` (default suite: no config may ship
+  `compile: true` unless the model is in `BACKWARD_VERIFIED`) and `test_compiled_backward`
+  (env-gated: runs the compiled training step, requires finite grads).
+- **Round 4: the trimmer silently cut the learned-framesnet gradient at step 6.**
+  `_forward_encoder` wraps the trimmer in `no_grad` and re-enabled grad only for the frame
+  matrices; under learned frames `x`/`v` also carry framesnet gradient, so once `_trim`
+  engages past warm-up the feature path was detached — bit-identical forward, **42%**
+  relative framesnet-gradient error. Fixed by extending `enable_grad` over the whole
+  trimmer call; verified by controlled A/B at identical warmed state (forward `max|dy|=0`).
 - **EMA best-checkpoint snapshot aliased (final audit round 2)** — `torch_ema.state_dict()`
   returns `shadow_params`/`collected_params` as python *lists*, so the `save=false`
   in-RAM snapshot's `torch.is_tensor(v) ... else v` comprehension stored them by

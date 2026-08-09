@@ -1148,7 +1148,14 @@ class ParticleTransformer(nn.Module):
                 B, _, P = x.shape
                 with torch.enable_grad():
                     fm = frames.matrices.reshape(B, P, 16).transpose(1, 2)
-                x, v, mask, uu, fm = self.trimmer(x, v, mask, uu, extra=fm)
+                    # the WHOLE trimmer call, not just the frame rider: under a learned
+                    # framesnet x and v are functions of the framesnet's parameters too
+                    # (TaggerWrapper transports them), and the trimmer's gathers/slices
+                    # under the outer no_grad would DETACH them -- silently, and only
+                    # from warm-up step warmup_steps+1 onward, cutting the feature path's
+                    # gradient mid-run while the forward stays bit-identical (final-audit
+                    # finding: framesnet grads ~100% relative wrong from step 6)
+                    x, v, mask, uu, fm = self.trimmer(x, v, mask, uu, extra=fm)
                 # BATCH-shaped (B, P', 4, 4): prepare_frames inserts the head dim as
                 # (*batch, H, N), so flat (B*P, 4, 4) frames flatten in (H, B, P) order
                 # while q/k/v flatten in (B, H, P) -- a systematic token/frame

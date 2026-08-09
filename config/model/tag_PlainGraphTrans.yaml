@@ -3,7 +3,11 @@ in_channels: null               # init_physics -> 7 + extra_scalars
 out_channels: null              # init_physics -> num_outputs
 use_amp: false
 add_fourmomenta_backbone: false
-compile: true                   # torch.compile(net, dynamic=True); Stage-4 gates green (operator-adopted default)
+compile: false                  # CRASHES ON BACKWARD under the shipped dynamic=True: inductor cannot
+                                # order strides of a symbolically-shaped tensor (1 < Min(4, Max(1, s98 - 1)), from the knn k-cap) and raises
+                                # InductorError at the first loss.backward(). Forward-only compile is
+                                # fine, which is why every eval/no_grad gate passed it. Pinned by
+                                # test_nonequi_compile.test_compile_true_is_backward_verified.
 
 net:
   _target_: experiments.baselines.plaingraphtrans.PlainGraphTrans

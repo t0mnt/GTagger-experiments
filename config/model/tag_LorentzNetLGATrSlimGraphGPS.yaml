@@ -1,6 +1,10 @@
 _target_: experiments.tagging.wrappers.LorentzNetLGATrSlimGraphGPSWrapper
 out_channels: null              # init_physics -> num_outputs
-compile: true  # torch.compile(net, dynamic=True); operator-adopted default; gates green
+compile: false                  # CRASHES ON BACKWARD under the shipped dynamic=True: inductor cannot
+                                # order strides of a symbolically-shaped tensor (1 < s53, from the M8 channel-last transpose) and raises
+                                # InductorError at the first loss.backward(). Forward-only compile is
+                                # fine, which is why every eval/no_grad gate passed it. Pinned by
+                                # test_nonequi_compile.test_compile_true_is_backward_verified.
 
 net:
   _target_: experiments.baselines.lorentznetlgatrslimgraphgps.LorentzNetLGATrSlimGraphGPS

@@ -168,6 +168,66 @@ TWIN_TRAIN_DIVERGENT = {
 }
 
 
+# Models VERIFIED to survive a real `loss.backward()` under their shipped compile knob.
+# This list is the gate for the whole tree, not just this file's family: every
+# production config that ships `compile: true` must appear here (asserted below), and
+# membership is earned by test_compiled_backward actually running the backward.
+#
+# WHY THIS EXISTS: `dynamo.explain`, TOL, DET, BIT and the train-mode differential are
+# all no_grad/eval measurements, so they compile the INFERENCE graph. With autograd on,
+# AOTAutograd emits the joint fwd+bwd graph and inductor can fail to lower it -- which is
+# exactly what tag_PlainGraphTrans and tag_LorentzNetLGATrSlimGraphGPS did (InductorError,
+# "cannot determine truth value of Relational", from symbolic shapes under dynamic=True).
+# Both shipped `compile: true` and would have died at the first training step.
+BACKWARD_VERIFIED = {
+    "tag_cgenn",
+    "tag_lorentznet",
+    "tag_CGENNLGATrGraphTrans",
+    "tag_CGENNLGATrGraphGPS",
+    "tag_LorentzNetLGATrSlimGraphTrans",
+    "tag_particlenet",
+    "tag_transformer",
+}
+
+
+def test_compile_true_is_backward_verified():
+    """POSTURE: no production config may ship `compile: true` unless the model is in
+    BACKWARD_VERIFIED. Cheap (reads yaml), runs in the default suite; the expensive
+    half that earns membership is test_compiled_backward below."""
+    offenders = []
+    for cfg in sorted((REPO / "config" / "model").glob("tag_*.yaml")):
+        text = cfg.read_text()
+        # only the wrapper-level knob; `net.compile` belongs to third-party nets
+        if re.search(r"^compile:\s*true\b", text, flags=re.M):
+            if cfg.stem not in BACKWARD_VERIFIED:
+                offenders.append(cfg.stem)
+    assert not offenders, (
+        f"ships compile: true but not in BACKWARD_VERIFIED: {offenders}. Every "
+        f"compile gate is eval/no_grad, so a model can pass all of them and still "
+        f"raise InductorError at the first loss.backward(); earn membership by "
+        f"running test_compiled_backward (CGENN_COMPILE_GATES=1) first.")
+
+
+@pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile smoke gates: set CGENN_COMPILE_GATES=1")
+@pytest.mark.parametrize("model", sorted(BACKWARD_VERIFIED))
+def test_compiled_backward(model):
+    """BACKWARD: the compiled net must survive a real training step, not just a forward.
+
+    This is the gate the whole program was missing: `_forward` is `no_grad`-wrapped
+    everywhere, so nothing ever built a joint forward+backward graph.
+    """
+    exp = _build(model, float64=True, extra_overrides=("model.compile=true",))
+    exp.model.train()
+    data = _fixed_batch(exp)
+    y, label = exp._get_ypred_and_label(data.clone())[:2]
+    exp.loss(y, label).backward()
+    grads = [p.grad for p in exp.model.parameters() if p.grad is not None]
+    assert grads, f"BACKWARD[{model}]: compiled step produced no gradients at all"
+    assert all(torch.isfinite(g).all() for g in grads), (
+        f"BACKWARD[{model}]: non-finite gradients from the compiled step")
+    print(f"GATE-BACKWARD[{model}] compiled training step OK ({len(grads)} grads, finite)")
+
+
 def _kill_dropout(model):
     for m in model.modules():
         if isinstance(m, torch.nn.Dropout):

@@ -664,6 +664,43 @@ reports a spurious ~3e-02 divergence on PlainGraphTrans (it is 2.2e-16 once the 
 is zeroed). That is stochastic regularization, not semantics — the gate's `_kill_dropout`
 handles both forms.
 
+**Round 4 (2026-08-09): the gap behind the gap — no gate ever ran a backward.**
+Closing the eval-mode hole exposed a deeper one: the round-3 train-mode gate is *also*
+`no_grad`, and `grep -rn "backward()" tests/` finds no tagging model anywhere in the
+suite. Under `no_grad`, dynamo/AOTAutograd compiles the **inference** graph and inductor
+lowers it happily; with autograd on it must emit the joint forward+backward graph, and
+for two models it cannot:
+
+| model | forward (any mode) | **first `loss.backward()`** |
+|---|---|---|
+| tag_PlainGraphTrans | OK | **InductorError**: `cannot determine truth value of Relational: 1 < Min(4, Max(1, s98 - 1))` |
+| tag_LorentzNetLGATrSlimGraphGPS | OK | **InductorError**: `cannot determine truth value of Relational: 1 < s53` |
+
+Both shipped `compile: true` and would have **died at the first training step**. The
+symbolic width comes from `dynamic=True` meeting the kNN cap `k = min(k, max(1, P-1))`
+(PlainGraphTrans) and the M8 channel-last `transpose(-1,-2)` (slim GPS); inductor's
+stride ordering cannot evaluate the relation. Not dtype- or size-specific. Note the same
+`k`-cap exists in the slim GraphTrans and PN-ParT files, which compile+backward cleanly —
+the cap is necessary but not sufficient, so do not "fix" it by deleting the cap without
+re-running the backward matrix on all four.
+
+Both flip to `compile: false`. **New gates**: `test_compile_true_is_backward_verified`
+(default suite, cheap — no production config may ship `compile: true` unless the model is
+in `BACKWARD_VERIFIED`) and `test_compiled_backward` (env-gated — actually runs the
+compiled training step and requires finite gradients). Membership is earned by
+measurement, not assertion.
+
+**Round 4, second finding: the trimmer silently cut the learned-framesnet gradient at
+step 6.** `_forward_encoder` wraps the trimmer call in `torch.no_grad()` (upstream's
+"data prep" idiom) and re-enables grad only for the frame matrices. Under a *learned*
+framesnet `x` and `v` are functions of the framesnet's parameters too, so once `_trim`
+engages at `warmup_steps+1` its gathers/slices **detached the feature path** — silently,
+mid-run, with a bit-identical forward. Controlled A/B at identical warmed state and seed:
+forward `max|dy| = 0.0`, framesnet gradients **42% relatively different**. Fixed by
+extending the existing `enable_grad` to cover the whole trimmer call. Only reachable with
+learned frames + `trim: true` past step 5 — the CI smoke runs 3 iterations, which is why
+nothing caught it.
+
 **Warm-up regime is also cold-build-only (same round).** `BREAKS`/`RECOMP` trace the
 *un-warmed* trimmer, i.e. the first `warmup_steps` (5) forwards. Measured on tag_ParT in
 train mode: `_warmed=False` → 1 graph / 0 breaks / 329 ops (what the bar pins);
