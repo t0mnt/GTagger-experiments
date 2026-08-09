@@ -190,7 +190,12 @@ def test_breaks_and_recomp(model):
     # the PROCESS, so this id shifts with test ORDER and churned ~150 noise lines per
     # gated run -- which would bury a real change. Normalized; no assertion reads it.
     report = re.sub(r"__builtins_dict___\d+", "__builtins_dict___N", report)
-    report = re.sub(r"^([\w.]+), \d+\.\d+$", r"\1, ...", report, flags=re.M)
+    # dynamo's per-phase compile TIMINGS: a name followed by one or MORE
+    # comma-separated floats. The single-float form was normalized from the start;
+    # split-graph models compile in several attempts and emit the multi-float form,
+    # which churned every run until this was widened (same signal-burying class as
+    # the globals-dict id below).
+    report = re.sub(r"^([\w.]+)(?:, \d+\.\d+)+$", r"\1, ...", report, flags=re.M)
     (FIX / f"dynamo_explain_{model}.txt").write_text(report)
     print(f"GATE-BREAKS[{model}] graph_break_count =", explanation.graph_break_count)
     assert explanation.graph_break_count == 0, f"graph breaks:\n{report[:2000]}"
