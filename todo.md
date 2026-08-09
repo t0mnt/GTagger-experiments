@@ -237,6 +237,49 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
       hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
       the new path.
 
+## 4b-quinquies. PRE-EXISTING (main-side) bug: finetune LGATr branch ignores weight_decay
+
+Found in the final audit; **not introduced by the dev PR** (`git log origin/main` shows
+the file's grouping predates it), so deliberately NOT fixed inside the merge — recorded
+for a separate, testable change because it silently alters an existing recipe.
+
+`experiments/tagging/finetuneexperiment.py::_init_optimizer`, the
+`LGATrWrapper`/`LGATrSlimWrapper` branch builds its param groups with `lr` only — no
+`weight_decay` key. No optimizer in `base_experiment._init_optimizer` passes a top-level
+`weight_decay=`, so those groups fall back to **torch's own default**: 0.01 for AdamW,
+0 for Adam/RAdam — never `cfg.training.weight_decay`. So finetuning an L-GATr backbone
+silently ignores the configured decay (and, with AdamW, decays the norm gains that the
+H15 exemption exists to protect). The ParT and Transformer branches in the same function
+set the key correctly, so this is a per-branch omission, not a design choice.
+
+Fix when taken: add `"weight_decay": self.cfg.training.weight_decay` (and the framesnet
+variant where applicable) to that branch, plus a test asserting every group returned by
+each `_init_optimizer` branch carries an explicit `weight_decay`. Note it CHANGES
+finetune results, so it wants its own commit and a line in the methods notes.
+
+## 4b-quater. Mask-aware pair BatchNorm — the path to compiled ParT (recorded 2026-08-09)
+
+`tag_ParT` / `tag_ParticleNetParTGraphTrans` / `tag_ParticleNetParTGraphGPS` ship
+`compile: false` because the PairEmbed twin changes TRAINING numerics: the eager sparse
+path feeds the pair BatchNorm real pairs only, the twin feeds the padded PxP grid
+(measured 6.5e-01 / 1.5e-02 / 4.4e-04 output divergence, BN buffers 15.0 / 1.1 / 1.1;
+docs/cgenn-compile.md train-mode finding). This is the ONLY thing standing between those
+three models and a compiled campaign row.
+
+The fix is tractable and traceable: replace the embed's leading `nn.BatchNorm1d` with a
+**mask-aware** variant computing `mean = (x*m).sum()/m.sum()` and the matching masked
+variance. Those are tensor reductions — `m.sum()` is a scalar tensor, not a shape — so
+unlike the sparse gather they carry no data-dependent shapes and trace cleanly. Fed the
+same real-pair mask, the masked statistics equal the sparse path's statistics up to
+reduction order, which makes the twin train-exact and lets the knob flip back.
+
+Requirements when done: match `nn.BatchNorm1d` semantics exactly (momentum, eps, affine,
+running-buffer update rule); keep the eager default bit-identical (BIT); prove train
+equality with `test_train_mode_differential` (remove the model from
+`TWIN_TRAIN_DIVERGENT` only when it is genuinely bit-zero — the gate asserts a listed
+model still diverges, so a silent pass is impossible); then re-run the full battery.
+Do NOT flip the config knob without this — the gate fails on a bare flip, by design.
+
 ## 4b-ter. CGENN dedup refactor — designated post-merge follow-up (recorded 2026-08-08)
 
 `CGENNLGATrGraphTransHybrid.py` carries its own copy of the CGENN machinery

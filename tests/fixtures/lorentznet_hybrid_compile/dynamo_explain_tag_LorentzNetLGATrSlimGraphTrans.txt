@@ -355,19 +355,19 @@ Out Guards:
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
   Guard 14:
-    Name: "G['__builtins_dict___12']['max']"
+    Name: "G['__builtins_dict___76']['max']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___12']['max'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___76']['max'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 15:
-    Name: "G['__builtins_dict___12']['min']"
+    Name: "G['__builtins_dict___76']['min']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___12']['min'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___76']['min'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 16:
@@ -419,11 +419,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dtype)>
   Guard 22:
-    Name: "G['__builtins_dict___12']['float']"
+    Name: "G['__builtins_dict___76']['float']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___12']['float'], ...), type=<class 'float'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___76']['float'], ...), type=<class 'float'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 23:
@@ -707,11 +707,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
   Guard 58:
-    Name: "G['__builtins_dict___12']['iter']"
+    Name: "G['__builtins_dict___76']['iter']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___12']['iter'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___76']['iter'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 59:
@@ -3939,19 +3939,19 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 462:
-    Name: "G['__builtins_dict___12']['type']"
+    Name: "G['__builtins_dict___76']['type']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___12']['type'], ...), type=<class 'type'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___76']['type'], ...), type=<class 'type'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 463:
-    Name: "G['__builtins_dict___12']['issubclass']"
+    Name: "G['__builtins_dict___76']['issubclass']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___12']['issubclass'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___76']['issubclass'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 464:
@@ -5139,11 +5139,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (list)>
   Guard 612:
-    Name: "G['__builtins_dict___12']['any']"
+    Name: "G['__builtins_dict___76']['any']"
     Source: global
     Create Function: ID_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___12']['any'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___76']['any'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 613:
@@ -8348,15 +8348,15 @@ Out Guards:
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
 Compile Times: TorchDynamo compilation metrics:
 Function, Runtimes (s)
-_compile.compile_inner, 1.9570, 0.0112
-compile_attempt_0, 0.9933, 0.0075
-bytecode_tracing, 0.9898, 0.7198, 0.0045
-get_fake_value, 0.4759, 0.2158
-create_proxy, 0.0707, 0.0697, 0.0001
-wrap_to_fake_tensor_and_record, 0.0578, 0.0590, 0.0030
-variable_builder_call, 0.1712, 0.1756, 0.0039
+_compile.compile_inner, 1.8268, 0.0108
+compile_attempt_0, 0.9214, 0.0073
+bytecode_tracing, 0.9188, 0.6776, 0.0044
+get_fake_value, 0.4267, 0.2017
+create_proxy, 0.0685, 0.0666, 0.0002
+wrap_to_fake_tensor_and_record, 0.0549, 0.0509, 0.0028
+variable_builder_call, 0.1624, 0.1632, 0.0039
 compile_attempt_1, ...
 insert_deferred_runtime_asserts, ...
 OutputGraph.call_user_compiler, ...
 build_guards, ...
-gc, 0.0003, 0.0002
+gc, 0.0010, 0.0002

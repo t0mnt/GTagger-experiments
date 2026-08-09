@@ -589,15 +589,24 @@ Knobs (all in-place `net.compile(dynamic=True)`, state_dict keys stable): `ParTW
 `PlainGraphGPSWrapper`, and the PN-ParT pair (twin-flag loop over
 `compiled_attention`/`compiled_dense`). End-to-end knob probe (hydra-composed quick tree,
 `model.compile=true`, fixture weights): all seven ≤ 9.0e-16 vs the eager fixtures,
-deterministic, twin flags exactly where expected. **Posture**: the five clean models ship
-`compile: true` in the production tree; the GPS pair ships `compile: false` with the
-documented-splits comment (knob ready, flip on β-PERF numbers); `config_quick` stays
-eager everywhere.
+deterministic, twin flags exactly where expected. **Posture** *(revised by the train-mode
+finding below — as first written, the five break-free models shipped `compile: true`;
+ParT and PNParTGraphTrans have since flipped to `false` because their twin changes
+training numerics)*: the production tree ships `compile: true` for the three train-clean
+non-equivariant models (particlenet, transformer, PlainGraphTrans); ParT, both PN-ParT
+hybrids and PlainGraphGPS ship `compile: false` with their reasons in the yaml;
+`config_quick` stays eager everywhere.
 
-*Honest caveat carried by both all-pairs twins (ParT + PNT PairEmbed), eval-exact,
-training-statistical* (corrected in the final audit — the first writing misstated both
-mechanisms): in training mode the embed's BatchNorm computes batch statistics over the
-full `seq_len²` grid instead of the eager multiset, and the delta differs per family.
+**⚠ SUPERSEDED — this "honest caveat" was a MIS-CLASSIFICATION; see the train-mode
+finding below.** It called the twins' training difference "the same disclosure class as
+compile's own fusion-order reassociation". That is wrong by fifteen orders of magnitude
+(reassociation is 1e-16; the measured train delta is 6.5e-01), and the framing is what
+let the issue stand through three review rounds. Kept here, struck, because the
+mechanism description is still accurate and the error is instructive:
+
+> ~~*Honest caveat carried by both all-pairs twins (ParT + PNT PairEmbed), eval-exact,
+training-statistical*: in training mode the embed's BatchNorm computes batch statistics
+over the full `seq_len²` grid instead of the eager multiset, and the delta differs per family.
 (i) **PNT hybrids** (eager = tril over all tokens incl. padding, `remove_self_pair:
 false` shipped): the grid counts every off-diagonal pair twice but the diagonal once, so
 vs the stats-neutral exact doubling the diagonal's relative weight HALVES — an
@@ -610,7 +619,60 @@ smaller once the SequenceTrimmer engages after warm-up), not with 1/seq_len. Eva
 exact in both families (running stats, elementwise; TOL-gated ≤ 9.0e-16). Compiled
 training is therefore self-consistent but not statistics-identical to eager training —
 same disclosure class as compile's own fusion-order reassociation, recorded here for the
-methods section.
+methods section.~~
+
+**Train-mode finding and posture change (2026-08-09, final audit round 2).** The
+blind spot was structural, not a slip: **all five compile-gate files run under
+`.eval()`, and the shared `_forward` helper is wrapped in `torch.no_grad()`** — so BIT,
+TOL, DET, BREAKS and RECOMP are, every one of them, inference-mode measurements. No gate
+in the program constrained training numerics or gradients for any model. Measured with a
+new flags-only differential (fp64, dropout zeroed, train mode):
+
+| model | eval max abs delta | train max abs delta | BN running buffers | posture |
+|---|---|---|---|---|
+| tag_ParT | 4.0e-15 | **6.5e-01** | **diverged 1.5e+01** | now `compile: false` |
+| tag_ParticleNetParTGraphTrans | 1.2e-15 | **1.5e-02** | **diverged 1.1e+00** | now `compile: false` |
+| tag_ParticleNetParTGraphGPS | 5.6e-17 | **4.4e-04** | **diverged 1.1e+00** | already `false` |
+| tag_particlenet / tag_transformer / PlainGraphTrans / PlainGraphGPS | 0 | **0** | equal | unchanged |
+| tag_cgenn / tag_lorentznet / LNetSlimGraphTrans (real compile knob) | — | 2.9e-15 / 3.3e-16 / 2.8e-17 | — | unchanged |
+
+Exactly the three PairEmbed-twin models diverge and every other model is bit-zero, which
+pins the mechanism on the **twin flags**, not on dynamo — compile itself remains
+numerics-preserving in training too (the equivariant row). On tag_ParT one training step
+moves every one of 217 gradients by >1% relative, 29 by >50%, worst ~107× on the pair
+BatchNorm bias. BN running buffers are *persistent state*: a compiled-trained checkpoint
+carries padded-grid statistics into any later eager evaluation, export or finetune.
+
+**Ruling**: `tag_ParT` and `tag_ParticleNetParTGraphTrans` flip to `compile: false`,
+joining the GPS pair. Nothing measured is given up — β-PERF has not run, so
+`compile: true` on these was an unmeasured posture with a now-measured semantic cost, and
+"a different training recipe" is a methods deviation rather than a walltime knob. The
+production tree therefore ships compiled-dynamic for the eight equivariant models plus
+the three train-clean non-equivariant ones (particlenet, transformer, PlainGraphTrans).
+**Durable guard**: `test_nonequi_compile.test_train_mode_differential` reproduces the
+table on every run, requires the clean models to stay bit-zero, and asserts each
+divergent model's production config still reads `compile: false` — verified to FAIL on a
+bare flip. The path to re-enabling is a mask-aware pair BatchNorm (traceable: masked
+mean/var are tensor reductions, not data-dependent shapes) — todo §4b-quater, deliberately
+not attempted in the final hours before merge.
+
+*Measurement note for anyone re-running this*: a train-mode differential is only
+meaningful with dropout fully disabled, and "fully" includes
+`nn.MultiheadAttention.dropout`, which is a float ATTRIBUTE rather than an `nn.Dropout`
+module. Missing it makes eager and compiled consume the RNG in different orders and
+reports a spurious ~3e-02 divergence on PlainGraphTrans (it is 2.2e-16 once the attribute
+is zeroed). That is stochastic regularization, not semantics — the gate's `_kill_dropout`
+handles both forms.
+
+**Warm-up regime is also cold-build-only (same round).** `BREAKS`/`RECOMP` trace the
+*un-warmed* trimmer, i.e. the first `warmup_steps` (5) forwards. Measured on tag_ParT in
+train mode: `_warmed=False` → 1 graph / 0 breaks / 329 ops (what the bar pins);
+`_warmed=True` → **3 graphs / 2 breaks / 329 ops** — identical op count, so this is the
+`@torch.compiler.disable` on `_trim` splitting the graph exactly as intended, not a
+numerical change. It is a deliberate trade (two stable splits beat per-step
+re-specialization on a re-randomized quantile length), but the "BREAKS 0" headline
+describes five forwards, and production trains in the 3-graph regime. Stated here rather
+than implied.
 
 **Final audit (2026-08-08, three independent legs: consistency reviewer + numerics
 reviewer + max-effort whole-diff review).** Two legs converged, with executable repros,

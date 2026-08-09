@@ -156,6 +156,85 @@ def _pre_compile(model, net):
                 m.compiled_dense = True  # PairEmbed all-pairs twin (tril_indices pins seq_len)
 
 
+# Models whose compile knob changes TRAINING semantics, not just kernel fusion: the
+# PairEmbed twin feeds the padded PxP grid to a BatchNorm-first embed where the eager
+# sparse path feeds real pairs only. Eval is exact (running stats); train is not, and BN
+# running buffers are persistent state that would carry into checkpoints. Every model
+# listed here MUST ship compile: false -- asserted below, so a bare flip fails the gate.
+TWIN_TRAIN_DIVERGENT = {
+    "tag_ParT",
+    "tag_ParticleNetParTGraphTrans",
+    "tag_ParticleNetParTGraphGPS",
+}
+
+
+def _kill_dropout(model):
+    for m in model.modules():
+        if isinstance(m, torch.nn.Dropout):
+            m.p = 0.0
+        if isinstance(m, torch.nn.MultiheadAttention):
+            m.dropout = 0.0
+
+
+def _bn_buffers(model):
+    return {n: b.detach().clone() for n, b in model.named_buffers()
+            if n.endswith(("running_mean", "running_var"))}
+
+
+@pytest.mark.parametrize("model", COMPILE_MODELS)
+def test_train_mode_differential(model):
+    """TRAIN: the compile knob must not change training numerics.
+
+    The TOL/DET/BIT gates all run under ``.eval()`` and ``no_grad`` (see _forward), so
+    they constrain inference only. This gate closes that blind spot: it applies exactly
+    the flags the wrapper's compile knob applies (no dynamo needed -- the divergence is
+    flag-induced, and dynamo itself is numerics-preserving) and compares TRAIN-mode
+    outputs and BatchNorm running buffers against the eager build.
+
+    Clean models must be bit-identical. The documented twin models must (a) still
+    diverge -- if one goes clean, the twin was changed and the docs/posture need
+    revisiting -- and (b) ship ``compile: false``, which is the assertion that actually
+    prevents a compiled-trained checkpoint from ever being produced.
+    """
+    ref = torch.load(FIX / f"{model}_fp64.pt", weights_only=False)
+    out = {}
+    for flags in (False, True):
+        exp = _build(model, float64=True)
+        exp.model.load_state_dict(ref["sd"], strict=True)
+        _kill_dropout(exp.model)
+        if flags:
+            _pre_compile(model, exp.model.net)
+        data = _fixed_batch(exp)
+        exp.model.train()
+        torch.manual_seed(0)
+        with torch.no_grad():
+            y = exp._get_ypred_and_label(data.clone())[0].detach().clone()
+            for _ in range(2):  # let the BN running buffers move
+                torch.manual_seed(0)
+                exp._get_ypred_and_label(data.clone())
+        out[flags] = (y, _bn_buffers(exp.model))
+    dy = (out[True][0] - out[False][0]).abs().max().item()
+    b_eager, b_flags = out[False][1], out[True][1]
+    db = max((b_flags[k] - b_eager[k]).abs().max().item() for k in b_eager) if b_eager else 0.0
+    print(f"GATE-TRAIN[{model}] train-mode max|dy|={dy:.3e} max|d(BN buffers)|={db:.3e}")
+
+    if model in TWIN_TRAIN_DIVERGENT:
+        assert dy > 0 or db > 0, (
+            f"TRAIN[{model}]: listed as twin-divergent but now bit-identical -- if the "
+            f"twin was made train-exact (masked pair-BN), remove it from "
+            f"TWIN_TRAIN_DIVERGENT and revisit the compile posture")
+        cfg = (REPO / "config" / "model" / f"{model}.yaml").read_text()
+        assert re.search(r"^compile:\s*false\b", cfg, flags=re.M), (
+            f"TRAIN[{model}]: ships a compile knob that changes TRAINING numerics "
+            f"(max|dy|={dy:.3e}, max|d(BN)|={db:.3e}) -- production config must keep "
+            f"compile: false until the pair-BN is made mask-aware")
+    else:
+        assert dy == 0.0 and db == 0.0, (
+            f"TRAIN[{model}]: compile knob changed training numerics "
+            f"(max|dy|={dy:.3e}, max|d(BN buffers)|={db:.3e}); the eval-mode TOL gate "
+            f"cannot see this")
+
+
 @pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile smoke gates: set CGENN_COMPILE_GATES=1")
 @pytest.mark.parametrize("model", COMPILE_MODELS)
 def test_tol_det_compiled_vs_eager(model):

@@ -506,27 +506,27 @@ Out Guards:
     Object Weakref: <weakref at 0x...; to 'ModuleList' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (ModuleList)>
   Guard 52:
-    Name: "G['__builtins_dict___96']['enumerate']"
+    Name: "G['__builtins_dict___189']['enumerate']"
     Source: global
     Create Function: CLASS_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___96']['enumerate'], ...), type=<class 'enumerate'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___189']['enumerate'], ...), type=<class 'enumerate'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 53:
-    Name: "G['__builtins_dict___96']['isinstance']"
+    Name: "G['__builtins_dict___189']['isinstance']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___96']['isinstance'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___189']['isinstance'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 54:
-    Name: "G['__builtins_dict___96']['int']"
+    Name: "G['__builtins_dict___189']['int']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___96']['int'], ...), type=<class 'int'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___189']['int'], ...), type=<class 'int'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 55:
@@ -562,11 +562,11 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
   Guard 59:
-    Name: "G['__builtins_dict___96']['iter']"
+    Name: "G['__builtins_dict___189']['iter']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___96']['iter'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___189']['iter'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 60:
@@ -762,27 +762,27 @@ Out Guards:
     Object Weakref: <weakref at 0x...; to 'Frames' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Frames)>
   Guard 84:
-    Name: "G['__builtins_dict___96']['type']"
+    Name: "G['__builtins_dict___189']['type']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___96']['type'], ...), type=<class 'type'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___189']['type'], ...), type=<class 'type'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 85:
-    Name: "G['__builtins_dict___96']['issubclass']"
+    Name: "G['__builtins_dict___189']['issubclass']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___96']['issubclass'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___189']['issubclass'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 86:
-    Name: "G['__builtins_dict___96']['super']"
+    Name: "G['__builtins_dict___189']['super']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___96']['super'], ...), type=<class 'super'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___189']['super'], ...), type=<class 'super'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 87:
@@ -882,11 +882,11 @@ Out Guards:
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 99:
-    Name: "G['__builtins_dict___96']['len']"
+    Name: "G['__builtins_dict___189']['len']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___96']['len'], ...), type=<class 'builtin_function_or_method'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___189']['len'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
   Guard 100:
@@ -1058,11 +1058,11 @@ Out Guards:
     Object Weakref: <weakref at 0x...; to 'ModuleList' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (ModuleList)>
   Guard 121:
-    Name: "G['__builtins_dict___96']['zip']"
+    Name: "G['__builtins_dict___189']['zip']"
     Source: global
     Create Function: BUILTIN_MATCH
     Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__builtins_dict___96']['zip'], ...), type=<class 'zip'>"]
+    Code List: ["___check_obj_id(G['__builtins_dict___189']['zip'], ...), type=<class 'zip'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
   Guard 122:

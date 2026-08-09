@@ -3,7 +3,14 @@ in_channels: null
 out_channels: null
 use_amp: false
 add_fourmomenta_backbone: false
-compile: true                   # torch.compile(net, dynamic=True); Stage-4 gates green (operator-adopted default)
+compile: false                  # TRAIN-MODE SEMANTICS: the compile knob flips the PairEmbed to the
+                                # all-pairs twin (tril/nonzero are untraceable), so the pair BatchNorm
+                                # sees the padded PxP grid instead of real pairs only -- measured train
+                                # divergence 6.8e-01 outputs, 15.0 BN buffers, and BN running buffers are persistent
+                                # state that would carry into checkpoints. Eval is exact (<=4e-15, TOL-gated).
+                                # Pinned by test_nonequi_compile.test_train_mode_differential, which also
+                                # asserts this key stays false. Revisit only with a masked pair-BN
+                                # (todo 4b-quater) -- not with a bare flip.
 
 net:
  _target_: experiments.baselines.particletransformer.ParticleTransformer

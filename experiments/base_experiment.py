@@ -26,6 +26,27 @@ torch.autograd.set_detect_anomaly(False)
 MIN_STEP_SKIP = 1000
 
 
+def _detached_cpu_copy(obj):
+    """Deep, by-VALUE CPU copy of a state_dict-like object.
+
+    Needed for the in-RAM best-checkpoint snapshot: `torch_ema.state_dict()` returns
+    `shadow_params` / `collected_params` as python LISTS of tensors, so a flat
+    `torch.is_tensor(v) ... else v` comprehension stores those lists BY REFERENCE --
+    and `ema.update()` mutates their tensors in place, so the "best-val" snapshot
+    silently tracked training and the run reported final-iterate EMA shadows over
+    correctly-restored best-val weights (final-audit finding; measured: a snapshot
+    captured at 1.0 read 11.4 later, same object identity). Recursing over
+    list/tuple/dict fixes the class rather than the one key.
+    """
+    if torch.is_tensor(obj):
+        return obj.detach().to("cpu", copy=True)
+    if isinstance(obj, dict):
+        return {k: _detached_cpu_copy(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(_detached_cpu_copy(v) for v in obj)
+    return obj  # scalars (decay, num_updates) are immutable
+
+
 def lgatr_norm_gain_names(module):
     """Norm gain parameters of lgatr 2.0's affine layer norms, collected by module class.
 
@@ -756,10 +777,7 @@ class BaseExperiment:
                                     for k, v in self.model.state_dict().items()
                                 },
                                 "ema": (
-                                    {
-                                        k: (v.detach().to("cpu", copy=True) if torch.is_tensor(v) else v)
-                                        for k, v in self.ema.state_dict().items()
-                                    }
+                                    _detached_cpu_copy(self.ema.state_dict())
                                     if self.ema is not None
                                     else None
                                 ),

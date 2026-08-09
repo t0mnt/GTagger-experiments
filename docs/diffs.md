@@ -209,8 +209,31 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   GraphGPS pair's masked BatchNorm over real nodes is a **documented data-dependent break
   class** (GraphGPS-official `norm: batch`): break-event counts pinned (11 / 7), every
   reason asserted to be that class, RECOMP still strict ([10,10,10] / [8,8,8]).
-  Posture: five clean models ship `compile: true` in production; the GPS pair ships
-  `false` (knob ready, documented splits, flip on β-PERF); quick tree stays eager.
+  Posture (revised by the train-mode finding below): `compile: true` for the three
+  train-clean non-equivariant models (particlenet, transformer, PlainGraphTrans);
+  `false` for ParT, both PN-ParT hybrids and PlainGraphGPS; quick tree stays eager.
+- **Train-mode blind spot closed (final audit round 2)** — the single most important
+  finding of the review program. Every compile gate ran under `.eval()` with a
+  `no_grad`-wrapped forward helper, so nothing constrained TRAINING numerics. Measured:
+  the PairEmbed twin makes the pair BatchNorm see the padded PxP grid instead of real
+  pairs only, so tag_ParT diverges by **6.5e-01** in train-mode output and **15.0** in BN
+  running buffers (PNParTGraphTrans 1.5e-02 / 1.1; PNParTGraphGPS 4.4e-04 / 1.1), and one
+  training step moves all 217 ParT gradients by >1%. Eval stays exact, which is why the
+  TOL gates were green. BN buffers are persistent state, so a compiled-trained checkpoint
+  would carry padded-grid statistics into eager eval/export/finetune. ParT and
+  PNParTGraphTrans therefore flip to `compile: false` (nothing measured is lost — β-PERF
+  has not run). New `test_train_mode_differential` reproduces the table every run,
+  requires the clean models to stay bit-zero, and asserts the divergent models keep
+  `compile: false` (verified to fail on a bare flip). Equivariant models re-checked with
+  the real compile knob in train mode: 2.9e-15 / 3.3e-16 / 2.8e-17 — clean.
+- **EMA best-checkpoint snapshot aliased (final audit round 2)** — `torch_ema.state_dict()`
+  returns `shadow_params`/`collected_params` as python *lists*, so the `save=false`
+  in-RAM snapshot's `torch.is_tensor(v) ... else v` comprehension stored them by
+  reference and `ema.update()` mutated the "best-val" snapshot in place (measured: a
+  value captured at 1.0 read 11.4 later, same object). Under `save=false` + `ema=true`
+  the reported row painted final-iterate shadows over correctly-restored best-val
+  weights. Fixed with a recursive by-value copy helper; verified drift 0.0, no aliasing,
+  snapshot still loads.
 - **Final audit (3 independent legs; log entry in docs/cgenn-compile.md)**: fixed a
   CRITICAL latent NaN — both all-pairs PairEmbed twins computed pair features
   grad-enabled (eager wraps them in no_grad); under a learned framesnet, backward
