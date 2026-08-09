@@ -186,6 +186,10 @@ def test_breaks_and_recomp(model):
     report = str(explanation)
     report = re.sub(r"0x[0-9a-fA-F]+", "0x...", report)
     report = re.sub(r"(___check_(?:type|obj)_id\([^,]+, )\d+\)", r"\1...)", report)
+    # dynamo numbers its per-frame globals dicts by how many frames it has seen in
+    # the PROCESS, so this id shifts with test ORDER and churned ~150 noise lines per
+    # gated run -- which would bury a real change. Normalized; no assertion reads it.
+    report = re.sub(r"__builtins_dict___\d+", "__builtins_dict___N", report)
     report = re.sub(r"^([\w.]+), \d+\.\d+$", r"\1, ...", report, flags=re.M)
     (FIX / f"dynamo_explain_{model}.txt").write_text(report)
     print(f"GATE-BREAKS[{model}] graph_break_count =", explanation.graph_break_count)

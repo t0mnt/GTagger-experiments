@@ -241,6 +241,10 @@ def test_breaks_and_recomp(impl):
     report = re.sub(r"0x[0-9a-fA-F]+", "0x...", report)  # repr() heap addresses
     # ___check_type_id / ___check_obj_id guards embed id() of a class or module object
     report = re.sub(r"(___check_(?:type|obj)_id\([^,]+, )\d+\)", r"\1...)", report)
+    # dynamo numbers its per-frame globals dicts by how many frames it has seen in
+    # the PROCESS, so this id shifts with test ORDER and churned ~150 noise lines per
+    # gated run -- which would bury a real change. Normalized; no assertion reads it.
+    report = re.sub(r"__builtins_dict___\d+", "__builtins_dict___N", report)
     # trailing compile-time table: wall-clock seconds, non-deterministic by nature
     report = re.sub(r"^([\w.]+), \d+\.\d+$", r"\1, ...", report, flags=re.M)
     if impl == "einsum":
