@@ -3917,7 +3917,7 @@ Out Guards:
     Create Function: TENSOR_MATCH
     Guard Types: ['TENSOR_MATCH']
     Code List: ["hasattr(L['out'], '_dynamo_dynamic_indices') == False", "hasattr(L['out'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['out'], '_dynamo_unbacked_indices') == False", "hasattr(L['out'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['out'], '_dynamo_static_indices') == False"]
-    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Object Weakref: <weakref at 0x...; dead>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
   Guard 464:
     Name: "L['mask_bool']"
@@ -4541,7 +4541,7 @@ Out Guards:
     Create Function: TENSOR_MATCH
     Guard Types: ['TENSOR_MATCH']
     Code List: ["hasattr(L['___stack0'], '_dynamo_dynamic_indices') == False", "hasattr(L['___stack0'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['___stack0'], '_dynamo_unbacked_indices') == False", "hasattr(L['___stack0'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['___stack0'], '_dynamo_static_indices') == False"]
-    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Object Weakref: <weakref at 0x...; dead>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
   Guard 542:
     Name: ''
@@ -4605,7 +4605,7 @@ Out Guards:
     Create Function: TENSOR_MATCH
     Guard Types: ['TENSOR_MATCH']
     Code List: ["hasattr(L['h_local'], '_dynamo_dynamic_indices') == False", "hasattr(L['h_local'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['h_local'], '_dynamo_unbacked_indices') == False", "hasattr(L['h_local'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['h_local'], '_dynamo_static_indices') == False"]
-    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Object Weakref: <weakref at 0x...; dead>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
   Guard 550:
     Name: "L['___stack0']"

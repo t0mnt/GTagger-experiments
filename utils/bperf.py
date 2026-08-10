@@ -12,6 +12,24 @@ iteration HI" log lines, so compile warm-up -- which lands in the first few iter
 pollute the timing. GPU strongly recommended; on CPU the numbers are not the campaign
 decision input and the header says so.
 
+WHY THE RUNS ARE SEEDED. ``seed`` defaults to ``null`` in ``config/default.yaml`` and
+``base_experiment`` seeds only ``if cfg.seed is not None`` -- so WITHOUT ``seed=`` the two
+states of a row shuffle differently and walk different batches. That matters more than it
+sounds: padded length varies 87-110 per batch on top-tagging and attention cost is O(P^2),
+so batch order is the dominant per-step noise term. A fixed seed makes the comparison
+PAIRED -- both states see the identical batch sequence -- cancelling that term instead of
+averaging over it. Correct here because this is a throughput benchmark with ``save=false``,
+not a campaign row (campaign trials deliberately vary their seeds).
+
+WHAT PAIRING DOES NOT CANCEL, worth knowing before trusting a 3%% margin:
+  * thermal / clock state -- the two states run back-to-back, so the second starts on a
+    warmer card. A BIAS, not noise; pairing does not touch it.
+  * order effect -- states always run false-then-true, so drift favours the same state on
+    every row.
+Both shrink if the window starts past the thermal ramp. For decision-grade numbers use
+``--iters 310 --window 100 300``, and if a row lands inside the margin, re-run it with the
+states swapped before believing the sign.
+
 One-shot instrument: cleanup.md schedules its deletion once the numbers are recorded in
 the compile log and the knob flips are committed.
 
@@ -72,12 +90,13 @@ ITER_RE = re.compile(r"Finished iteration (\d+) after ([0-9.]+)s")
 NO_APPLY = set()
 
 
-def run_once(overrides, iters, window, config_path, timeout):
+def run_once(overrides, iters, window, config_path, timeout, seed):
     cmd = [
         sys.executable, "run.py",
         "--config-path", config_path, "--config-name", "toptagging",
         *overrides,
         "save=false",
+        f"seed={seed}",  # makes the two states of a row PAIRED -- see the module docstring
         "training.epochs=null", f"training.iterations={iters}",
         f"training.validate_every_n_steps={iters + 1}",  # keep validation out of the window
     ]
@@ -112,6 +131,9 @@ def main():
     ap.add_argument("--timeout", type=int, default=3600, help="per-run seconds")
     ap.add_argument("--margin", type=float, default=0.03,
                     help="minimum relative win before a flip is recommended (default 3%%)")
+    ap.add_argument("--seed", type=int, default=1234,
+                    help="fixed seed for BOTH states of every row; without it the runs "
+                         "shuffle differently and the comparison is unpaired")
     ap.add_argument("--apply", action="store_true",
                     help="edit the production yaml compile knobs per the verdicts")
     args = ap.parse_args()
@@ -123,7 +145,8 @@ def main():
         for state in ("false", "true"):
             print(f"[bperf] {name} {knob}={state} ...", flush=True)
             its, err, tail = run_once(base + [f"{knob}={state}"], args.iters,
-                                      tuple(args.window), args.config_path, args.timeout)
+                                      tuple(args.window), args.config_path, args.timeout,
+                                      args.seed)
             pair[state] = its
             if err:
                 print(f"[bperf]   FAILED: {err}\n{tail}", flush=True)
