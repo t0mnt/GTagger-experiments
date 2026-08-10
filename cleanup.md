@@ -98,7 +98,20 @@ why below.
 
     # 6. beta-PERF -- decides the remaining knobs. Needs a GPU to be decision-grade
     #    (the script says so in its header line if CUDA is absent).
-    python utils/bperf.py
+    #    Cheap screen over the whole matrix (defaults: --iters 110 --window 10 100):
+    python utils/bperf.py --find-batchsize
+    #    Decision-grade on whatever the screen left inside the margin -- 900 timed steps,
+    #    all of them past the thermal ramp:
+    python utils/bperf.py --models PlainGraphGPS PNParTGraphGPS \
+        --find-batchsize --iters 1010 --window 100 1000
+    #    The window bounds must BOTH be marks the run actually logs -- {1, 10, 100, 1000,
+    #    ...} -- because validation is deliberately pushed past the end of the run so it
+    #    cannot pollute the timing, and those powers of ten are then the only timing lines
+    #    emitted. bperf checks this up front now; a bad window used to surface only after
+    #    the whole matrix had run.
+    #    --find-batchsize sizes each row EAGER with find_lr's OOM doubling search and uses
+    #    that size for both states. Without it the rows run at whatever the yaml carries,
+    #    which is the unswept 512 fallback for every model whose recipe still says '???'.
     #    Shells out to run.py with save=false, so it writes no run directories.
     #    Decides: the two remaining GPS compile knobs (tag_PlainGraphGPS,
     #    tag_ParticleNetParTGraphGPS -- both ship false purely on unmeasured performance
