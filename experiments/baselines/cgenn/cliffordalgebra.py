@@ -172,12 +172,21 @@ class CliffordAlgebra(nn.Module):
         return mv[..., :1]
 
     def embed(self, tensor: torch.Tensor, tensor_index: torch.Tensor) -> torch.Tensor:
-        mv = torch.zeros(*tensor.shape[:-1], 2**self.dim, device=tensor.device, dtype=tensor.dtype)
+        # self.n_blades, NOT 2**self.dim -- the two are the same number by construction
+        # (n_blades = len(bbo.grades) = 2**num_bases = 2**dim; asserted in __init__), but one
+        # is a precomputed python int and the other is an EXPRESSION dynamo can carry into the
+        # graph symbolically. When it does, inductor lowers the resulting stride as
+        # `libdevice.pow(2.0, ks0)` -- a float -- and the Triton kernel fails to compile:
+        #   triton_poi_fused_index_put_zeros_6 ... tl.store(out_ptr0 + (x0*(libdevice.pow(2.0, ks0))), ...)
+        #   IncompatibleTypeErrorImpl('invalid operands of type pointer<fp32> and float32')
+        # observed on GPU (H100, torch 2.8.0a0+nv25.08) for compiled tag_cgenn; CPU inductor
+        # emits C++ and never hits it, which is why every gate in this repo was green.
+        mv = torch.zeros(*tensor.shape[:-1], self.n_blades, device=tensor.device, dtype=tensor.dtype)
         mv[..., tensor_index] = tensor
         return mv
 
     def embed_grade(self, tensor: torch.Tensor, grade: int) -> torch.Tensor:
-        mv = torch.zeros(*tensor.shape[:-1], 2**self.dim, device=tensor.device)
+        mv = torch.zeros(*tensor.shape[:-1], self.n_blades, device=tensor.device)  # see embed()
         s = self.grade_to_slice[grade]
         mv[..., s] = tensor
         return mv
