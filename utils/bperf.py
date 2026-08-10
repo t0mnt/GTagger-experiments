@@ -66,6 +66,13 @@ import subprocess
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
+# Run as a SCRIPT (`python utils/bperf.py`), sys.path[0] is utils/, not the repo root,
+# so find_batchsize()'s `from utils.find_lr import ...` raises ModuleNotFoundError --
+# caught only as "batchsize search FAILED", after which every row silently falls back
+# to the yaml's unswept 512 and CGENN OOMs a 93 GB H100. Importing bperf from the repo
+# root hides this, which is exactly how it got shipped.
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
 # (row name, base overrides, the knob that turns compile on, production yaml to edit)
 MATRIX = [
