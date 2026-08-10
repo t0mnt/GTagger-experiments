@@ -60,8 +60,16 @@ why below.
     #    want: lgatr >= 2.0.0, lloca >= 1.3.6, and on OSCAR a torch path NOT under ~/.local
     #    (the leaked-user-site failure mode is documented in docs/OSCAR.md).
     #
-    #    The executable check that the env really is v2:
-    python -m pytest tests/experiments/test_lgatr_v2_inventory.py -q
+    #    The executable check that the env really is v2. NOT test_lgatr_v2_inventory.py --
+    #    that is a SIDE-LOAD probe for planning the migration from a 1.4.4 box (it needs
+    #    LGATR2_WHEEL_DIR pointing at an unpacked wheel) and can only ever report
+    #    "1 skipped" post-upgrade, which reads like a pass and verifies nothing.
+    #    The real gate is the parity file: it loads the recorded 1.4.4 activations and
+    #    requires v2 to reproduce them, so it fails loudly on a wrong or half-upgraded env.
+    python -m pytest tests/experiments/test_lgatr_migration_parity.py -q   # expect 23 passed
+    #    Plus the full stack certification (provenance, user-site leak, backend binding):
+    apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
+        'source venv/bin/activate && python utils/env_check.py'
 
     # 3. SMOKE TEST -- the go/no-go. 8 real optimizer steps per model, PRODUCTION configs.
     CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_training_smoke.py -q -s

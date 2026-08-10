@@ -26,6 +26,58 @@ import sys
 RESULTS = []
 
 
+# Known attention backend names, for the lgatr probe. Kept as a literal because lgatr 2.0
+# exposes no enumeration API -- `get_attention_backend` resolves ONE name at a time. An
+# unknown name is distinguishable from an unavailable one (different ValueError text), so a
+# stale entry here surfaces loudly instead of quietly shrinking the reported set.
+_LGATR_BACKENDS = ("native", "varlen", "xformers", "flex", "flash")
+
+
+def _lgatr_backends():
+    """Backends lgatr 2.0 can actually bind, by asking it one name at a time.
+
+    lgatr 1.4.4 kept a module-level `_REGISTRY` populated at import; 2.0 replaced that with
+    LAZY resolution (`get_attention_backend` -> `_resolve_backend`, imported on first use),
+    so there is no longer anything to enumerate and `_REGISTRY` does not exist. Probing the
+    resolver is not merely the replacement idiom -- it is a better test, because it is the
+    exact code path a model takes at its first forward, ABI failure included.
+
+    Raises if the resolver itself is gone, so a third API shape cannot silently read as
+    "no backends".
+    """
+    from lgatr.primitives.attention import get_attention_backend
+
+    out = []
+    for name in _LGATR_BACKENDS:
+        try:
+            get_attention_backend(backend=name)
+            out.append(name)
+        except ValueError as e:
+            if "Unknown attention backend" in str(e):
+                raise RuntimeError(
+                    f"lgatr no longer knows the backend name {name!r} -- _LGATR_BACKENDS in "
+                    f"env_check.py is stale against this lgatr ({e})") from e
+            # "is not available": genuinely unbound here (no CUDA, missing wheel, bad ABI).
+        except Exception as e:  # noqa: BLE001
+            raise RuntimeError(f"probing lgatr backend {name!r} raised "
+                               f"{type(e).__name__}: {e}") from e
+    return sorted(out)
+
+
+def _lloca_backends():
+    """lloca still uses the eager import-time registry, so read it -- but require it to
+    EXIST. A missing `_REGISTRY` means lloca changed shape the way lgatr did, and the honest
+    answer is then "unknown", not "empty"."""
+    mod = importlib.import_module("lloca.backbone.attention_backends.mask")
+    reg = getattr(mod, "_REGISTRY", None)
+    if not isinstance(reg, dict):
+        raise RuntimeError(
+            f"lloca.backbone.attention_backends.mask._REGISTRY is {type(reg).__name__}, not a "
+            f"dict -- lloca has moved to lazy backend resolution like lgatr 2.0; give it a "
+            f"resolver-probe here, the way _lgatr_backends() does")
+    return sorted(reg)
+
+
 def check(name, ok, detail="", hint=""):
     RESULTS.append(ok)
     mark = "PASS" if ok else "FAIL"
@@ -239,15 +291,24 @@ def main():
     # `attention_backend: xformers` then dies on its first forward -- past init, minutes or
     # hours into a job. This asserts the registries, not the import.
     pinned = "xformers"
-    for mod_name in ("lgatr.primitives.attention_backends", "lloca.backbone.attention_backends.mask"):
+    for lib, probe in (("lgatr", _lgatr_backends), ("lloca", _lloca_backends)):
         try:
-            registry = sorted(getattr(importlib.import_module(mod_name), "_REGISTRY", {}))
+            registry = probe()
         except Exception as e:  # noqa: BLE001
-            check(f"{mod_name} importable", False, f"{type(e).__name__}: {e}")
+            # NEVER swallow this into "the backend is missing". The previous version read
+            # `getattr(mod, "_REGISTRY", {})`, so when lgatr 2.0 removed its eager registry the
+            # default turned an API change into `registry=[]` and a confident FAIL saying
+            # xformers was unbound -- on an environment where it binds fine. "I could not ask
+            # the question" and "the answer is no" must never render as the same result.
+            check(f"{lib} backend availability is introspectable", False,
+                  f"{type(e).__name__}: {e}",
+                  f"{lib}'s backend API changed shape again -- env_check cannot tell whether "
+                  f"'{pinned}' is bound, so treat this as UNKNOWN, not as a working env. Fix "
+                  f"the probe in env_check.py's section 4b before trusting any run.")
             continue
         available = pinned in registry
         if xformers is None and not available:
-            print(f"[INFO] {mod_name.split('.')[0]} backends: {registry} (no xformers, as expected)")
+            print(f"[INFO] {lib} backends: {registry} (no xformers, as expected)")
             continue
         if not cuda_here and not available:
             # BOTH libraries gate the xformers (and flash) backends on CUDA being visible, so
@@ -255,10 +316,10 @@ def main():
             # check is UNEVALUATABLE here, not failed -- reporting FAIL on a login node is how
             # an env check teaches you to ignore its FAILs, and a real ABI mismatch looks
             # identical. Re-run on a GPU allocation to actually test it.
-            print(f"[SKIP] {mod_name.split('.')[0]} '{pinned}' backend: registry={registry} "
+            print(f"[SKIP] {lib} '{pinned}' backend: registry={registry} "
                   f"-- CUDA-gated, unevaluatable off-GPU; re-run inside `interact -g 1`")
             continue
-        check(f"{mod_name.split('.')[0]} registered the '{pinned}' backend", available,
+        check(f"{lib} can bind the '{pinned}' backend", available,
               f"registry={registry}",
               "xformers imports but neither library could bind it -- almost always an ABI "
               "mismatch with the installed torch. Any config pinning attention_backend="
