@@ -1,47 +1,53 @@
 _target_: experiments.tagging.wrappers.LorentzNetLGATrSlimGraphGPSWrapper
 out_channels: null              # init_physics -> num_outputs
-compile: false                  # CANNOT BE LOWERED under the shipped dynamic=True: inductor cannot
-                                # order strides of a symbolically-shaped tensor (1 < s53) and raises
-                                # InductorError while compiling the joint forward+backward graph.
-                                # Forward-only compile is fine, which is why every eval/no_grad gate
-                                # passed it. Pinned by
-                                # test_nonequi_compile.test_compile_true_is_backward_verified.
+compile: false                  # UPSTREAM TORCH BUG, root-caused 2026-08-10 -- not a defect in this
+                                # model and NOT fixable from model code. Eager ships and is correct.
                                 #
-                                # NOT a NaN and NOT a numerics problem -- stated explicitly because the
-                                # two get conflated. It is a compile-time raise; eager is untouched and
-                                # is what ships. Measured under dynamic=False (which DOES lower it):
-                                # 5 optimizer steps, 65/65 gradients, ZERO non-finite tensors,
-                                # loss 0.7101 -> 0.7115. The math is fine; only the lowering fails.
+                                # WHAT HAPPENS: inductor lowers the joint forward+backward graph and
+                                # must pick a memory layout for the (B, P, 4, V) multivector stream,
+                                # whose strides are (16*P, 16, 1, 4). Ordering them means asking
+                                # "is 16*P bigger than 16?", i.e. "is P > 1?". P is the padded particle
+                                # count -- a symbol, not a number -- so it raises
+                                #   InductorError: cannot determine truth value of Relational: 1 < s53
                                 #
-                                # ROOT CAUSE, localized 2026-08-10 by instrumenting inductor's
-                                # GraphLowering.run_node. The failing node was aten.permute at
-                                # lorentznetlgatrslimgraphgps.py:109 (`v_loc.transpose(-1, -2)`) on a
-                                # tensor of shape (B, P, 4, V) with strides (16*P, 16, 1, 4). To order
-                                # those strides inductor must decide `1 < P`, and nothing constrains the
-                                # particle dim away from 0/1. It is the M8 CHANNEL-LAST 4-D LAYOUT
-                                # meeting a symbolic particle dim -- not any single line.
+                                # WHY IT IS TORCH'S BUG, not ours. ir.get_fill_order already has a
+                                # symbolic-aware branch:
+                                #     if shape_env is None ...: argsort(seq)          # bare compare
+                                #     else:                     argsort_sym(shape_env, seq)   # handles symbols
+                                # but torch/_inductor/graph.py calls `ir.get_stride_order(strides)` with
+                                # ONE argument, so shape_env is None and it takes the bare-compare branch.
+                                # Nothing ever consults the ShapeEnv, which is why constraining P does
+                                # not help. PROVEN: monkeypatching get_stride_order to pass the live
+                                # V.graph.sizevars.shape_env makes this model compile AND train --
+                                # 3 steps, 65/65 gradients, zero non-finite, losses 0.710076 / 0.712327 /
+                                # 0.709093, bit-matching the dynamic=False run. One-line upstream fix.
                                 #
-                                # FOUR NEGATIVE RESULTS, so the next attempt starts here:
-                                #  1. NOT the kNN k-cap. (Correcting an earlier note in this file: this
-                                #     module DOES reach a capped knn -- it imports it from
-                                #     lorentznetlgatrslimgraphtrans -- so "no k-cap here" was wrong. But
-                                #     substituting the static-k twin that fixed tag_PlainGraphTrans
-                                #     changes NOTHING here: same error, same symbol.)
-                                #  2. `.contiguous()` on all three M8 transposes: same error.
-                                #  3. flatten(0,1) -> transpose(1,2) -> reshape, so the transpose sees
-                                #     only STATIC dims: the permute then succeeds (strides 16,4,1) and
-                                #     the error MOVES to the reshape rebuilding (B, P, 4, V). Confirms
-                                #     the layout, not the op, is the problem.
-                                #  4. torch._check(P > 1) at the top of forward: no effect.
-                                #     torch._dynamo.mark_dynamic(t, dim, min=2) at the wrapper boundary:
-                                #     rejected by this torch (2.13) -- "not simple sympy type".
+                                # WHY THIS MODEL AND NOT ITS PARENTS OR ITS SIBLING: only GPS converts
+                                # layouts. tag_lorentznet and tag_slim each stay in their own convention;
+                                # so does tag_LorentzNetLGATrSlimGraphTrans, which runs the LorentzNet
+                                # stack and THEN the slim stack (zero `transpose(-1,-2)` in that file).
+                                # A GPS layer fuses local and global branches on ONE stream per layer, so
+                                # it must cross between channel-first LorentzNet and channel-last v2 slim
+                                # (M8) twice per layer -- that 4-D transpose is the node that dies.
                                 #
-                                # THE LEVER that would work is making `P >= 2` known to the ShapeEnv, so
-                                # `1 < P` becomes decidable. Neither available API landed it here; the
-                                # next things to try are a torch upgrade or export-style Dim(min=2)
-                                # constraints. Until then: bounded walltime gain on a model that is
-                                # already correct in eager, so it stays false and is the single
-                                # remaining bperf NO_APPLY entry.
+                                # ATTEMPTS THAT DO NOT WORK (all model-side, all futile for the reason
+                                # above -- do not repeat):
+                                #   1. the static-k kNN twin that fixed tag_PlainGraphTrans. (NB this
+                                #      module DOES reach a capped knn, imported from
+                                #      lorentznetlgatrslimgraphtrans -- an earlier note here wrongly said
+                                #      it had none -- but making k static changes nothing.)
+                                #   2. .contiguous() on all three M8 transposes.
+                                #   3. flatten(0,1) -> transpose(1,2) -> reshape: the permute then
+                                #      succeeds and the error MOVES to the reshape rebuilding (B,P,4,V).
+                                #   4. torch._check(P > 1), and mark_dynamic(dim, min=2, max=4096) at the
+                                #      wrapper boundary -- the mark applies (the symbol renumbers) and the
+                                #      error is unchanged, exactly as the shape_env analysis predicts.
+                                #
+                                # TO RE-TRY AFTER A TORCH UPGRADE: check whether _inductor/graph.py now
+                                # passes a shape_env into get_stride_order. If it does, flip this to true
+                                # and run the normal gate battery. Do NOT ship the monkeypatch: patching
+                                # torch internals under a physics campaign is not worth a bounded
+                                # walltime gain on a model that is already correct in eager.
 
 net:
   _target_: experiments.baselines.lorentznetlgatrslimgraphgps.LorentzNetLGATrSlimGraphGPS

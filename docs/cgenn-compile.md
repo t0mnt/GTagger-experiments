@@ -827,6 +827,35 @@ the cap necessary-but-not-sufficient in the first place. `tag_LorentzNetLGATrSli
 keeps `compile: false`: that file contains no k-cap at all and its `1 < s53` comes from the
 M8 channel-last transpose, so this fix does not transfer.
 
+**Round 7c: LNetSlimGraphGPS root-caused to an UPSTREAM TORCH BUG, and proven.** The
+blocker is not in this repo and is not fixable from model code.
+
+`ir.get_fill_order` already carries a symbolic-aware branch — `argsort_sym(shape_env,
+seq)` — and takes it only when a `shape_env` is supplied. But
+`torch/_inductor/graph.py` calls `ir.get_stride_order(strides)` with a single argument, so
+`shape_env is None` and it falls into the plain `argsort`, which does a bare Python
+comparison on sympy expressions and raises `cannot determine truth value of Relational:
+1 < s53`. Nothing consults the ShapeEnv, which is exactly why constraining `P` cannot
+help — and why four model-side attempts all failed identically.
+
+Proven, not inferred: monkeypatching `get_stride_order` to pass the live
+`V.graph.sizevars.shape_env` makes the model compile **and train** — 3 optimizer steps,
+65/65 gradients, zero non-finite, losses `0.710076 / 0.712327 / 0.709093`, bit-matching
+the `dynamic=False` run. A one-line upstream fix.
+
+**Why this model and neither parent nor its sibling.** Only GPS converts layouts.
+`tag_lorentznet` and `tag_slim` each stay in their own convention, and so does
+`tag_LorentzNetLGATrSlimGraphTrans` — it runs the LorentzNet stack and *then* the slim
+stack, with zero `transpose(-1, -2)` in the whole file. A GPS layer fuses the local and
+global branches on ONE stream per layer, so it must cross between channel-first LorentzNet
+and channel-last v2 slim (M8) twice per layer. That 4-D transpose is the node that dies.
+The difficulty is the GPS *topology*, not the ingredients.
+
+Re-try trigger after a torch upgrade: check whether `_inductor/graph.py` passes a
+shape_env into `get_stride_order`. If yes, flip and run the gate battery. Do not ship the
+monkeypatch — patching torch internals under a physics campaign is not worth a bounded
+walltime gain on a model that is already correct in eager.
+
 **Round 7b: LNetSlimGraphGPS localized to the node, still not fixed — and one earlier
 claim corrected.** Instrumenting inductor's `GraphLowering.run_node` names the failing
 node exactly: `aten.permute` at `lorentznetlgatrslimgraphgps.py:109`
