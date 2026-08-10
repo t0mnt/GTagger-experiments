@@ -48,13 +48,7 @@ export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"
 export PYTHONUNBUFFERED=1         # live logs (batch jobs have no tty -> python buffers)
 export PYTHONNOUSERSITE=1         # never import from ~/.local (the docs/OSCAR.md leak class);
                                   # --export=NONE strips the .bashrc copy, so set it here too
-# REQUIRED for every compiled model (16 of 18 configs ship compile: true). Triton is how
-# inductor builds CUDA kernels, and it locates libcuda.so by parsing `ldconfig -p`. Inside
-# the NGC container that lookup finds nothing -- the driver stub lives at
-# /usr/local/cuda/compat/lib -- so the FIRST torch.compile of the job dies with
-# "InductorError: AssertionError: libcuda.so cannot found!", minutes in, after the data
-# load. Measured on gpu2703 (H100, NGC 25.08). TRITON_LIBCUDA_PATH short-circuits the
-# ldconfig parse. Harmless if the path is absent.
+# for compiled models
 export TRITON_LIBCUDA_PATH=/usr/local/cuda/compat/lib
 
 [ $# -gt 0 ] || { echo "usage: sbatch train.sbatch tag_<Model> [task] [hydra overrides...]
