@@ -37,6 +37,9 @@ Usage:
     python utils/bperf.py                       # full matrix, table only
     python utils/bperf.py --models tag_cgenn    # substring filter
     python utils/bperf.py --iters 210 --window 10 200
+    python utils/bperf.py --find-batchsize      # size each row first (GPU); otherwise the
+                                                # yaml value is used, which is the unswept
+                                                # 512 fallback until you sweep
     python utils/bperf.py --apply               # ALSO edit the production yamls
                                                 # (only flips with >3%% margin)
 """
@@ -90,6 +93,34 @@ ITER_RE = re.compile(r"Finished iteration (\d+) after ([0-9.]+)s")
 NO_APPLY = set()
 
 
+def find_batchsize(row_overrides, config_path, bs_start, bs_max, safety):
+    """Largest power-of-two batchsize that survives a full training step, for THIS row.
+
+    Reuses ``utils.find_lr.find_max_batch_size`` rather than reimplementing the doubling
+    search, so the two tools cannot drift apart -- it runs a real fwd + bwd + optimizer
+    step at each candidate, so the measured memory is what training actually uses.
+
+    Sized ONCE per row and then applied to BOTH states, which is what keeps the
+    eager-vs-compiled comparison paired. Sizing per state would compare two different
+    batch sizes and measure the wrong thing. Sizing is done with compile OFF; the search
+    returns a power of two, and inductor's memory delta is nowhere near a factor of two,
+    so the two states land on the same rung in practice. If a compiled row ever OOMs at
+    the eager-sized batch, that is itself the finding and the row reports it.
+
+    CUDA only -- find_max_batch_size returns the configured batchsize unchanged on CPU.
+    """
+    import hydra
+    from utils.find_lr import build_experiment, find_max_batch_size
+
+    with hydra.initialize_config_dir(config_dir=str(REPO / config_path), version_base=None):
+        cfg = hydra.compose(config_name="toptagging",
+                            overrides=[*row_overrides, "save=false"])
+    exp = build_experiment(cfg)
+    bs = find_max_batch_size(exp, bs_start, bs_max, safety)
+    del exp
+    return int(bs)
+
+
 def run_once(overrides, iters, window, config_path, timeout, seed):
     cmd = [
         sys.executable, "run.py",
@@ -131,6 +162,13 @@ def main():
     ap.add_argument("--timeout", type=int, default=3600, help="per-run seconds")
     ap.add_argument("--margin", type=float, default=0.03,
                     help="minimum relative win before a flip is recommended (default 3%%)")
+    ap.add_argument("--find-batchsize", action="store_true",
+                    help="size each row with find_lr's OOM doubling search and use that "
+                         "batchsize for BOTH states, instead of whatever the yaml carries "
+                         "(which is the unswept 512 fallback until you sweep). GPU only.")
+    ap.add_argument("--bs-start", type=int, default=16)
+    ap.add_argument("--bs-max", type=int, default=16384)
+    ap.add_argument("--bs-safety", type=float, default=1.0)
     ap.add_argument("--seed", type=int, default=1234,
                     help="fixed seed for BOTH states of every row; without it the runs "
                          "shuffle differently and the comparison is unpaired")
@@ -141,10 +179,21 @@ def main():
     rows = [r for r in MATRIX if not args.models or any(m in r[0] for m in args.models)]
     results, recs = [], []
     for name, base, knob, yaml_path in rows:
+        row_base = list(base)
+        if args.find_batchsize:
+            try:
+                bs = find_batchsize(row_base, args.config_path,
+                                    args.bs_start, args.bs_max, args.bs_safety)
+                row_base = row_base + [f"training.batchsize={bs}"]
+                print(f"[bperf] {name} batchsize={bs} (sized once, used for both states)",
+                      flush=True)
+            except Exception as e:
+                print(f"[bperf] {name} batchsize search FAILED ({type(e).__name__}: {e}); "
+                      f"falling back to the config value", flush=True)
         pair = {}
         for state in ("false", "true"):
             print(f"[bperf] {name} {knob}={state} ...", flush=True)
-            its, err, tail = run_once(base + [f"{knob}={state}"], args.iters,
+            its, err, tail = run_once(row_base + [f"{knob}={state}"], args.iters,
                                       tuple(args.window), args.config_path, args.timeout,
                                       args.seed)
             pair[state] = its
