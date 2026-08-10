@@ -174,6 +174,25 @@ there is no longer any ordering constraint on the fixture deletion.
 - `todo.md` (446 lines) — the §4b-* chain is a work queue, not documentation. Each entry
   is deleted as it is completed, not archived.
 
+## Before you wipe: the citations that outlive their target
+
+Deleting the gate files does not only remove code — it invalidates the **references to
+them**. Four production yamls (`tag_ParT`, `tag_PlainGraphGPS`,
+`tag_ParticleNetParTGraphTrans`, `tag_ParticleNetParTGraphGPS`) plus
+`experiments/tagging/wrappers.py` and
+`experiments/baselines/CGENNLGATrGraphTransHybrid.py` cite the gate files as the AUTHORITY
+for numbers they ship: the pinned break bars, "7 pinned breaks", the twin-flag rationale.
+14 citations over those six files. After the wipe each one points at nothing, and the
+reason a knob is set the way it is becomes unrecoverable from the shipped tree.
+
+This is now enforced rather than remembered:
+`test_compile_posture.test_no_shipped_file_cites_a_missing_test_module` fails the moment a
+cited module disappears and prints the exact worklist. Repoint each comment at a surviving
+home — `docs/cgenn-compile.md` keeps the per-stage numbers, the posture rules live in
+`test_compile_posture.py` — **in the same commit as the deletion**. The surviving test
+files are deliberately exempt: their references are historical ("carved out of…", "used to
+import from…"), and that stays true after the target is gone.
+
 ## Before you wipe: the dependency that used to break it
 
 `test_device_hygiene.py` is KEEP-permanently but used to `import` REPO/_fixed_batch/_build

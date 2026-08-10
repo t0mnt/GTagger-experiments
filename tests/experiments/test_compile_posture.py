@@ -95,6 +95,87 @@ def test_compile_true_is_backward_verified():
         f"compiled training step and recording the gradient count above.")
 
 
+# The five gate files cleanup.md's step-7 wipe deletes. SHIPPED code cites them as the
+# authority for its pinned numbers -- 14 citations over six files at the time of writing,
+# four of them production yamls -- so the wipe would leave configs a run actually loads
+# pointing at files that no longer exist.
+WIPE_DELETES = [
+    "test_cgenn_compile",
+    "test_cgenn_hybrid_compile",
+    "test_lorentznet_compile",
+    "test_lorentznet_hybrid_compile",
+    "test_nonequi_compile",
+]
+
+# SHIPPED files -- production configs and production model code. Scoped here on purpose:
+# a dead citation in a yaml a run actually loads, or in `wrappers.py`, misleads whoever is
+# trying to find out why a knob is set the way it is. The surviving TEST files are excluded
+# because their references to the gate files are deliberately historical ("carved out of",
+# "used to import from"), and history stays true after the thing it describes is deleted.
+_SHIPPED_GLOBS = ["config/model/*.yaml", "experiments/**/*.py"]
+
+
+def _shipped_files():
+    seen = {}
+    for pat in _SHIPPED_GLOBS:
+        for p in REPO.glob(pat):
+            if p.is_file() and "__pycache__" not in p.parts:
+                seen[p] = None
+    return sorted(seen)
+
+
+def test_no_shipped_file_cites_a_missing_test_module():
+    """The step-7 wipe must not leave shipped code pointing at deleted files.
+
+    Four production yamls and two model files cite the gate files as the AUTHORITY for
+    numbers they ship -- `tag_ParT.yaml`'s break bars, `tag_ParticleNetParTGraphGPS.yaml`'s
+    "7 pinned breaks", the wrappers' twin-flag rationale. `cleanup.md` deletes those gate
+    files. Nothing in the runbook noticed that the citations outlive their targets.
+
+    Two checks, because citations take two forms here:
+
+      1. Explicit ``test_<name>.py`` references must resolve to a real module. NON-VACUOUS
+         TODAY: `experiments/tagging/wrappers.py` and
+         `experiments/baselines/CGENNLGATrGraphTransHybrid.py` carry five such live
+         citations, so a typo or a premature deletion fails right now.
+      2. The five WIPE_DELETES modules in whatever prose form they take
+         (`test_nonequi_compile:`, `.BREAK_BARS`, bare) -- checked only once the module is
+         actually gone, which is exactly when the citation goes dead.
+
+    Verified to fire: with all five gate files removed it reports 14 dead citations
+    across six shipped files -- the four yamls, `wrappers.py` and
+    `CGENNLGATrGraphTransHybrid.py`.
+
+    Failure is not a reason to skip the wipe; it is the worklist. Repoint each comment at a
+    surviving home -- `docs/cgenn-compile.md` keeps the per-stage numbers, and the posture
+    rules live in this file.
+    """
+    cite_py = re.compile(r"\b(test_[a-z0-9_]+)\.py\b")
+    danglers = []
+    for path in _shipped_files():
+        try:
+            text = path.read_text()
+        except UnicodeDecodeError:
+            continue
+        rel = path.relative_to(REPO)
+        for mod in sorted(set(cite_py.findall(text))):
+            if not list(REPO.glob(f"tests/**/{mod}.py")):
+                danglers.append(f"{rel}  cites  {mod}.py  (no such module)")
+        for mod in WIPE_DELETES:
+            if (REPO / "tests" / "experiments" / f"{mod}.py").exists():
+                continue                       # not wiped yet; nothing dead to point at
+            if mod in text:
+                danglers.append(f"{rel}  cites  {mod}  (deleted by the step-7 wipe)")
+
+    assert not danglers, (
+        "shipped files cite test modules that do not exist:\n  "
+        + "\n  ".join(danglers)
+        + "\n\nIf this fired right after the cleanup.md wipe, that is the point: the "
+          "deleted gate files were the stated authority for numbers that shipped configs "
+          "still quote. Repoint each comment at a surviving home before committing the "
+          "wipe.")
+
+
 def _build(model):
     import logging.handlers  # noqa: F401
     import hydra
