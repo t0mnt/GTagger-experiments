@@ -236,6 +236,28 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   `test_compile_true_is_backward_verified` (default suite: no config may ship
   `compile: true` unless the model is in `BACKWARD_VERIFIED`) and `test_compiled_backward`
   (env-gated: runs the compiled training step, requires finite grads).
+- **Round 6 (cross-revision audit, 2026-08-10): every non-lgatr model is bit-identical to
+  `main`.** The gates in this branch are self-referential by construction — fixtures were
+  recorded at pre-gate HEAD, which for `tag_ParT` was already after the in-repo port
+  landed, so BIT pins the port against itself. This round answered the other question
+  directly: build each model from the merge-base tree AND from HEAD, assign both identical
+  parameters from a seeded generator, run the same batch, compare. Result, `max|dy|`:
+  `tag_ParT` 0.0 (lloca's ParticleTransformer vs the in-repo port — the fidelity check the
+  fixtures could not make), and 0.0 for `tag_MIParT`, `tag_particlenet`, `tag_transformer`,
+  `tag_cgenn` (so the GP rewrite and the `gp_impl: sparse` default changed nothing),
+  `tag_lorentznet`, `tag_PlainGraphTrans`, `tag_PlainGraphGPS`, `tag_ParticleNetParTGraphTrans`,
+  `tag_ParticleNetParTGraphGPS`. Parameter-name sets identical throughout. The six
+  lgatr-bearing models are excluded on purpose — 2.0 removed the qkv `in_linear` biases and
+  added affine norm gains, an upstream architecture change; their isolation evidence is
+  `test_lgatr_migration_parity::test_transplant_parity` (23 passed, 0 skipped).
+  One real defect surfaced, and it is on `main`: `config_quick/model/tag_particlenet.yaml`
+  pointed at `lloca.backbone.particlenet.ParticleNet`, whose `forward(points, features,
+  frames, mask)` takes no `v`, while the wrapper passes `v=fourmomenta_local` —
+  `TypeError` on every run. Production `config/` already used the in-repo net on both
+  sides, so only the quick tree was affected; this branch repoints it and the failure is
+  gone. Also verified: compiled and eager `state_dict` keys are identical for `tag_ParT`
+  and `tag_ParticleNetParTGraphTrans` (245/245 and 303/303, strict load OK both ways), so
+  the `compile: true` flip is checkpoint-safe.
 - **Round 5: the pair BatchNorm is now mask-aware, and the compiled twins are faithful in
   TRAINING, not only in eval.** Round 3 recorded the divergence and shipped `false`;
   operator ruling was that compile must be accurate to the reference, not dropped.

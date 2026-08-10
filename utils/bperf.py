@@ -55,16 +55,35 @@ MATRIX = [
 
 ITER_RE = re.compile(r"Finished iteration (\d+) after ([0-9.]+)s")
 
-# Rows whose compile knob changes MORE than kernel fusion, so speed must not decide them.
-# What remains after the weighted pair-BN landed (todo 4b-quater, done): only the two
-# backward-crashers, which raise InductorError at the first loss.backward() regardless of
-# how fast the forward is. test_nonequi_compile.test_compile_true_is_backward_verified
-# also fails on a bare flip of either, by design.
+# Rows --apply must never flip. NOT "compile would not help them" -- it might; the point
+# is that beta-PERF CANNOT decide them, because the thing it would flip does not run.
+#
+# `model.compile=true` routes through the wrapper's hardcoded `.compile(dynamic=True)`,
+# and under dynamic=True both of these raise InductorError at the first loss.backward()
+# ("cannot determine truth value of Relational" -- symbolic shapes from the kNN k-cap and
+# the M8 channel-last transpose). So a compiled beta-PERF row for them is a crash, not a
+# number, and --apply would write a config that dies in the campaign.
+#
+# Re-measured 2026-08-10 on current HEAD, because "cannot compile" deserved to be stated
+# precisely rather than broadly:
+#
+#   dynamic=True   dies on batch 1                      (what the knob actually does)
+#   dynamic=None   compiles STATIC, then dies on the    (auto-dynamic reproduces it)
+#                  second distinct padded length
+#   dynamic=False  survives, but recompiles PER SHAPE:  (works; not usable)
+#                  8 real batches -> 8 compiled frames,
+#                  node counts 166..219
+#
+# So there IS a mode that lowers them -- dynamic=False -- and it is not adopted because
+# jets are variably padded, so it recompiles essentially every batch. That is a
+# pathology, not a speedup. If someone wants the upside, the lead is to make the k-cap
+# `min(k, max(1, P-1))` traceable so dynamic=True can lower it; that is a model-code
+# change with its own gates, not a knob flip.
 #
 # The three PairEmbed-twin models used to be here for TRAINING-numerics reasons and no
 # longer are: the twins now weight the pair-BN statistics by the eager reference multiset
 # (train delta <= 3.2e-15), so speed is once again the only open question for them. The
-# GPS pair still ships false, but that is exactly the performance call --apply is allowed
+# GPS pair still ships false, but that is exactly the performance call --apply IS allowed
 # to make: they are in the sweep precisely so beta-PERF can decide them.
 NO_APPLY = {"PlainGraphTrans", "LNetSlimGraphGPS"}
 

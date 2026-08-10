@@ -101,7 +101,30 @@ def _build(model, float64, extra_overrides=()):
 @pytest.mark.parametrize("model", MODELS)
 @pytest.mark.parametrize("prec", ["fp32", "fp64"])
 def test_bit_eager_vs_fixtures(model, prec):
-    """BIT: eager outputs bit-identical to the recording."""
+    """BIT: eager outputs bit-identical to the recording.
+
+    SCOPE -- read this before treating a green BIT as proof of port fidelity. The
+    fixtures were recorded at pre-GATE HEAD, which for `tag_ParT` was already AFTER the
+    yaml switched `net._target_` from `lloca.backbone.particletransformer` to the in-repo
+    port. So this gate pins the port against ITSELF: it proves the compile work did not
+    change ParT, and proves nothing about whether the port matches the library it was
+    copied from. Same reasoning applies to any future in-repo port recorded this way.
+
+    That separate question was answered directly, out-of-band (2026-08-10), by building
+    tag_ParT from the merge-base tree (lloca's ParticleTransformer) and from HEAD (the
+    port), assigning both identical parameters from a seeded generator, and running the
+    same batch: `max|dy| = 0.000e+00`, identical parameter-name set, 2,141,005 params
+    each. The port reproduces lloca's ParT exactly on the shipped configuration.
+
+    It is exact because every divergence the port carries is inert there: `use_amp:
+    false` neutralizes `autocast('cuda')` -> `autocast(x.device.type)`; `for_inference` is
+    unset so the softmax/sigmoid branch never fires; and `framesnet: identity` means the
+    frame-trimming fix (the port trims frames alongside particles, where lloca prepares
+    them BEFORE the trimmer permutes/truncates) has nothing to realign. Under LEARNED
+    frames with `trim: true` the port and lloca genuinely differ -- deliberately, with the
+    port being the correct one -- so an ablation that turns frames on is NOT covered by
+    the equality above.
+    """
     path = FIX / f"{model}_{prec}.pt"
     exp = _build(model, float64=(prec == "fp64"))
     if RECORD:
