@@ -264,10 +264,12 @@ def test_train_mode_differential(model):
     flag-induced, and dynamo itself is numerics-preserving) and compares TRAIN-mode
     outputs and BatchNorm running buffers against the eager build.
 
-    Clean models must be bit-identical. The documented twin models must (a) still
-    diverge -- if one goes clean, the twin was changed and the docs/posture need
-    revisiting -- and (b) ship ``compile: false``, which is the assertion that actually
-    prevents a compiled-trained checkpoint from ever being produced.
+    Most models must be bit-identical. The three in TWIN_TOL_MODELS reach the eager
+    statistics through a WEIGHTED BatchNorm rather than by being handed the identical
+    tensor, so they are held to TRAIN_TOL instead of to zero -- what is left is float
+    reassociation, not a different statistic. BN running buffers are checked alongside the
+    outputs because they are persistent state: a compiled-trained checkpoint carries them
+    into any later eager evaluation, export or finetune.
     """
     ref = torch.load(FIX / f"{model}_fp64.pt", weights_only=False)
     out = {}

@@ -237,68 +237,6 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
       hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
       the new path.
 
-## 4b-quater. Mask-aware pair BatchNorm — DONE (2026-08-10)
-
-**Ruling that drove it: compile must be numerically faithful to the reference, not merely
-fast.** I had proposed dropping this on the grounds that ParT ships `compile: false` and
-therefore already trains on the reference recipe. Overruled, and correctly: a compile knob
-whose semantics differ from eager is a trap regardless of the current default, and the
-campaign should be free to enable it.
-
-**The defect.** The eager pair path feeds the pair BatchNorm only the lower-triangular
-real pairs. The compiled twin feeds the full padded `seq_len^2` grid, so BN batch
-statistics differed: train-mode divergence 6.5e-01 (ParT), 1.5e-02 (PNParTGraphTrans),
-4.4e-04 (PNParTGraphGPS), with BN running buffers -- persistent state that carries into
-checkpoints -- off by 15.0 / 1.1 / 1.1.
-
-**The fix.** `particletransformer._weighted_batchnorm1d` computes mean/var over a WEIGHT
-tensor instead of over all grid entries, and `_embed_weighted` swaps it in for every
-`nn.BatchNorm1d` in an embed `Sequential`. Conv and activation layers are untouched --
-they are pointwise along N, so applying them to the whole grid and weighting only the
-STATISTICS is exact. Traceable because `w.sum()` is a scalar tensor, not a shape.
-
-The weight is *per file*, because the eager reference is per file:
-- **ParT** defaults to `sparse_eval=True`, so its reference multiset is
-  `mask.tril(offset).nonzero()` -> `w` = tril of REAL pairs (mask-aware).
-- **the two PN-ParT hybrids** have no sparse path and no mask argument; their reference is
-  the tril-dense path -> `w` = tril over ALL positions, padded included.
-
-Two things that only measurement would have caught, both now commented at the call sites:
-- the weight needs the REAL batch dim. A broadcast `(1,1,P,P)` weight undercounts
-  `w.sum()` by `bsz` and scales the mean by `bsz`; it made the PN-ParT BN buffers WORSE
-  than doing nothing (1.14 -> 464).
-- `running_var` takes the unbiased (`n/(n-1)`) estimate while the normalization uses the
-  biased one, exactly as `nn.BatchNorm1d` does. Eval mirrors BN's own branch: running
-  statistics when the buffers exist, weighted batch statistics when
-  `track_running_stats=False`.
-
-**Measured after the fix** (compiled vs eager, train mode, fp64):
-
-| model | max abs dy | max abs d(BN running buffers) |
-|---|---|---|
-| `tag_ParT` | 1.554e-15 | 1.110e-14 |
-| `tag_ParticleNetParTGraphTrans` | 3.109e-15 | 5.578e-13 |
-| `tag_ParticleNetParTGraphGPS` | 2.776e-17 | 5.578e-13 |
-
-The other four compiled models remain exactly 0.0. Eager stays BIT-pinned to the pre-edit
-fixtures in fp32 and fp64.
-
-**Gate.** `TWIN_TRAIN_DIVERGENT` (which asserted "must diverge AND must ship
-`compile: false`") is replaced by `TWIN_TOL_MODELS` + `TRAIN_TOL = 1e-10`, so the gate now
-asserts agreement instead of documenting disagreement. Every other model must still be
-bit-zero.
-
-**Posture consequence.** With the semantic blocker gone, the three models were run through
-`test_compiled_backward` and all survive a real `loss.backward()` under compile
-(217/217, 85/85, 64/64 parameters with nonzero finite gradients), so all three joined
-`BACKWARD_VERIFIED`. `tag_ParT` and `tag_ParticleNetParTGraphTrans` have clean graphs
-(0 breaks, forward and backward) and flip to **`compile: true`**, matching the tree's
-default for clean-graph backward-verified models. `tag_ParticleNetParTGraphGPS` stays
-**`false`** -- but now purely as a performance posture, not a correctness one: its masked
-BatchNorm over real nodes splits the graph (7 pinned breaks) and inductor additionally
-cannot lower `aten.nonzero` in the backward. That is the same β-PERF-decides rule that
-governs `tag_PlainGraphGPS`, and the flip is one line whenever β-PERF says otherwise.
-
 ## 4b-septies. Post-merge confirmation: the training smoke — BUILT, just run it
 
 `tests/experiments/test_training_smoke.py` exists and is the go/no-go before the
