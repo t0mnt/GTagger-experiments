@@ -182,6 +182,16 @@ def find_batchsize(row_overrides, knob, config_path, bs_start, bs_max, safety):
 
 
 def run_once(overrides, iters, window, config_path, timeout, seed):
+    """One timed run of one state. Returns (it_per_s, error, tail).
+
+    BOTH STREAMS ARE READ, and that is not defensive tidying -- it is the difference
+    between this script working and not. `base_experiment._init_logger` attaches a bare
+    `logging.StreamHandler()`, whose default stream is **stderr**, so every line this
+    function exists to parse -- including "Finished iteration N after Ts" -- arrives on
+    stderr and NONE of it on stdout. Reading `.stdout` alone made every row report
+    `missing timing lines (have [])` and the whole matrix INCOMPLETE, on GPU as much as on
+    CPU. Verified: `bperf_results.md` had never recorded a single measured number.
+    """
     cmd = [
         sys.executable, "run.py",
         "--config-path", config_path, "--config-name", "toptagging",
@@ -192,12 +202,17 @@ def run_once(overrides, iters, window, config_path, timeout, seed):
         f"training.validate_every_n_steps={iters + 1}",  # keep validation out of the window
     ]
     try:
-        out = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True,
-                             timeout=timeout).stdout
+        p = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, timeout=timeout)
+        out = (p.stdout or "") + (p.stderr or "")
     except subprocess.TimeoutExpired as e:
-        return None, f"TIMEOUT after {timeout}s", (e.stdout or "")[-2000:]
+        def _txt(s):
+            return s.decode(errors="replace") if isinstance(s, bytes) else (s or "")
+        return None, f"TIMEOUT after {timeout}s", (_txt(e.stdout) + _txt(e.stderr))[-2000:]
     marks = {int(n): float(t) for n, t in ITER_RE.findall(out)}
     lo, hi = window
+    if not marks:
+        return None, ("no timing lines at all -- the run almost certainly died before "
+                      "training; read the tail"), out[-3000:]
     if lo not in marks or hi not in marks:
         return None, f"missing timing lines (have {sorted(marks)})", out[-2000:]
     return (hi - lo) / (marks[hi] - marks[lo]), None, None
