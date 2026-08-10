@@ -1,10 +1,31 @@
 _target_: experiments.tagging.wrappers.LorentzNetLGATrSlimGraphGPSWrapper
 out_channels: null              # init_physics -> num_outputs
-compile: false                  # CRASHES ON BACKWARD under the shipped dynamic=True: inductor cannot
-                                # order strides of a symbolically-shaped tensor (1 < s53, from the M8 channel-last transpose) and raises
-                                # InductorError at the first loss.backward(). Forward-only compile is
-                                # fine, which is why every eval/no_grad gate passed it. Pinned by
+compile: false                  # CANNOT BE LOWERED under the shipped dynamic=True: inductor cannot
+                                # order strides of a symbolically-shaped tensor (1 < s53) and raises
+                                # InductorError while compiling the joint forward+backward graph.
+                                # Forward-only compile is fine, which is why every eval/no_grad gate
+                                # passed it. Pinned by
                                 # test_nonequi_compile.test_compile_true_is_backward_verified.
+                                #
+                                # NOT a NaN and NOT a numerics problem -- stated explicitly because the
+                                # two get conflated. It is a compile-time raise; eager is untouched and
+                                # is what ships. Measured 2026-08-10 under dynamic=False (which DOES
+                                # lower it): 5 optimizer steps, 65/65 gradients, ZERO non-finite tensors,
+                                # loss 0.7101 -> 0.7115. So the math is fine; only the lowering fails.
+                                #
+                                # NEGATIVE RESULTS, recorded so nobody re-spends the time:
+                                #   * this is NOT the kNN k-cap. That was tag_PlainGraphTrans, fixed with
+                                #     a static-k twin (see its yaml). THIS file contains no k-cap at all,
+                                #     so that fix does not transfer.
+                                #   * adding `.contiguous()` to all three M8 channel-last transposes
+                                #     (lines ~108/109/246) does NOT help -- same InductorError.
+                                #   * dynamic=False lowers it but recompiles per padded length, which for
+                                #     variably-padded jets is a recompile almost every batch: a pathology,
+                                #     not a speedup.
+                                # The traceback dies inside inductor's own graph runner with no user
+                                # frame, so localizing it means bisecting the graph -- open-ended work
+                                # for a bounded walltime gain on a model that is already correct eager.
+                                # Left as the single remaining bperf NO_APPLY entry.
 
 net:
   _target_: experiments.baselines.lorentznetlgatrslimgraphgps.LorentzNetLGATrSlimGraphGPS

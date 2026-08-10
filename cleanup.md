@@ -103,7 +103,14 @@ why below.
     #    number can overrule.
     #    Paste the table into docs/cgenn-compile.md and commit any flips.
 
-    # 7. WIPE the vestigial bits (everything below), commit once
+    # 7. WIPE the vestigial bits (everything below), commit once. AFTER beta-PERF, not
+    #    before: step 6 needs utils/bperf.py, and steps 3-5 need the gate files that
+    #    step 7 deletes. Deleting is hygiene, so it can also be skipped or deferred --
+    #    but it must never move EARLIER in this list.
+    #    NOTE this file is itself on the delete list. The two things in it you might
+    #    still want afterwards live elsewhere on purpose: the GPU procedure (5a/5b) is
+    #    in tests/experiments/test_training_smoke.py's own header, which is KEEP-
+    #    permanently, and the campaign is docs/OSCAR.md.
     # 8. RUN the campaign -- docs/OSCAR.md, UNCHANGED. Nothing in this branch alters how
     #    the campaign is launched, only what it runs.
 
