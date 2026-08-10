@@ -3,31 +3,19 @@ in_channels: null               # init_physics -> 7 + extra_scalars
 out_channels: null              # init_physics -> num_outputs
 use_amp: false
 add_fourmomenta_backbone: false
-compile: false                  # CRASHES ON BACKWARD under the shipped dynamic=True: inductor cannot
-                                # order strides of a symbolically-shaped tensor and raises InductorError
-                                # (1 < Min(4, Max(1, s98 - 1))) at the first loss.backward(). Forward-only
-                                # compile is fine, which is why every eval/no_grad gate passed it. Pinned by
-                                # test_nonequi_compile.test_compile_true_is_backward_verified.
-                                #
-                                # DIAGNOSED 2026-08-10, and it IS fixable -- recorded so nobody re-derives it:
-                                #   * cause is the kNN k-cap `k = min(k, max(1, num_points - 1))` (knn(),
-                                #     this file). Proven by substitution: with the cap removed so k stays a
-                                #     python int, the model compiles AND backwards (71/71 grads). The same
-                                #     cap line also exists in particlenettransformer.py and
-                                #     lorentznetlgatrslimgraphtrans.py, which compile FINE -- the cap is
-                                #     necessary, not sufficient; what differs is that here the k-shaped
-                                #     tensor reaches a site where inductor must order strides.
-                                #   * a pad-then-topk variant (pad the distance matrix to >= k+1 columns
-                                #     with -inf, keep k a python constant) also compiles + backwards, and
-                                #     preserves the safety property the cap exists for.
-                                #   * the cap NEVER BINDS in production: measured padded P per batch is
-                                #     87-110 at batchsize 128/256 against knn_k: 16, i.e. 0/15 batches.
-                                #     It only binds in tiny-batch regimes -- including the gates' own
-                                #     batchsize 4, which is why BIT would fail on a naive change.
-                                # => a real fix is a COMPILE-ONLY twin (eager untouched, like
-                                # PairEmbed.compiled_dense), with fixtures + gates. Post-merge work, not a
-                                # knob flip. NOTE the sibling crasher tag_LorentzNetLGATrSlimGraphGPS has a
-                                # DIFFERENT cause (that file has no k-cap at all), so this does not fix it.
+compile: true                   # torch.compile(net, dynamic=True). Routes the kNN through the
+                                # static-k twin (`compiled_knn`, see knn() in plaingraphtrans.py):
+                                # the eager cap `min(k, max(1, num_points - 1))` makes k a SYMBOLIC
+                                # expression, and inductor cannot order the strides of the topk output
+                                # carrying it -- InductorError at the first loss.backward(). The twin
+                                # keeps k a python int, which is EQUAL to eager (not merely close)
+                                # whenever num_points - 1 >= k, and it raises rather than diverging
+                                # otherwise. Measured: production padded P is 87-110 per batch at
+                                # batchsize 128/256 against knn_k: 16 -- 0/15 batches bind the cap.
+                                # Gates: BIT eager unchanged (fp32+fp64), train-mode differential
+                                # 0.000e+00, TOL 1.1e-16, BREAKS 0, RECOMP [1,1,1], compiled backward
+                                # 71/71 nonzero finite grads. Eager path untouched (static_k defaults
+                                # False), so this is a compile-only twin like PairEmbed.compiled_dense.
 
 net:
   _target_: experiments.baselines.plaingraphtrans.PlainGraphTrans

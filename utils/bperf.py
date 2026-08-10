@@ -57,35 +57,32 @@ ITER_RE = re.compile(r"Finished iteration (\d+) after ([0-9.]+)s")
 
 # Rows --apply must never flip. NOT "compile would not help them" -- it might; the point
 # is that beta-PERF CANNOT decide them, because the thing it would flip does not run.
-#
 # `model.compile=true` routes through the wrapper's hardcoded `.compile(dynamic=True)`,
-# and under dynamic=True both of these raise InductorError at the first loss.backward()
-# ("cannot determine truth value of Relational" -- symbolic shapes from the kNN k-cap and
-# the M8 channel-last transpose). So a compiled beta-PERF row for them is a crash, not a
-# number, and --apply would write a config that dies in the campaign.
+# and tag_LorentzNetLGATrSlimGraphGPS raises InductorError at the first loss.backward()
+# under it ("cannot determine truth value of Relational: 1 < s53", from the M8
+# channel-last transpose). A compiled beta-PERF row for it is a crash, not a number, and
+# --apply would write a config that dies in the campaign.
 #
-# Re-measured 2026-08-10 on current HEAD, because "cannot compile" deserved to be stated
-# precisely rather than broadly:
-#
-#   dynamic=True   dies on batch 1                      (what the knob actually does)
-#   dynamic=None   compiles STATIC, then dies on the    (auto-dynamic reproduces it)
+# Measured 2026-08-10, so "cannot compile" is stated precisely rather than broadly:
+#   dynamic=True   dies on batch 1                     (what the knob actually does)
+#   dynamic=None   compiles STATIC, then dies on the   (auto-dynamic reproduces it)
 #                  second distinct padded length
-#   dynamic=False  survives, but recompiles PER SHAPE:  (works; not usable)
-#                  8 real batches -> 8 compiled frames,
-#                  node counts 166..219
+#   dynamic=False  survives, but recompiles PER SHAPE  (works; unusable -- 8 real
+#                  batches produced 8 compiled frames across node counts 166..219,
+#                  and jets are variably padded, so that is essentially every batch)
 #
-# So there IS a mode that lowers them -- dynamic=False -- and it is not adopted because
-# jets are variably padded, so it recompiles essentially every batch. That is a
-# pathology, not a speedup. If someone wants the upside, the lead is to make the k-cap
-# `min(k, max(1, P-1))` traceable so dynamic=True can lower it; that is a model-code
-# change with its own gates, not a knob flip.
+# PlainGraphTrans USED to be here for the same reason and no longer is: its crash came
+# from the kNN k-cap making k symbolic, and the static-k compile twin
+# (plaingraphtrans.knn, `compiled_knn`) fixed it -- BREAKS 0, RECOMP [1,1,1], train-mode
+# differential 0.000e+00, backward 71/71. It now ships compile: true and is an ordinary
+# speed row. The remaining crasher has a DIFFERENT cause (that file has no k-cap at all),
+# so the same fix does not transfer.
 #
-# The three PairEmbed-twin models used to be here for TRAINING-numerics reasons and no
-# longer are: the twins now weight the pair-BN statistics by the eager reference multiset
-# (train delta <= 3.2e-15), so speed is once again the only open question for them. The
-# GPS pair still ships false, but that is exactly the performance call --apply IS allowed
-# to make: they are in the sweep precisely so beta-PERF can decide them.
-NO_APPLY = {"PlainGraphTrans", "LNetSlimGraphGPS"}
+# The three PairEmbed-twin models also used to be here, for TRAINING-numerics reasons,
+# until the weighted pair-BN made them faithful (train delta <= 3.2e-15). The GPS pair
+# still ships false, but that is exactly the performance call --apply IS allowed to make:
+# they are in the sweep precisely so beta-PERF can decide them.
+NO_APPLY = {"LNetSlimGraphGPS"}
 
 
 def run_once(overrides, iters, window, config_path, timeout):

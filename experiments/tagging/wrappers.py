@@ -1350,7 +1350,11 @@ class PlainGraphTransWrapper(TaggerWrapper):
         self.compute_jet_frames = True
         if compile:
             # compile the net only; static kNN + torch-MHA trace clean (Stage-4 gates:
-            # tests/experiments/test_nonequi_compile.py)
+            # tests/experiments/test_nonequi_compile.py).
+            # compiled_knn: keep the kNN k a python int -- the eager cap against a symbolic
+            # P is what inductor cannot lower on the BACKWARD graph (see knn()'s docstring).
+            # Provably identical wherever P - 1 >= k, which is every regime we run.
+            self.net.compiled_knn = True
             self.net.compile(dynamic=True)
 
     def forward(self, embedding):

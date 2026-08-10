@@ -797,6 +797,36 @@ joint backward graph — round 4, a correctness blocker) and for `tag_PlainGraph
 `config_quick` stays eager everywhere. The GPS pair's correctness question is now
 closed — only the walltime question remains, which is what the β-PERF row above measures.
 
+**Round 7 (2026-08-10): tag_PlainGraphTrans compiles — the k-cap made static.** Round 4
+recorded this model as a backward-crasher and shipped `compile: false`; round 6 traced the
+cause to the kNN cap `min(k, max(1, num_points - 1))`, which makes `k` a SYMBOLIC
+expression under `dynamic=True` so inductor cannot order the strides of the topk output
+that carries it. Fixed with a compile-only twin, the same shape as
+`PairEmbed.compiled_dense`: `plaingraphtrans.knn(..., static_k=True)` keeps `k` a python
+int, selected by `PlainGraphTrans.compiled_knn` which the wrapper sets when `compile=True`.
+
+The twin is EQUAL to eager, not merely close, whenever `num_points - 1 >= k` — the cap is
+inert there and both branches call `topk` with the same integer. Measured: production
+padded `P` is 87–110 per batch at batchsize 128/256 against `knn_k: 16` (**0/15 batches
+bind**), and the gates' batchsize-4 batches sit far above `knn_k: 4`. No regime this repo
+runs can distinguish them; the twin raises rather than silently diverging otherwise.
+
+| gate | result |
+|---|---|
+| BIT eager fp32 + fp64 | unchanged (twin defaults off) |
+| train-mode differential | **0.000e+00** |
+| TOL compiled vs eager | 1.119e-16 |
+| BREAKS / RECOMP | 0 / [1, 1, 1] |
+| compiled backward | 71/71 nonzero finite grads |
+
+So `tag_PlainGraphTrans` joins `BACKWARD_VERIFIED` and ships **`compile: true`**, and it
+leaves `bperf.NO_APPLY` — it is an ordinary speed row now. The deliberately unchanged part:
+the identical cap line in `particlenettransformer.py` and `lorentznetlgatrslimgraphtrans.py`
+is left alone, because those two already compile and backward cleanly, which is what proved
+the cap necessary-but-not-sufficient in the first place. `tag_LorentzNetLGATrSlimGraphGPS`
+keeps `compile: false`: that file contains no k-cap at all and its `1 < s53` comes from the
+M8 channel-last transpose, so this fix does not transfer.
+
 **Round 6c (2026-08-10): the gap the train-mode gate leaves, measured.** That gate is
 deliberately FLAGS-ONLY — it sets the twin flags and never invokes dynamo, on the stated
 premise that dynamo is numerics-preserving. Nothing had tested the premise in TRAIN mode,

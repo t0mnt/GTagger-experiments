@@ -171,6 +171,8 @@ def _pre_compile(model, net):
     if model in ("tag_ParT",) and getattr(net, "pair_embed", None) is not None:
         net.pair_embed.sparse_eval = False
         net.pair_embed.compiled_dense = True
+    if model == "tag_PlainGraphTrans":
+        net.compiled_knn = True  # static-k kNN twin (symbolic k breaks inductor's stride order)
     if model in ("tag_ParticleNetParTGraphTrans", "tag_ParticleNetParTGraphGPS"):
         for m in net.modules():
             if hasattr(m, "compiled_attention"):
@@ -223,6 +225,9 @@ BACKWARD_VERIFIED = {
     "tag_ParT",
     "tag_ParticleNetParTGraphTrans",
     "tag_ParticleNetParTGraphGPS",
+    # added once the static-k kNN twin removed the InductorError that used to kill this
+    # model at its first loss.backward(): 71/71 nonzero finite grads under compile
+    "tag_PlainGraphTrans",
 }
 
 
