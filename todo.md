@@ -222,6 +222,26 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
 - [ ] LorentzNetKNNBlock phi_e BN normalises invalid edges (pre-existing, both variants).
 - [ ] JetClass: fill the 8 `jc_<Hybrid>.yaml` `???` batchsize/lr from find_lr on jctagging.
 - [ ] Rejection-metric convention differs top vs JetClass (one methods sentence, or unify).
+- [ ] **Port the torchrun DDP entry path from `heidelberg-hepml/tagging-guide`.** This repo
+      carries the DDP *plumbing* (`world_size` threaded through `BaseExperiment`, the
+      `all_reduce` on loss, the sampler branches) but nothing ever initializes a process
+      group, so `world_size` is always 1 — multi-GPU is unreachable, and the DDP regression
+      was reverted rather than fixed. Directly load-bearing for §3a-bis: CGENN-GraphGPS is
+      costed at ~2000–5000 GPU-h, i.e. "still weeks on four", which assumes a working
+      multi-GPU path. Three concrete pieces from tagging-guide (@f159df7):
+      - `run.py:43-61` — read `WORLD_SIZE`/`RANK`/`LOCAL_RANK` from the env, call
+        `dist.init_process_group`, and construct the experiment as
+        `EXPERIMENTS[cfg.exp_type](cfg, rank, world_size, local_rank)`. Ours takes
+        `(cfg, rank=0, world_size=1)` with no `local_rank`, so device pinning per rank has
+        nowhere to come from.
+      - `base_experiment._step` — all-reduce the grad norm with `ReduceOp.MAX` **before**
+        the skip decision. Ours decides per-rank on a local `grad_norm`; under DDP that
+        desynchronizes ranks (some step, some return) and deadlocks the next collective.
+        Currently latent only because `max_grad_norm: null` everywhere.
+      - `config/default.yaml` — replace `gpus: -1` with their `gpu: true` + "world size is
+        set by torchrun" convention, so the launcher owns topology instead of the config.
+      Pairs with `docs/SLURM.md` (the `--job-name` / srun block would need the matching
+      `torchrun --nproc_per_node` invocation).
 
 ## 4b. Post-campaign housekeeping
 
