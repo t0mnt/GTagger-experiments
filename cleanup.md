@@ -98,9 +98,12 @@ why below.
     #    Decides: the two GPS compile knobs (tag_PlainGraphGPS, tag_ParticleNetParTGraphGPS
     #    -- both ship false purely on unmeasured performance grounds, correctness is
     #    settled) and the campaign gp_impl. --apply will flip knobs for you; it refuses to
-    #    touch tag_PlainGraphTrans / tag_LorentzNetLGATrSlimGraphGPS, which are false for a
-    #    CORRECTNESS reason (InductorError on the joint backward graph) that no walltime
-    #    number can overrule.
+    #    touch tag_LorentzNetLGATrSlimGraphGPS, the one model that cannot be lowered at all
+    #    under dynamic=True (InductorError while compiling the joint graph -- a compile-time
+    #    raise, NOT a numerics or NaN problem; eager is correct and is what ships). No
+    #    walltime number can overrule that, so it is the sole NO_APPLY entry.
+    #    tag_PlainGraphTrans used to be there too and is not any more -- the static-k kNN
+    #    twin fixed it, so it ships compile: true and beta-PERF decides it on speed.
     #    Paste the table into docs/cgenn-compile.md and commit any flips.
 
     # 7. WIPE the vestigial bits (everything below), commit once. AFTER beta-PERF, not
