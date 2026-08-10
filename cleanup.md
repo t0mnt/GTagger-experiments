@@ -100,15 +100,13 @@ why below.
     #    (the script says so in its header line if CUDA is absent).
     python utils/bperf.py
     #    Shells out to run.py with save=false, so it writes no run directories.
-    #    Decides: the two GPS compile knobs (tag_PlainGraphGPS, tag_ParticleNetParTGraphGPS
-    #    -- both ship false purely on unmeasured performance grounds, correctness is
-    #    settled) and the campaign gp_impl. --apply will flip knobs for you; it refuses to
-    #    touch tag_LorentzNetLGATrSlimGraphGPS, the one model that cannot be lowered at all
-    #    under dynamic=True (InductorError while compiling the joint graph -- a compile-time
-    #    raise, NOT a numerics or NaN problem; eager is correct and is what ships). No
-    #    walltime number can overrule that, so it is the sole NO_APPLY entry.
-    #    tag_PlainGraphTrans used to be there too and is not any more -- the static-k kNN
-    #    twin fixed it, so it ships compile: true and beta-PERF decides it on speed.
+    #    Decides: the two remaining GPS compile knobs (tag_PlainGraphGPS,
+    #    tag_ParticleNetParTGraphGPS -- both ship false purely on unmeasured performance
+    #    grounds; correctness is settled for both) and the campaign gp_impl.
+    #    --apply may now flip ANY row: NO_APPLY is empty, because every knob-bearing model
+    #    compiles and survives a real backward. (tag_PlainGraphTrans was fixed by the
+    #    static-k kNN twin; tag_LorentzNetLGATrSlimGraphGPS by a scoped recompute_views --
+    #    both this session, both gated.) So beta-PERF is now a pure speed decision.
     #    Paste the table into docs/cgenn-compile.md and commit any flips.
 
     # 7. WIPE the vestigial bits (everything below), commit once. AFTER beta-PERF, not
