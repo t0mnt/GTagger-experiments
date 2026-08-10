@@ -48,7 +48,7 @@ class MVLinear(nn.Module):
         return torch.einsum("bm...i, nm->bn...i", input, self.weight)
 
     def _forward_subspaces(self, input):
-        weight = self.weight.repeat_interleave(self.algebra.subspaces, dim=-1)
+        weight = self.weight.index_select(-1, self.algebra.blade_subspace_idx)
         return torch.einsum("bm...i, nmi->bn...i", input, weight)
 
     def forward(self, input):
@@ -131,7 +131,7 @@ class MVLinear(nn.Module):
 #         norms = torch.cat(self.algebra.norms(input), dim=-1)
 #         s_a = torch.sigmoid(self.a)
 #         norms = s_a * (norms - 1) + 1  # Interpolates between 1 and the norm.
-#         norms = norms.repeat_interleave(self.algebra.subspaces, dim=-1)
+#         norms = norms.index_select(-1, self.algebra.blade_subspace_idx)
 #         normalized = input / (norms + EPS)
 
 #         return normalized
@@ -353,7 +353,7 @@ class MVLinear(nn.Module):
 #         # a = unsqueeze_like(self.a, norms, dim=2)
 #         # b = unsqueeze_like(self.b, norms, dim=2)
 #         # norms = a * norms + b
-#         # norms = norms.repeat_interleave(self.algebra.subspaces, dim=-1)
+#         # norms = norms.index_select(-1, self.algebra.blade_subspace_idx)
 #         # return torch.sigmoid(norms) * input * math.sqrt(3 / 2)
 #         #         norms = split_subspaces(x, self.algebra)
 
@@ -367,7 +367,7 @@ class MVLinear(nn.Module):
 #         a = unsqueeze_like(self.a, norms, dim=2)
 #         b = unsqueeze_like(self.b, norms, dim=2)
 #         norms = a * norms + b
-#         norms = norms.repeat_interleave(self.algebra.subspaces, dim=-1)
+#         norms = norms.index_select(-1, self.algebra.blade_subspace_idx)
 #         return torch.sigmoid(norms) * input
 
 
@@ -404,7 +404,7 @@ class MVLinear(nn.Module):
 
 
 # #     def _get_weight(self):
-# #         return self.weight.repeat_interleave(self.algebra.subspaces, dim=-1)
+# #         return self.weight.index_select(-1, self.algebra.blade_subspace_idx)
 
 
 # #     def forward(self, input):
@@ -428,4 +428,4 @@ class MVLinear(nn.Module):
 #         a = unsqueeze_like(self.a, norm, dim=2)
 #         return a * input / norm
 #         # norms = a / (self._norms(input).mean(dim=1, keepdim=True) + EPS)
-#         # return input * norms.repeat_interleave(self.algebra.subspaces, dim=-1)
+#         # return input * norms.index_select(-1, self.algebra.blade_subspace_idx)

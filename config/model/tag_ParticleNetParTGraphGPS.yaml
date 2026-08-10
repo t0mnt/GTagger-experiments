@@ -3,6 +3,20 @@ in_channels: null               # init_physics -> 7 + extra_scalars
 out_channels: null              # init_physics -> num_outputs
 use_amp: false
 add_fourmomenta_backbone: false
+compile: false                  # CORRECTNESS IS NOT THE BLOCKER -- this is a performance posture.
+                                # The twins are train-faithful (weighted pair-BN: 2.8e-17 outputs,
+                                # 5.6e-13 BN buffers) and the compiled backward is verified (64/64 params,
+                                # finite grads), so the knob is a safe one-line flip. What holds it at
+                                # false is that the masked BatchNorm over real nodes is data-dependent by
+                                # design and splits the graph (7 pinned breaks -- test_nonequi_compile.
+                                # BREAK_BARS), and inductor additionally cannot lower aten.nonzero in the
+                                # BACKWARD, adding breaks there too. Split-graph compile is NOT worthless
+                                # -- each segment still fuses -- but the upside is bounded (the boolean-
+                                # index nonzero is a device sync eager pays too) and NO reference ships
+                                # break-laden compile as a default (lgatr/tagging-guide ship clean-graph
+                                # compile; weaver ships compile off).
+                                # Unmeasured bounded upside vs one-line reversibility -> false until
+                                # beta-PERF says otherwise.
 
 net:
   _target_: experiments.baselines.particlenetpartgraphgps.ParticleNetParTGraphGPS

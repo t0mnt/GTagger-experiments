@@ -7,6 +7,25 @@ import operator
 import torch
 from torch import nn
 
+# CGENN machinery: imported from the single source of truth rather than duplicated here.
+# The copies this replaces had already drifted twice -- the b() device fix and the
+# _as_int_grades coercion each reached only one of the two -- which is why the import is
+# the right end state. BIT (tests/experiments/test_cgenn_hybrid_compile.py) proves the
+# swap changed nothing.
+from experiments.baselines.cgenn.cliffordalgebra import (
+    CliffordAlgebra,
+    ShortLexBasisBladeOrder,
+    construct_gmt,
+    sparse_gp_tables,
+)
+from experiments.baselines.cgenn.linear import MVLinear
+from experiments.baselines.cgenn.normalization import NormalizationLayer
+from experiments.baselines.cgenn.mvsilu import MVSiLU
+from experiments.baselines.cgenn.mvlayernorm import MVLayerNorm
+from experiments.baselines.cgenn.gp import SteerableGeometricProductLayer
+from experiments.baselines.cgenn.fcgp import FullyConnectedSteerableGeometricProductLayer
+from experiments.baselines.cgenn.utils import unsqueeze_like
+
 from lgatr import (
     LGATr,
     embed_vector,
@@ -15,582 +34,27 @@ from lgatr import (
     get_spurions,
 )
 
-def unsqueeze_like(tensor: torch.Tensor, like: torch.Tensor, dim=0):
-    """
-    Unsqueeze last dimensions of tensor to match another tensor's number of dimensions.
-    Args:
-        tensor (torch.Tensor): tensor to unsqueeze
-        like (torch.Tensor): tensor whose dimensions to match
-        dim: int: starting dim, default: 0.
-    """
-    n_unsqueezes = like.ndim - tensor.ndim
-    if n_unsqueezes < 0:
-        raise ValueError(f"tensor.ndim={tensor.ndim} > like.ndim={like.ndim}")
-    elif n_unsqueezes == 0:
-        return tensor
-    else:
-        return tensor[dim * (slice(None),) + (None,) * n_unsqueezes]
 
 # Inspired by https://github.com/pygae/clifford
 # copied from the itertools docs
-def _powerset(iterable):
-    "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
-    s = list(iterable)
-    return itertools.chain.from_iterable(
-        itertools.combinations(s, r) for r in range(len(s) + 1)
-    )
 
-class ShortLexBasisBladeOrder:
-    def __init__(self, n_vectors):
-        self.index_to_bitmap = torch.empty(2 ** n_vectors, dtype=int)
-        self.grades = torch.empty(2 ** n_vectors, dtype=int)
-        self.bitmap_to_index = torch.empty(2 ** n_vectors, dtype=int)
-        for i, t in enumerate(_powerset([1 << i for i in range(n_vectors)])):
-            bitmap = functools.reduce(operator.or_, t, 0)
-            self.index_to_bitmap[i] = bitmap
-            self.grades[i] = len(t)
-            self.bitmap_to_index[bitmap] = i
-            del t # enables an optimization inside itertools.combinations
 
-def set_bit_indices(x: int):
-    """Iterate over the indices of bits set to 1 in `x`, in ascending order"""
-    n = 0
-    while x > 0:
-        if x & 1:
-            yield n
-        x = x >> 1
-        n = n + 1
 
-def count_set_bits(bitmap: int) -> int:
-    """Counts the number of bits set to 1 in bitmap"""
-    count = 0
-    for i in set_bit_indices(bitmap):
-        count += 1
-    return count
 
-def canonical_reordering_sign_euclidean(bitmap_a, bitmap_b):
-    """
-    Computes the sign for the product of bitmap_a and bitmap_b
-    assuming a euclidean metric
-    """
-    a = bitmap_a >> 1
-    sum_value = 0
-    while a != 0:
-        sum_value = sum_value + count_set_bits(a & bitmap_b)
-        a = a >> 1
-    if (sum_value & 1) == 0:
-        return 1
-    else:
-        return -1
 
-def canonical_reordering_sign(bitmap_a, bitmap_b, metric):
-    """
-    Computes the sign for the product of bitmap_a and bitmap_b
-    given the supplied metric
-    """
-    bitmap = bitmap_a & bitmap_b
-    output_sign = canonical_reordering_sign_euclidean(bitmap_a, bitmap_b)
-    i = 0
-    while bitmap != 0:
-        if (bitmap & 1) != 0:
-            output_sign *= metric[i]
-        i = i + 1
-        bitmap = bitmap >> 1
-    return output_sign
 
-def gmt_element(bitmap_a, bitmap_b, sig_array):
-    """
-    Element of the geometric multiplication table given blades a, b.
-    The implementation used here is described in :cite:`ga4cs` chapter 19.
-    """
-    output_sign = canonical_reordering_sign(bitmap_a, bitmap_b, sig_array)
-    output_bitmap = bitmap_a ^ bitmap_b
-    return output_bitmap, output_sign
 
-def construct_gmt(index_to_bitmap, bitmap_to_index, signature):
-    n = len(index_to_bitmap)
-    array_length = int(n * n)
-    coords = torch.zeros((3, array_length), dtype=torch.int)
-    k_list = coords[0, :]
-    l_list = coords[1, :]
-    m_list = coords[2, :]
-    # use as small a type as possible to minimize type promotion
-    mult_table_vals = torch.zeros(array_length)
-    for i in range(n):
-        bitmap_i = index_to_bitmap[i]
-        for j in range(n):
-            bitmap_j = index_to_bitmap[j]
-            bitmap_v, mul = gmt_element(bitmap_i, bitmap_j, signature)
-            v = bitmap_to_index[bitmap_v]
-            list_ind = i * n + j
-            k_list[list_ind] = i
-            l_list[list_ind] = v
-            m_list[list_ind] = j
-            mult_table_vals[list_ind] = mul
-    return torch.sparse_coo_tensor(
-        indices=coords, values=mult_table_vals, size=(n, n, n)
-    )
 
-class CliffordAlgebra(nn.Module):
-    def __init__(self, metric):
-        super().__init__()
-        self.register_buffer("metric", torch.as_tensor(metric))
-        self.num_bases = len(metric)
-        self.bbo = ShortLexBasisBladeOrder(self.num_bases)
-        self.dim = len(self.metric)
-        self.n_blades = len(self.bbo.grades)
-        cayley = (
-            construct_gmt(
-                self.bbo.index_to_bitmap, self.bbo.bitmap_to_index, self.metric
-            )
-            .to_dense()
-            .to(torch.get_default_dtype())
-        )
-        self.grades = self.bbo.grades.unique()
-        self.register_buffer(
-            "subspaces",
-            torch.tensor(tuple(math.comb(self.dim, g) for g in self.grades)),
-        )
-        self.n_subspaces = len(self.grades)
-        self.grade_to_slice = self._grade_to_slice(self.subspaces)
-        self.grade_to_index = [
-            torch.tensor(range(*s.indices(s.stop))) for s in self.grade_to_slice
-        ]
-        self.register_buffer(
-            "bbo_grades", self.bbo.grades.to(torch.get_default_dtype())
-        )
-        self.register_buffer("even_grades", self.bbo_grades % 2 == 0)
-        self.register_buffer("odd_grades", ~self.even_grades)
-        self.register_buffer("cayley", cayley)
 
-    def geometric_product(self, a, b, blades=None):
-        cayley = self.cayley
-        if blades is not None:
-            blades_l, blades_o, blades_r = blades
-            assert isinstance(blades_l, torch.Tensor)
-            assert isinstance(blades_o, torch.Tensor)
-            assert isinstance(blades_r, torch.Tensor)
-            cayley = cayley[blades_l[:, None, None], blades_o[:, None], blades_r]
-        return torch.einsum("...i,ijk,...k->...j", a, cayley, b)
 
-    def _grade_to_slice(self, subspaces):
-        grade_to_slice = list()
-        subspaces = torch.as_tensor(subspaces)
-        for grade in self.grades:
-            index_start = subspaces[:grade].sum()
-            index_end = index_start + math.comb(self.dim, grade)
-            grade_to_slice.append(slice(index_start, index_end))
-        return grade_to_slice
-
-    @functools.cached_property
-    def _alpha_signs(self):
-        return torch.pow(-1, self.bbo_grades)
-
-    @functools.cached_property
-    def _beta_signs(self):
-        return torch.pow(-1, self.bbo_grades * (self.bbo_grades - 1) // 2)
-
-    @functools.cached_property
-    def _gamma_signs(self):
-        return torch.pow(-1, self.bbo_grades * (self.bbo_grades + 1) // 2)
-
-    def alpha(self, mv, blades=None):
-        signs = self._alpha_signs
-        if blades is not None:
-            signs = signs[blades]
-        return signs * mv.clone()
-
-    def beta(self, mv, blades=None):
-        signs = self._beta_signs
-        if blades is not None:
-            signs = signs[blades]
-        return signs * mv.clone()
-
-    def gamma(self, mv, blades=None):
-        signs = self._gamma_signs
-        if blades is not None:
-            signs = signs[blades]
-        return signs * mv.clone()
-
-    def zeta(self, mv):
-        return mv[..., :1]
-
-    def embed(self, tensor: torch.Tensor, tensor_index: torch.Tensor) -> torch.Tensor:
-        mv = torch.zeros(
-            *tensor.shape[:-1], 2 ** self.dim, device=tensor.device, dtype=tensor.dtype
-        )
-        mv[..., tensor_index] = tensor
-        return mv
-
-    def embed_grade(self, tensor: torch.Tensor, grade: int) -> torch.Tensor:
-        mv = torch.zeros(*tensor.shape[:-1], 2 ** self.dim, device=tensor.device)
-        s = self.grade_to_slice[grade]
-        mv[..., s] = tensor
-        return mv
-
-    def get(self, mv: torch.Tensor, blade_index: tuple[int]) -> torch.Tensor:
-        blade_index = tuple(blade_index)
-        return mv[..., blade_index]
-
-    def get_grade(self, mv: torch.Tensor, grade: int) -> torch.Tensor:
-        s = self.grade_to_slice[grade]
-        return mv[..., s]
-
-    def b(self, x, y, blades=None):
-        if blades is not None:
-            assert len(blades) == 2
-            beta_blades = blades[0]
-            blades = (
-                blades[0],
-                torch.tensor([0]),
-                blades[1],
-            )
-        else:
-            blades = torch.tensor(range(self.n_blades))
-            blades = (
-                blades,
-                torch.tensor([0]),
-                blades,
-            )
-            beta_blades = None
-        return self.geometric_product(
-            self.beta(x, blades=beta_blades),
-            y,
-            blades=blades,
-        )
-
-    def q(self, mv, blades=None):
-        if blades is not None:
-            blades = (blades, blades)
-        return self.b(mv, mv, blades=blades)
-
-    def _smooth_abs_sqrt(self, input, eps=1e-16):
-        return (input**2 + eps) ** 0.25
-
-    def norm(self, mv, blades=None):
-        return self._smooth_abs_sqrt(self.q(mv, blades=blades))
-
-    def norms(self, mv, grades=None):
-        if grades is None:
-            grades = self.grades
-        return [
-            self.norm(self.get_grade(mv, grade), blades=self.grade_to_index[grade])
-            for grade in grades
-        ]
-
-    def qs(self, mv, grades=None):
-        if grades is None:
-            grades = self.grades
-        return [
-            self.q(self.get_grade(mv, grade), blades=self.grade_to_index[grade])
-            for grade in grades
-        ]
-
-    def sandwich(self, u, v, w):
-        return self.geometric_product(self.geometric_product(u, v), w)
-
-    def output_blades(self, blades_left, blades_right):
-        blades = []
-        for blade_left in blades_left:
-            for blade_right in blades_right:
-                bitmap_left = self.bbo.index_to_bitmap[blade_left]
-                bitmap_right = self.bbo.index_to_bitmap[blade_right]
-                bitmap_out, _ = gmt_element(bitmap_left, bitmap_right, self.metric)
-                index_out = self.bbo.bitmap_to_index[bitmap_out]
-                blades.append(index_out)
-        return torch.tensor(blades)
-
-    def random(self, n=None):
-        if n is None:
-            n = 1
-        return torch.randn(n, self.n_blades)
-
-    def random_vector(self, n=None):
-        if n is None:
-            n = 1
-        vector_indices = self.bbo_grades == 1
-        v = torch.zeros(n, self.n_blades, device=self.cayley.device)
-        v[:, vector_indices] = torch.randn(
-            n, vector_indices.sum(), device=self.cayley.device
-        )
-        return v
-
-    def parity(self, mv):
-        is_odd = torch.all(mv[..., self.even_grades] == 0)
-        is_even = torch.all(mv[..., self.odd_grades] == 0)
-        if is_odd ^ is_even: # exclusive or (xor)
-            return is_odd
-        else:
-            raise ValueError("This is not a homogeneous element.")
-
-    def eta(self, w):
-        return (-1) ** self.parity(w)
-
-    def alpha_w(self, w, mv):
-        return self.even_grades * mv + self.eta(w) * self.odd_grades * mv
-
-    def inverse(self, mv, blades=None):
-        mv_ = self.beta(mv, blades=blades)
-        return mv_ / self.q(mv)
-
-    def rho(self, w, mv):
-        """Applies the versor w action to mv."""
-        return self.sandwich(w, self.alpha_w(w, mv), self.inverse(w))
-
-    def reduce_geometric_product(self, inputs):
-        return functools.reduce(self.geometric_product, inputs)
-
-    def versor(self, order=None, normalized=True):
-        if order is None:
-            order = self.dim if self.dim % 2 == 0 else self.dim - 1
-        vectors = self.random_vector(order)
-        versor = self.reduce_geometric_product(vectors[:, None])
-        if normalized:
-            versor = versor / self.norm(versor)[..., :1]
-        return versor
-
-    def rotor(self):
-        return self.versor()
-
-    @functools.cached_property
-    def geometric_product_paths(self):
-        gp_paths = torch.zeros((self.dim + 1, self.dim + 1, self.dim + 1), dtype=bool)
-        for i in range(self.dim + 1):
-            for j in range(self.dim + 1):
-                for k in range(self.dim + 1):
-                    s_i = self.grade_to_slice[i]
-                    s_j = self.grade_to_slice[j]
-                    s_k = self.grade_to_slice[k]
-                    m = self.cayley[s_i, s_j, s_k]
-                    gp_paths[i, j, k] = (m != 0).any()
-        return gp_paths
 
 EPS = 1e-6
 
-class NormalizationLayer(nn.Module):
-    def __init__(self, algebra, features, init: float = 0):
-        super().__init__()
-        self.algebra = algebra
-        self.in_features = features
-        self.a = nn.Parameter(torch.zeros(self.in_features, algebra.n_subspaces) + init)
 
-    def forward(self, input):
-        assert input.shape[1] == self.in_features
-        norms = torch.cat(self.algebra.norms(input), dim=-1)
-        s_a = torch.sigmoid(self.a)
-        norms = s_a * (norms - 1) + 1 # Interpolates between 1 and the norm.
-        norms = norms.repeat_interleave(self.algebra.subspaces, dim=-1)
-        normalized = input / (norms + EPS)
-        return normalized
 
-class MVLinear(nn.Module):
-    def __init__(self, algebra, in_features, out_features, subspaces=True, bias=True):
-        super().__init__()
-        self.algebra = algebra
-        self.in_features = in_features
-        self.out_features = out_features
-        self.subspaces = subspaces
-        if subspaces:
-            self.weight = nn.Parameter(
-                torch.empty(out_features, in_features, algebra.n_subspaces)
-            )
-            self._forward = self._forward_subspaces
-        else:
-            self.weight = nn.Parameter(torch.empty(out_features, in_features))
-        if bias:
-            self.bias = nn.Parameter(torch.empty(1, out_features, 1))
-            self.b_dims = (0,)
-        else:
-            self.register_parameter("bias", None)
-            self.b_dims = ()
 
-        self.reset_parameters()
 
-    def reset_parameters(self):
-        torch.nn.init.normal_(self.weight, std=1 / math.sqrt(self.in_features))
-        if self.bias is not None:
-            torch.nn.init.zeros_(self.bias)
 
-    def _forward(self, input):
-        return torch.einsum("bm...i, nm->bn...i", input, self.weight)
-
-    def _forward_subspaces(self, input):
-        weight = self.weight.repeat_interleave(self.algebra.subspaces, dim=-1)
-        return torch.einsum("bm...i, nmi->bn...i", input, weight)
-
-    def forward(self, input):
-        result = self._forward(input)
-        if self.bias is not None:
-            bias = self.algebra.embed(self.bias, self.b_dims)
-            result += unsqueeze_like(bias, result, dim=2)
-        return result
-
-class FullyConnectedSteerableGeometricProductLayer(nn.Module):
-    def __init__(
-        self,
-        algebra,
-        in_features,
-        out_features,
-        include_first_order=True,
-        normalization_init=0,
-    ):
-        super().__init__()
-        self.algebra = algebra
-        self.in_features = in_features
-        self.out_features = out_features
-        self.include_first_order = include_first_order
-        if normalization_init is not None:
-            self.normalization = NormalizationLayer(
-                algebra, in_features, normalization_init
-            )
-        else:
-            self.normalization = nn.Identity()
-        self.linear_right = MVLinear(algebra, in_features, in_features, bias=False)
-        if include_first_order:
-            self.linear_left = MVLinear(algebra, in_features, out_features, bias=True)
-        self.product_paths = algebra.geometric_product_paths
-        self.weight = nn.Parameter(
-            torch.empty(out_features, in_features, self.product_paths.sum())
-        )
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        torch.nn.init.normal_(
-            self.weight,
-            std=1 / math.sqrt(self.in_features * (self.algebra.dim + 1)),
-        )
-
-    def _get_weight(self):
-        weight = torch.zeros(
-            self.out_features,
-            self.in_features,
-            *self.product_paths.size(),
-            dtype=self.weight.dtype,
-            device=self.weight.device,
-        )
-        weight[:, :, self.product_paths] = self.weight
-        subspaces = self.algebra.subspaces
-        weight_repeated = (
-            weight.repeat_interleave(subspaces, dim=-3)
-            .repeat_interleave(subspaces, dim=-2)
-            .repeat_interleave(subspaces, dim=-1)
-        )
-        return self.algebra.cayley * weight_repeated
-
-    def forward(self, input):
-        input_right = self.linear_right(input)
-        input_right = self.normalization(input_right)
-        weight = self._get_weight()
-        if self.include_first_order:
-            return (
-                self.linear_left(input)
-                + torch.einsum("bni, mnijk, bnk -> bmj", input, weight, input_right)
-            ) / math.sqrt(2)
-        else:
-            return torch.einsum("bni, mnijk, bnk -> bmj", input, weight, input_right)
-
-class SteerableGeometricProductLayer(nn.Module):
-    def __init__(
-        self, algebra, features, include_first_order=True, normalization_init=0
-    ):
-        super().__init__()
-        self.algebra = algebra
-        self.features = features
-        self.include_first_order = include_first_order
-        if normalization_init is not None:
-            self.normalization = NormalizationLayer(
-                algebra, features, normalization_init
-            )
-        else:
-            self.normalization = nn.Identity()
-        self.linear_right = MVLinear(algebra, features, features, bias=False)
-        if include_first_order:
-            self.linear_left = MVLinear(algebra, features, features, bias=True)
-        self.product_paths = algebra.geometric_product_paths
-        self.weight = nn.Parameter(torch.empty(features, self.product_paths.sum()))
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        torch.nn.init.normal_(self.weight, std=1 / math.sqrt(self.algebra.dim + 1))
-
-    def _get_weight(self):
-        weight = torch.zeros(
-            self.features,
-            *self.product_paths.size(),
-            dtype=self.weight.dtype,
-            device=self.weight.device,
-        )
-        weight[:, self.product_paths] = self.weight
-        subspaces = self.algebra.subspaces
-        weight_repeated = (
-            weight.repeat_interleave(subspaces, dim=-3)
-            .repeat_interleave(subspaces, dim=-2)
-            .repeat_interleave(subspaces, dim=-1)
-        )
-        return self.algebra.cayley * weight_repeated
-
-    def forward(self, input):
-        input_right = self.linear_right(input)
-        input_right = self.normalization(input_right)
-        weight = self._get_weight()
-        if self.include_first_order:
-            return (
-                self.linear_left(input)
-                + torch.einsum("bni, nijk, bnk -> bnj", input, weight, input_right)
-            ) / math.sqrt(2)
-        else:
-            return torch.einsum("bni, nijk, bnk -> bnj", input, weight, input_right)
-
-class MVLayerNorm(nn.Module):
-    def __init__(self, algebra, channels):
-        super().__init__()
-        self.algebra = algebra
-        self.channels = channels
-        # 1-d (channels,) rather than the official (1, channels): a norm GAIN must fall
-        # under the optimizer's ndim<=1 weight-decay exemption (base_experiment.py:377)
-        # like every other norm gain in the family. The official 2-d shape is silently
-        # weight-decayed, which would regularize the CGENN hybrids' norm gains while the
-        # vendored tag_cgenn baseline's are exempt -- an asymmetry across exactly the
-        # comparison these recipes exist to make fair. Mirrors the vendored fix in
-        # experiments/baselines/cgenn/mvlayernorm.py; forward is unchanged (we unsqueeze
-        # to (1, channels) before broadcasting).
-        self.a = nn.Parameter(torch.ones(channels))
-
-    def forward(self, input):
-        norm = self.algebra.norm(input)[..., :1].mean(dim=1, keepdim=True) + EPS
-        a = unsqueeze_like(self.a.unsqueeze(0), norm, dim=2)
-        return a * input / norm
-
-class MVSiLU(nn.Module):
-    def __init__(self, algebra, channels, invariant="mag2", exclude_dual=False):
-        super().__init__()
-        self.algebra = algebra
-        self.channels = channels
-        self.exclude_dual = exclude_dual
-        self.invariant = invariant
-        self.a = nn.Parameter(torch.ones(1, channels, algebra.dim + 1))
-        self.b = nn.Parameter(torch.zeros(1, channels, algebra.dim + 1))
-        if invariant == "norm":
-            self._get_invariants = self._norms_except_scalar
-        elif invariant == "mag2":
-            self._get_invariants = self._mag2s_except_scalar
-        else:
-            raise ValueError(f"Invariant {invariant} not recognized.")
-
-    def _norms_except_scalar(self, input):
-        return self.algebra.norms(input, grades=self.algebra.grades[1:])
-
-    def _mag2s_except_scalar(self, input):
-        return self.algebra.qs(input, grades=self.algebra.grades[1:])
-
-    def forward(self, input):
-        norms = self._get_invariants(input)
-        norms = torch.cat([input[..., :1], *norms], dim=-1)
-        a = unsqueeze_like(self.a, norms, dim=2)
-        b = unsqueeze_like(self.b, norms, dim=2)
-        norms = a * norms + b
-        norms = norms.repeat_interleave(self.algebra.subspaces, dim=-1)
-        return torch.sigmoid(norms) * input
 
 
 def cgenn_gain_and_bias_names(module):
@@ -625,7 +89,7 @@ def cgenn_gain_and_bias_names(module):
 
 
 def get_invariants(algebra, input):
-    norms = algebra.qs(input, grades=algebra.grades[1:])
+    norms = algebra.qs(input, grades=algebra.grades_list[1:])
     return torch.cat([input[..., :1], *norms], dim=-1)
 
 def psi(p):
@@ -906,7 +370,7 @@ class CGLayer(nn.Module):
             weights = self.psi_x(m_h).view(
                 len(m_h), self.out_features_x, self.algebra.n_subspaces
             )
-            weights = torch.repeat_interleave(weights, self.algebra.subspaces, dim=2)
+            weights = weights.index_select(2, self.algebra.blade_subspace_idx)
             m_x = m_x * torch.sigmoid(weights)
         x_red = self.reduce(m_x.flatten(1), i, num_segments=x.size(0)).view(
             len(x), *m_x.shape[1:]
@@ -923,7 +387,7 @@ class CGLayer(nn.Module):
             weights = self.chi_x(h_u).view(
                 len(h_u), self.out_features_x, self.algebra.n_subspaces
             )
-            weights = torch.repeat_interleave(weights, self.algebra.subspaces, dim=2)
+            weights = weights.index_select(2, self.algebra.blade_subspace_idx)
             x_u = x_u * torch.sigmoid(weights)
         if self.residual and self.in_features_h == self.out_features_h:
             h = h_u + h
@@ -948,6 +412,7 @@ class CGENNBackbone(nn.Module):
         residual=False,
         aggregation="mean",
         layer_type="fc",
+        gp_impl="einsum",
     ):
         super().__init__()
         self.in_features_h = in_features_h
@@ -955,6 +420,12 @@ class CGENNBackbone(nn.Module):
         self.in_features_x = in_features_x
         self.hidden_features_x = hidden_features_x
         self.algebra = CliffordAlgebra((1.0, -1.0, -1.0, -1.0))
+        # geometric-product contraction for the weighted GP layers: einsum (BIT reference)
+        # | matmul (dense GEMM) | sparse (quasigroup gather; lgatr 2.0 sparse_gp posture).
+        # matmul/sparse are TOL-class -- see docs/cgenn-compile.md and baselines/cgenn.
+        if gp_impl not in ("einsum", "matmul", "sparse"):
+            raise ValueError(f"gp_impl must be einsum|matmul|sparse, got {gp_impl!r}")
+        self.algebra.gp_impl = gp_impl
         self.n_layers = n_layers
         self.embedding_h = nn.Linear(in_features_h, hidden_features_h)
         self.embedding_x = MVLinear(
@@ -1026,6 +497,7 @@ class CGENNLGATrGraphTrans(nn.Module):
         cgenn_residual: bool = False,  # official CGENN top-tagging default (tag_cgenn row)
         cgenn_layer_type: str = "fc",
         cgenn_normalization_init=None,  # official CGENN: no NormalizationLayer (tag_cgenn row)
+        gp_impl: str = "einsum",  # einsum (BIT ref) | matmul | sparse -- docs/cgenn-compile.md
         concat_original: bool = True,
         use_explicit_edge_features: bool = True,
         beam_spurion: str = "xyplane",
@@ -1037,6 +509,8 @@ class CGENNLGATrGraphTrans(nn.Module):
         increase_hidden_channels_attention: int = 2,
         increase_hidden_channels_mlp: int = 2,
         num_hidden_layers_mlp: int = 1,
+        norm_elementwise_affine: bool = True,  # v2-native; parity pins set False
+        primitives: dict | None = None,        # e.g. {'sparse_gp': False} in parity tier 1
         head_scale: bool = False,
         dropout_prob: float = None,
         checkpoint_blocks: bool = False,
@@ -1086,6 +560,7 @@ class CGENNLGATrGraphTrans(nn.Module):
             residual=cgenn_residual,
             aggregation=cgenn_aggregation,
             layer_type=cgenn_layer_type,
+            gp_impl=gp_impl,
         )
 
         # concat_original skips the raw particle kinematic channel (ch 0) only. Spurion
@@ -1105,15 +580,18 @@ class CGENNLGATrGraphTrans(nn.Module):
         attention = dict(
             multi_query=multi_query,
             num_heads=num_heads,
-            increase_hidden_channels=increase_hidden_channels_attention,
+            attn_ratio=increase_hidden_channels_attention,
             head_scale=head_scale,
         )
         mlp = dict(
-            activation=activation,
-            increase_hidden_channels=increase_hidden_channels_mlp,
-            num_hidden_layers=num_hidden_layers_mlp,
+            nonlinearity=activation,
+            mlp_ratio=increase_hidden_channels_mlp,
+            # v2 counts ALL layers: v1 num_hidden_layers=N == v2 num_layers_mlp=N+1
+            num_layers_mlp=num_hidden_layers_mlp + 1,
         )
         self.net = LGATr(
+            norm_elementwise_affine=norm_elementwise_affine,
+            **({"primitives": primitives} if primitives is not None else {}),
             num_blocks=num_blocks,
             in_mv_channels=hidden_mv_channels,
             out_mv_channels=num_classes,
@@ -1136,7 +614,17 @@ class CGENNLGATrGraphTrans(nn.Module):
             "cls_s",
         } | cgenn_gain_and_bias_names(self)
 
-    def forward(self, x, v, mask, points):
+    def build_edges(self, v, mask, points):
+        """Static kNN edges from raw inputs -- eager by design (data-dependent nonzero).
+        The wrapper calls this OUTSIDE the compiled region so the compiled forward is
+        break-free; forward falls back to building them itself when edges is None."""
+        fourmomenta_flat = v if (self.knn_metric == "minkowski" and self.k is not None) else None
+        return generate_edges_vectorized(
+            mask, points, self.k, points.shape[1], v.device,
+            metric=self.knn_metric, fourmomenta=fourmomenta_flat,
+        )
+
+    def forward(self, x, v, mask, points, edges=None):
    # points-first inputs from the wrapper:
         #   x: (B, P, C)   v: (B, P, 4) [E, px, py, pz]   mask: (B, P)   points: (B, P, 2)
 
@@ -1163,19 +651,8 @@ class CGENNLGATrGraphTrans(nn.Module):
         M = P
 
         # Stage 3: Build graph edges (native dtype: see generate_edges_vectorized)
-        fourmomenta_flat = None
-        if self.knn_metric == "minkowski" and self.k is not None:
-            fourmomenta_flat = v
-
-        edges = generate_edges_vectorized(
-            mask,
-            points,
-            self.k,
-            M,
-            device,
-            metric=self.knn_metric,
-            fourmomenta=fourmomenta_flat,
-        )
+        if edges is None:
+            edges = self.build_edges(v, mask, points)
 
         # Stage 4: Flatten for CGENN over the dense B*P layout (padded slots included),
         # matching official CGENN, whose theta_h BatchNorm also runs over padded nodes.

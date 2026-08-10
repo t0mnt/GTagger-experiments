@@ -7,12 +7,17 @@ Every ``run.py`` invocation logs one line per evaluated split:
                 & <rej03> & <rej05> & <rej08> & <time>s & <flops> & <kNN> \\
 
 For warm-started runs that line already carries ``mean +- std`` over the trials in
-that run directory. This script walks a ``runs/`` tree, takes the latest such line
-per run directory (highest ``run_idx`` = most trials), de-duplicates by
-(model, frames, kNN) — so ablation variants of the same model keep separate rows,
-and a true re-run of an identical variant supersedes older ones by the log file's
-mtime (NOT by directory order: run-dir names end in a random suffix, so path order
-says nothing about recency) — and assembles them into a single LaTeX ``tabular``.
+that run directory (the CANONICAL trial mechanism for campaign rows — GUIDE.md §8).
+This script walks a ``runs/`` tree, takes the latest such line per run directory
+(highest ``run_idx`` = most trials), groups directories by (task, model, frames, kNN)
+— so ablation variants of the same model keep separate rows — and consolidates each
+group into one row. Single-trial rows in a group pool into ``mean +- std [n trials]``
+at parse time; the pooling REFUSES (keeps the newest by log mtime, with a note) when
+inference could lie: mixed with an in-run-aggregated row (double-counting),
+disagreeing iters/params/FLOPs cells (different experiments sharing a key), or
+identical metrics across dirs (pinned-seed clones). Recency is the log file's mtime,
+NOT directory order: run-dir names end in a random suffix, so path order says
+nothing about recency. Output is a single LaTeX ``tabular`` per task.
 
     python utils/aggregate_table.py                       # scans runs/, split=test
     python utils/aggregate_table.py --runs runs/topt_local_debug --split test --out table.tex
@@ -100,8 +105,20 @@ def _consolidate(key, entries):
         print(f"[note] {key}: run dirs disagree on column count; keeping the newest ({newest[2]})")
         return newest[0], newest[1], [newest[2]]
 
+    # invariant cells must agree before pooling: iters (2), params (3), FLOPs (-2).
+    # A mismatch means these dirs are DIFFERENT experiments that happen to share the
+    # table key (budget/width ablations) -- averaging them would fabricate an ensemble.
+    for idx, name in ((2, "iters"), (3, "params"), (ncols - 2, "FLOPs")):
+        if len({c[idx] for c in cols}) > 1:
+            newest = entries[-1]
+            print(f"[warning] {key}: run dirs disagree on {name} "
+                  f"({', '.join(sorted({c[idx] for c in cols}))}); NOT pooling -- these are "
+                  f"different experiments sharing a table key; keeping the newest ({newest[2]})")
+            return newest[0], newest[1], [newest[2]]
+
     n = len(entries)
     out = []
+    averaged = []                                     # column indices that actually differed
     for j in range(ncols):
         vals = [c[j] for c in cols]
         if all(v == vals[0] for v in vals):          # model / frames / params / kNN
@@ -118,12 +135,22 @@ def _consolidate(key, entries):
         if nums is None:
             out.append(vals[-1])                      # not numeric -> newest run's value
             continue
+        averaged.append(j)
         mean = sum(nums) / n
         var = sum((x - mean) ** 2 for x in nums) / (n - 1)
         # match the per-run formatter's precision so merged and in-run rows look alike
         dec = max((len(v.split(".")[1].rstrip("s")) if "." in v else 0) for v in vals)
         fmt = f".{dec}f" if "e" not in vals[0].lower() else ".3e"
         out.append(f"${format(mean, fmt)} \\pm {format(var ** 0.5, fmt)}${unit}")
+
+    # identical metrics across dirs = a pinned seed produced clones (only train time, if
+    # anything, differs). Pooling would stamp [n trials] +- 0.000 on what is one trial.
+    if not [j for j in averaged if j != ncols - 3]:
+        newest = entries[-1]
+        print(f"[warning] {key}: {n} run dirs with IDENTICAL metrics -- same pinned seed? "
+              f"NOT pooling (that would be fake precision); keeping one ({newest[2]}). "
+              f"Unset `seed` (or vary it per submission) and re-run the extra trials.")
+        return newest[0], newest[1], [newest[2]]
 
     out[2] = f"{out[2]} [{n} trials]"                 # iters column carries the trial count
     dirs = [d for _, _, d in entries]

@@ -1,22 +1,70 @@
-""" Particle Transformer (ParT)
+"""LLoCa Particle Transformer (ParT) -- the in-repo copy the tag_ParT row executes.
 
-Paper: "Particle Transformer for Jet Tagging" - https://arxiv.org/abs/2202.03772
+Port of lloca.backbone.particletransformer (lloca 1.3.6), following the same pattern as
+particlenet.py: the repo executes code it can fix, rather than a library copy it cannot.
+The module tree and parameter names are identical to the library class, and the shipped
+identity-frames row is forward-bit-identical to it (pinned by
+tests/internal/test_duplicated_component_parity.py). Deltas vs the library, all found or
+validated by the adversarial review:
 
-NOT the baseline row, and not imported anywhere: `tag_ParT.yaml` instantiates
-`lloca.backbone.particletransformer.ParticleTransformer`, which this file is a stale
-near-copy of (it predates lloca's LLoCaAttention wiring). Read the lloca package file when
-reasoning about what the table's ParT row does.
+1. `for_inference` single-logit heads use sigmoid. Softmax over a 1-wide dim is
+   identically 1, so an exported top-tagging head (out=1, BCE-trained) would emit a
+   constant; sigmoid is the correct inverse link. Inert in training/eval here.
+2. Per-particle frames ride the SequenceTrimmer with x/v/mask AND are re-shaped to
+   batch form (B, P, 4, 4) before prepare_frames. The library prepares frames on the
+   untrimmed, unpermuted order (crash on trimmed batches; wrong frames on
+   permutation-only steps), and flat (B*P, 4, 4) frames -- the framesnet wrapper
+   convention -- additionally flatten as (H, B, P) inside LLoCaAttention's head
+   expansion while q/k/v flatten as (B, H, P): a systematic token/frame misalignment
+   for B > 1. With both fixed, the port passes permutation equivariance at 1e-6 (fp32)
+   and Lorentz invariance at 3e-15 (fp64) with per-particle frames; the library fails
+   both. Identity/global frames take the library's exact path (bit-parity pinned).
+3. `Attention._load_from_state_dict` snapshots keys before its legacy in_proj rename
+   loop -- the library mutates the dict while iterating it, which raises (interleaved
+   checkpoint layouts) or silently skips keys (blocked layouts).
+4. A PN-style clamp-before-sqrt in `pairwise_lv_fts` was evaluated and REJECTED: both
+   call sites run under torch.no_grad(), so the NaN-backward it would guard against
+   cannot occur, and the forward clamp shifts self-pair diagonal features. The raw
+   library sqrt is kept.
+
+Original upstream: https://github.com/hqucms/weaver-core (ParT, arXiv:2202.03772), with
+LLoCa's tensorial frame transport (Attention wraps a prepare_frames-d LLoCaAttention).
 """
 
+"""
+Paper: "Particle Transformer for Jet Tagging" - https://arxiv.org/abs/2202.03772
+
+We have to do two things to build LLoCa-ParT
+- Construct a LLoCaAttention module for the whole transformer that preprocesses the frames
+  and is passed to each attention block during initialization.
+- When evaluating attention, use the LLoCaAttention module.
+
+More comments:
+- We also added an extra clamp in to_ptrapphim to avoid numerical issues from log(0). This case
+  might not happen in the original ParT, but it can happen with LLoCa for highly boosted frames.
+- For simplicity, we use LLoCaAttention only for the self-attention blocks, and use
+  default attention (corresponds to scalar messages only) for the class attention blocks.
+
+You can use 'git diff --no-index' to compare this file with the original particletransformer.py file.
+"""
+
+# ruff: noqa
+
+import copy
 import math
 import random
-import copy
+from collections.abc import Callable
 from functools import partial
-from typing import Optional, Tuple, Any, Callable
+from typing import Any, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.checkpoint import checkpoint
+
+from lloca.framesnet.frames import Frames
+from lloca.reps.tensorreps import TensorReps
+from lloca.backbone.attention import LLoCaAttention
 
 
 @torch.jit.script
@@ -48,7 +96,7 @@ def to_ptrapphim(x, return_mass=True, eps=1e-8):
     px, py, pz, energy = x.split((1, 1, 1, 1), dim=1)
     pt = torch.sqrt(to_pt2(x, eps=eps))
     # rapidity = 0.5 * torch.log((energy + pz) / (energy - pz))
-    rapidity = 0.5 * torch.log(1 + (2 * pz) / (energy - pz).clamp(min=1e-20))
+    rapidity = 0.5 * torch.log((1 + (2 * pz) / (energy - pz).clamp(min=1e-20)).clamp(min=1e-20))
     phi = torch.atan2(py, px)
     if not return_mass:
         return torch.cat((pt, rapidity, phi), dim=1)
@@ -105,13 +153,12 @@ def pairwise_lv_fts_pp(xi, xj, num_outputs=4, eps=1e-8):
         outputs = [lnm2]
 
     if num_outputs > 1:
-        # clamp BEFORE the sqrt: delta_r2 is exactly 0 for bit-identical pairs (padded
-        # constituents, and the diagonal when self-pairs are kept), and sqrt'(0) = inf, so the
-        # backward is 0 * inf = NaN -- which the existing clamp inside the log cannot undo.
-        # eps**2 (not eps) is deliberate: it floors delta at eps, so lndelta below is
-        # bit-identical to the unclamped version, as is lnkt wherever ptmin <= 1 (all padded
-        # pairs, whose pt is itself clamped to sqrt(eps)).
-        delta = delta_r2(rapi, phii, rapj, phij).clamp(min=eps**2).sqrt()
+        # NOTE (adversarial review): a PN-style clamp-before-sqrt was evaluated here and
+        # REJECTED. Both pairwise_lv_fts call sites run under torch.no_grad() (PairEmbed's
+        # dense and sparse paths), so the sqrt'(0) NaN-backward the clamp would guard
+        # against cannot occur -- and a forward clamp measurably shifts the self-pair
+        # diagonal lnkt features (3.7e-3 at the output). The library's raw sqrt is kept.
+        delta = delta_r2(rapi, phii, rapj, phij).sqrt()
         lndelta = torch.log(delta.clamp(min=eps))
         ptmin = torch.minimum(pti, ptj)
         lnkt = torch.log((ptmin * delta).clamp(min=eps))
@@ -200,59 +247,104 @@ class SequenceTrimmer(nn.Module):
         self.target = target
         self.warmup_steps = warmup_steps
         self.register_buffer("_counter", torch.LongTensor([0]), persistent=False)
+        # python-int mirror of _counter: branching on the buffer is a tensor-valued jump
+        # (a graph break under compile); the int carries the same value, the buffer stays
+        # for state compat and is kept in sync. The BRANCH reads _warmed -- a bool that
+        # flips exactly once -- because dynamo guards python attributes by VALUE, so
+        # branching on the incrementing int recompiles every warmup step (found by
+        # guard_fail_fn: `_counter_int == 0`, `== 1`, ...).
+        self._counter_int = 0
+        self._warmed = False
 
-    def forward(self, x, v=None, mask=None, uu=None):
+    def tick(self):
+        """Advance the warmup counter; call once per forward, outside compile.
+
+        Mirrors the upstream in-forward branch exactly (increment OR start trimming):
+        with warmup_steps=5 the first five forwards stay untrimmed and the sixth is the
+        first trimmed one -- _warmed flips on the (warmup_steps+1)-th tick, not the
+        warmup_steps-th (that off-by-one was caught in the final audit)."""
+        if self.enabled and not self._warmed:
+            if self._counter_int < self.warmup_steps:
+                self._counter_int += 1
+                self._counter.add_(1)
+            else:
+                self._warmed = True
+
+    def forward(self, x, v=None, mask=None, uu=None, extra=None):
         # x: (N, C, P)
         # v: (N, 4, P) [px,py,pz,energy]
         # mask: (N, 1, P) -- real particle = 1, padded = 0
         # uu: (N, C', P, P)
+        # extra: (N, C'', P) or None -- rides along through the same permutation and
+        # truncation (used for per-particle frame matrices; adversarial-review fix)
         if mask is None:
             mask = torch.ones_like(x[:, :1])
         mask = mask.bool()
 
         if self.enabled:
-            if self._counter < self.warmup_steps:
-                self._counter.add_(1)
+            if not self._warmed:
+                # warmup bookkeeping lives in tick(), called by the wrapper OUTSIDE the
+                # compiled region: dynamo guards python ints by value, so even reading
+                # the counter in-graph recompiles every warmup step
+                pass
             else:
-                if v is not None:
-                    if not isinstance(v, (list, tuple)):
-                        v = [v]
-                if self.training:
-                    q = min(1, random.uniform(*self.target))
-                    maxlen = torch.quantile(mask.float().sum(dim=-1), q).long()
-                    rand = torch.rand_like(mask.float())
-                    rand.masked_fill_(~mask, -1)
-                    perm = rand.argsort(dim=-1, descending=True)  # (N, 1, P)
-                    mask = torch.gather(mask, -1, perm)
-                    x = torch.gather(x, -1, perm.expand_as(x))
-                    if v is not None:
-                        v = [torch.gather(_v, -1, perm.expand_as(_v)) for _v in v]
-                    if uu is not None:
-                        uu = torch.gather(uu, -2, perm.unsqueeze(-1).expand_as(uu))
-                        uu = torch.gather(uu, -1, perm.unsqueeze(-2).expand_as(uu))
-                else:
-                    maxlen = mask.sum(dim=-1).max()
-                maxlen = max(maxlen, 1)
-                if maxlen < mask.size(-1):
-                    mask = mask[:, :, :maxlen]
-                    x = x[:, :, :maxlen]
-                    if v is not None:
-                        v = [_v[:, :, :maxlen] for _v in v]
-                    if uu is not None:
-                        uu = uu[:, :, :maxlen, :maxlen]
-                if v is not None:
-                    if len(v) == 1:
-                        v = v[0]
+                x, v, mask, uu, extra = self._trim(x, v, mask, uu, extra)
 
-        return x, v, mask, uu
+        return x, v, mask, uu, extra
+
+    @torch.compiler.disable
+    def _trim(self, x, v, mask, uu, extra):
+        """The post-warm-up trim, eager by design (same hoist-eager pattern as the
+        CGENN-hybrid edge build): random.uniform + torch.quantile + tensor-valued
+        branching + data-dependent slice lengths would otherwise re-specialize the
+        compiled graph every training step (maxlen is re-randomized per batch). The
+        gates trace the un-warmed net, so this regime is disabled explicitly rather
+        than left to per-step recompile churn (final audit finding). Body is verbatim
+        upstream (+ the ``extra`` rider)."""
+        if v is not None:
+            if not isinstance(v, (list, tuple)):
+                v = [v]
+        if self.training:
+            q = min(1, random.uniform(*self.target))
+            maxlen = torch.quantile(mask.float().sum(dim=-1), q).long()
+            rand = torch.rand_like(mask.float())
+            rand.masked_fill_(~mask, -1)
+            perm = rand.argsort(dim=-1, descending=True)  # (N, 1, P)
+            mask = torch.gather(mask, -1, perm)
+            x = torch.gather(x, -1, perm.expand_as(x))
+            if extra is not None:
+                with torch.enable_grad():
+                    extra = torch.gather(extra, -1, perm.expand_as(extra))
+            if v is not None:
+                v = [torch.gather(_v, -1, perm.expand_as(_v)) for _v in v]
+            if uu is not None:
+                uu = torch.gather(uu, -2, perm.unsqueeze(-1).expand_as(uu))
+                uu = torch.gather(uu, -1, perm.unsqueeze(-2).expand_as(uu))
+        else:
+            maxlen = mask.sum(dim=-1).max()
+        maxlen = max(maxlen, 1)
+        if maxlen < mask.size(-1):
+            mask = mask[:, :, :maxlen]
+            x = x[:, :, :maxlen]
+            if extra is not None:
+                with torch.enable_grad():
+                    extra = extra[:, :, :maxlen]
+            if v is not None:
+                v = [_v[:, :, :maxlen] for _v in v]
+            if uu is not None:
+                uu = uu[:, :, :maxlen, :maxlen]
+        if v is not None:
+            if len(v) == 1:
+                v = v[0]
+        return x, v, mask, uu, extra
 
 
 class SwiGLUFFN(nn.Module):
     def __init__(
         self,
         in_features: int,
-        hidden_features: Optional[int] = None,
-        out_features: Optional[int] = None,
+        hidden_features: int | None = None,
+        out_features: int | None = None,
         drop: float = 0.0,
         bias: bool = True,
     ) -> None:
@@ -297,6 +389,64 @@ class Embed(nn.Module):
         return self.embed(x)
 
 
+def _weighted_batchnorm1d(x, bn, w):
+    """``nn.BatchNorm1d`` whose train-mode statistics are computed over a WEIGHTED
+    subset of the N axis, instead of over every entry.
+
+    This is what makes the compiled all-pairs twin numerically faithful to the eager
+    reference rather than merely fast. The eager path feeds BN a packed list of the
+    lower-triangular REAL pairs (``mask.tril(offset).nonzero()``); the twin builds the
+    full ``seq_len**2`` grid, so unweighted statistics would additionally include the
+    mirrored upper triangle and every padded pair. Passing ``w`` = that same tril-of-real
+    mask makes the weighted mean/var over the grid *identical* to the unweighted mean/var
+    over the eager multiset.
+
+    Traceable by construction: ``w.sum()`` is a scalar TENSOR, not a shape, so unlike the
+    eager ``nonzero`` gather this introduces no data-dependent shapes.
+
+    Eval is unchanged (running statistics, elementwise), which is why the TOL gate was
+    green even while training diverged.
+
+    Degenerate regime, stated rather than papered over: ``w.sum() <= 1`` (a single real
+    pair in the entire batch) makes the ``n/(n-1)`` correction blow up. Eager raises
+    "Expected more than 1 value per channel when training" on the same input, so neither
+    path is usable there; it needs a batch of one with a one-constituent jet. No clamp,
+    because a clamp would silently change results in a regime where loud failure is right.
+    """
+    # Mirror nn.BatchNorm's own branch: eval uses running statistics only when they
+    # exist. With track_running_stats=False there are no buffers and BN keeps computing
+    # batch statistics even in eval, so that case falls through to the weighted path.
+    if not bn.training and bn.running_mean is not None:
+        return F.batch_norm(x, bn.running_mean, bn.running_var, bn.weight, bn.bias,
+                            False, 0.0, bn.eps)
+    n = w.sum()
+    mean = (x * w).sum(dim=(0, 2)) / n
+    xc = x - mean.view(1, -1, 1)
+    var = ((xc * xc) * w).sum(dim=(0, 2)) / n
+    if bn.training and bn.track_running_stats:
+        with torch.no_grad():
+            bn.num_batches_tracked.add_(1)
+            m = (bn.momentum if bn.momentum is not None
+                 else 1.0 / bn.num_batches_tracked.to(x.dtype))
+            bn.running_mean.mul_(1 - m).add_(m * mean.detach())
+            # running_var takes the UNBIASED estimate, exactly as nn.BatchNorm1d does,
+            # while the normalization above uses the biased one
+            bn.running_var.mul_(1 - m).add_(m * var.detach() * n / (n - 1))
+    y = xc / torch.sqrt(var.view(1, -1, 1) + bn.eps)
+    if bn.affine:
+        y = y * bn.weight.view(1, -1, 1) + bn.bias.view(1, -1, 1)
+    return y
+
+
+def _embed_weighted(seq, x, w):
+    """Run an embed Sequential, swapping every BatchNorm1d for its weighted twin.
+    Conv/activation layers are pointwise along N, so applying them to the whole grid and
+    weighting only the STATISTICS is exact."""
+    for mod in seq:
+        x = _weighted_batchnorm1d(x, mod, w) if isinstance(mod, nn.BatchNorm1d) else mod(x)
+    return x
+
+
 class PairEmbed(nn.Module):
     def __init__(
         self,
@@ -319,6 +469,9 @@ class PairEmbed(nn.Module):
         self.remove_self_pair = remove_self_pair
         self.for_onnx = for_onnx
         self.sparse_eval = (not for_onnx) if sparse_eval is None else sparse_eval
+        # set (with sparse_eval=False) by the compile knob / gates: routes the dense path
+        # through the all-pairs twin below, which traces seqlen-dynamic
+        self.compiled_dense = False
         self.out_dim = dims[-1]
 
         if pairwise_lv_type == "pp":
@@ -366,6 +519,48 @@ class PairEmbed(nn.Module):
         # x: (batch, v_dim, seq_len)
         # uu: (batch, v_dim, seq_len, seq_len)
         assert x is not None or uu is not None
+        if self.is_symmetric and not self.for_onnx and self.compiled_dense:
+            # compiled twin of the tril-compute-then-mirror below: torch.tril_indices
+            # takes only python ints, which pins seq_len to a constant under compile
+            # (the real cause behind the old blanket @torch.compiler.disable). The pair
+            # features are symmetric in (i, j) and the embed is pointwise per pair, so
+            # the full-grid build produces the same values (GEMM rows are independent);
+            # the eager default (sparse path) and the onnx/dense-eager path are untouched.
+            # detach() instead of torch.no_grad(): a grad-mode transition splits the
+            # compiled graph (empty-reason breaks), while detach traces clean and is the
+            # exact gradient twin of eager's no_grad -- REQUIRED, not cosmetic: under a
+            # LEARNED framesnet the local momenta carry grad, and backward through the
+            # raw sqrt at delta==0 self-pairs is 0*inf=NaN into the framesnet (final
+            # audit finding, reproduced; eager never backprops the pair features)
+            x = x.detach() if x is not None else None
+            uu = uu.detach() if uu is not None else None
+            bsz = (x if x is not None else uu).shape[0]
+            slen = (x if x is not None else uu).shape[-1]
+            # statistics weight: the eager reference feeds BN the lower-triangular REAL
+            # pairs, so weight the grid by exactly that set (see _weighted_batchnorm1d)
+            with torch.no_grad():
+                offset = -1 if self.remove_self_pair else 0
+                if mask is not None:
+                    pair = mask.reshape(bsz, 1, slen, 1) * mask.reshape(bsz, 1, 1, slen)
+                else:
+                    pair = x.new_ones(bsz, 1, slen, slen)
+                w = pair.tril(offset).reshape(bsz, 1, slen * slen).to(
+                    (x if x is not None else uu).dtype)
+            elements = 0
+            if x is not None:
+                fts = self.pairwise_lv_fts(x.unsqueeze(-1), x.unsqueeze(-2))
+                # embed's BatchNorm1d wants (batch, channels, num_pairs)
+                elements = elements + _embed_weighted(
+                    self.embed, fts.reshape(bsz, -1, slen * slen), w)
+            if uu is not None:
+                elements = elements + _embed_weighted(
+                    self.fts_embed, uu.reshape(bsz, -1, slen * slen), w)
+            y = elements.reshape(bsz, self.out_dim, slen, slen)
+            if self.remove_self_pair:
+                di = torch.arange(slen, device=y.device)
+                y = y.clone()
+                y[:, :, di, di] = 0
+            return y
         with torch.no_grad():
             if x is not None:
                 batch_size, _, seq_len = x.size()
@@ -393,9 +588,9 @@ class PairEmbed(nn.Module):
                     if self.remove_self_pair:
                         i = torch.arange(0, seq_len, device=x.device)
                         x[:, :, i, i] = 0
-                    x = x.view(-1, self.pairwise_lv_dim, seq_len * seq_len)
+                    x = x.reshape(-1, self.pairwise_lv_dim, seq_len * seq_len)
                 if uu is not None:
-                    uu = uu.view(-1, self.pairwise_input_dim, seq_len * seq_len)
+                    uu = uu.reshape(-1, self.pairwise_input_dim, seq_len * seq_len)
 
         # with grad
         elements = 0
@@ -416,7 +611,7 @@ class PairEmbed(nn.Module):
             y[:, :, i, j] = elements
             y[:, :, j, i] = elements
         else:
-            y = elements.view(-1, self.out_dim, seq_len, seq_len)
+            y = elements.reshape(-1, self.out_dim, seq_len, seq_len)
         return y
 
     def _forward_sparse(self, x, uu=None, mask=None):
@@ -477,14 +672,13 @@ class PairEmbed(nn.Module):
 
 
 def _canonical_mask(
-    mask: Optional[torch.Tensor],
+    mask: torch.Tensor | None,
     mask_name: str,
-    other_type: Optional[Any],
+    other_type: Any | None,
     other_name: str,
     target_type: Any,
     check_other: bool = True,
-) -> Optional[torch.Tensor]:
-
+) -> torch.Tensor | None:
     if mask is not None:
         _mask_dtype = mask.dtype
         _mask_is_float = torch.is_floating_point(mask)
@@ -495,7 +689,7 @@ def _canonical_mask(
     return mask
 
 
-def _none_or_dtype(input: Optional[torch.Tensor]):
+def _none_or_dtype(input: torch.Tensor | None):
     if input is None:
         return None
     elif isinstance(input, torch.Tensor):
@@ -505,7 +699,14 @@ def _none_or_dtype(input: Optional[torch.Tensor]):
 
 class Attention(torch.nn.Module):
     def __init__(
-        self, embed_dim, num_heads, dropout=0.0, bias=True, device=None, dtype=None
+        self,
+        attention,
+        embed_dim,
+        num_heads,
+        dropout=0.0,
+        bias=True,
+        device=None,
+        dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -513,16 +714,13 @@ class Attention(torch.nn.Module):
         self.num_heads = num_heads
         self.dropout = dropout
         self.head_dim = embed_dim // num_heads
-        assert (
-            self.head_dim * num_heads == self.embed_dim
-        ), "embed_dim must be divisible by num_heads"
+        assert self.head_dim * num_heads == self.embed_dim, (
+            "embed_dim must be divisible by num_heads"
+        )
 
         self.in_proj = torch.nn.Linear(embed_dim, 3 * embed_dim, bias=bias, **factory_kwargs)
         self.out_proj = torch.nn.Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
-
-        self.use_sdpa = hasattr(torch.nn.functional, "scaled_dot_product_attention")
-        if torch.cuda.is_available() and torch.cuda.get_device_capability()[0] < 7:
-            self.use_sdpa = False
+        self.attention = attention
 
     def _load_from_state_dict(
         self,
@@ -534,8 +732,10 @@ class Attention(torch.nn.Module):
         unexpected_keys,
         error_msgs,
     ):
-
-        for k in state_dict.keys():
+        # snapshot: the loop pops/inserts while renaming, and iterating the live
+        # dict either raises or silently skips keys (adversarial-review finding;
+        # upstream lloca 1.3.6 has the same bug)
+        for k in list(state_dict.keys()):
             if k.endswith("in_proj_weight"):
                 state_dict[k.replace("_weight", ".weight")] = state_dict.pop(k)
             elif k.endswith("in_proj_bias"):
@@ -556,10 +756,9 @@ class Attention(torch.nn.Module):
         query: torch.Tensor,
         key: torch.Tensor,
         value: torch.Tensor,
-        key_padding_mask: Optional[torch.Tensor] = None,
-        attn_mask: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-
+        key_padding_mask: torch.Tensor | None = None,
+        attn_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         bsz, tgt_len, _ = query.shape
         _, src_len, _ = key.shape
 
@@ -587,9 +786,14 @@ class Attention(torch.nn.Module):
             assert key_padding_mask.shape == (
                 bsz,
                 src_len,
-            ), f"expecting key_padding_mask shape of {(bsz, src_len)}, but got {key_padding_mask.shape}"
-            key_padding_mask = key_padding_mask.view(bsz, 1, 1, src_len).expand(
-                -1, self.num_heads, -1, -1
+            ), (
+                f"expecting key_padding_mask shape of {(bsz, src_len)}, but got {key_padding_mask.shape}"
+            )
+            key_padding_mask = (
+                key_padding_mask.reshape(bsz, src_len)
+                .unsqueeze(1)
+                .unsqueeze(2)
+                .expand(-1, self.num_heads, -1, -1)
             )
             if attn_mask is None:
                 attn_mask = key_padding_mask
@@ -599,33 +803,33 @@ class Attention(torch.nn.Module):
                     self.num_heads,
                     tgt_len,
                     src_len,
-                ), f"expecting attn_mask shape of {(bsz, self.num_heads, tgt_len, src_len)}, but got {attn_mask.shape}"
+                ), (
+                    f"expecting attn_mask shape of {(bsz, self.num_heads, tgt_len, src_len)}, but got {attn_mask.shape}"
+                )
                 attn_mask = attn_mask + key_padding_mask
 
         # (bsz, seq_len, num_heads*head_dim)
         q, k, v = F._in_projection_packed(query, key, value, self.in_proj.weight, self.in_proj.bias)
 
         # -> (bsz, num_heads, src/tgt_len, head_dim)
-        q = q.view(bsz, tgt_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
-        k = k.view(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
-        v = v.view(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+        q = q.reshape(bsz, tgt_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+        k = k.reshape(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+        v = v.reshape(bsz, src_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
         dropout_p = self.dropout if self.training else 0.0
 
-        if self.use_sdpa:
-            # attn_output: (bsz, num_heads, tgt_len, head_dim)
-            attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p)
+        if self.attention is not None:
+            # particle attention
+            attn_output = self.attention(
+                q,
+                k,
+                v,
+                attn_mask=attn_mask,
+                dropout_p=dropout_p,
+            )
         else:
-            q_scaled = q * math.sqrt(
-                1.0 / float(self.head_dim)
-            )  # (bsz, num_heads, tgt_len, head_dim)
-            attn_weight = q_scaled @ k.transpose(-2, -1)  # (bsz, num_heads, tgt_len, src_len)
-            if attn_mask is not None:
-                attn_weight = attn_weight + attn_mask
-            attn_weight = F.softmax(attn_weight, dim=-1)
-            if dropout_p > 0:
-                attn_weight = F.dropout(attn_weight, p=dropout_p)
-            attn_output = attn_weight @ v  # (bsz, num_heads, head_dim)
+            # class token attention
+            attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p)
 
         attn_output = attn_output.transpose(1, 2).reshape(bsz, tgt_len, self.embed_dim)
         attn_output = self.out_proj(attn_output)
@@ -679,12 +883,13 @@ class DropPath(nn.Module):
         return drop_path(x, self.drop_prob, self.training, self.scale_by_keep)
 
     def extra_repr(self):
-        return f"drop_prob={round(self.drop_prob,3):0.3f}"
+        return f"drop_prob={round(self.drop_prob, 3):0.3f}"
 
 
 class Block(nn.Module):
     def __init__(
         self,
+        attention,
         embed_dim=128,
         num_heads=8,
         ffn_ratio=4,
@@ -708,7 +913,7 @@ class Block(nn.Module):
         self.ffn_dim = embed_dim * ffn_ratio
 
         self.pre_attn_norm = nn.LayerNorm(embed_dim)
-        self.attn = Attention(embed_dim, num_heads, dropout=attn_dropout)
+        self.attn = Attention(attention, embed_dim, num_heads, dropout=attn_dropout)
         self.post_attn_norm = nn.LayerNorm(embed_dim) if scale_attn else nn.Identity()
         self.dropout = nn.Dropout(dropout)
         self.ls1 = (
@@ -767,7 +972,14 @@ class Block(nn.Module):
             residual = x_cls
             u = torch.cat((x_cls, x), dim=1)  # (batch, 1+seq_len, embed_dim)
             u = self.pre_attn_norm(u)
-            x = self.attn(x_cls, u, u, key_padding_mask=padding_mask)[0]  # (1, batch, embed_dim)
+
+            # default attention for convenience (could be more fancy here)
+            x = self.attn(
+                x_cls,
+                u,
+                u,
+                key_padding_mask=padding_mask,
+            )[0]  # (1, batch, embed_dim)
         else:
             if self.c_mask is not None and attn_mask is not None:
                 attn_mask = torch.mul(self.c_mask, attn_mask)
@@ -779,7 +991,7 @@ class Block(nn.Module):
 
         if self.c_attn is not None:
             bsz, tgt_len, _ = x.size()
-            x = x.view(bsz, tgt_len, self.num_heads, self.head_dim)
+            x = x.reshape(bsz, tgt_len, self.num_heads, self.head_dim)
             x = torch.einsum("bthd,h->btdh", x, self.c_attn)
             x = x.reshape(bsz, tgt_len, self.embed_dim)
         x = self.post_attn_norm(x)
@@ -808,9 +1020,12 @@ class Block(nn.Module):
 
 
 class ParticleTransformer(nn.Module):
+    """Particle Transformer (ParT) with local frame transformations."""
+
     def __init__(
         self,
         input_dim,
+        attn_reps,
         num_classes=None,
         # network configurations
         pair_input_type="pp",
@@ -819,6 +1034,7 @@ class ParticleTransformer(nn.Module):
         remove_self_pair=False,
         use_pre_activation_pair=True,
         embed_dims=(128, 512, 128),
+        ffn_ratio=4,
         pair_embed_dims=(64, 64, 64),
         num_heads=8,
         num_layers=8,
@@ -835,6 +1051,10 @@ class ParticleTransformer(nn.Module):
         for_inference=False,
         for_segmentation=False,
         use_amp=False,
+        checkpoint_blocks=False,
+        compile=False,
+        compile_mode="default",
+        compile_dynamic=False,  # ParT does not rely on dynamic shapes that much
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -843,12 +1063,15 @@ class ParticleTransformer(nn.Module):
         self.for_inference = for_inference
         self.for_segmentation = for_segmentation
         self.use_amp = use_amp
+        self.checkpoint_blocks = checkpoint_blocks
 
-        embed_dim = embed_dims[-1] if len(embed_dims) > 0 else input_dim
+        attn_reps = TensorReps(attn_reps)
+        self.embed_dim = attn_reps.dim * num_heads
+        self.attention = LLoCaAttention(attn_reps, num_heads)
         default_cfg = dict(
-            embed_dim=embed_dim,
+            embed_dim=self.embed_dim,
             num_heads=num_heads,
-            ffn_ratio=4,
+            ffn_ratio=ffn_ratio,
             dropout=0.1,
             attn_dropout=0.1,
             activation_dropout=0.1,
@@ -879,10 +1102,10 @@ class ParticleTransformer(nn.Module):
         if cls_block_params is not None:
             cfg_cls_block.update(cls_block_params)
 
-        self.embed = (
-            Embed(input_dim, embed_dims, activation=activation)
-            if len(embed_dims) > 0
-            else nn.Identity()
+        self.embed = Embed(
+            input_dim,
+            embed_dims if len(embed_dims) > 0 else [self.embed_dim],
+            activation=activation,
         )
 
         if pair_input_dim is None:
@@ -901,17 +1124,19 @@ class ParticleTransformer(nn.Module):
             if pair_embed_dims is not None and pair_input_dim + pair_extra_dim > 0
             else None
         )
-        self.blocks = nn.ModuleList([Block(**cfg_block) for _ in range(num_layers)])
+        self.blocks = nn.ModuleList(
+            [Block(attention=self.attention, **cfg_block) for _ in range(num_layers)]
+        )
         self.cls_blocks = (
-            nn.ModuleList([Block(**cfg_cls_block) for _ in range(num_cls_layers)])
+            nn.ModuleList([Block(attention=None, **cfg_cls_block) for _ in range(num_cls_layers)])
             if num_cls_layers > 0
             else None
         )
-        self.norm = nn.LayerNorm(embed_dim)
+        self.norm = nn.LayerNorm(self.embed_dim)
 
         if fc_params is not None:
             fcs = []
-            in_dim = embed_dim
+            in_dim = self.embed_dim
             for param in fc_params:
                 try:
                     out_dim, drop_rate, act = param
@@ -937,7 +1162,7 @@ class ParticleTransformer(nn.Module):
 
         # cls tokens
         if not self.for_segmentation and num_cls_layers > 0:
-            self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
+            self.cls_token = nn.Parameter(torch.zeros(1, 1, self.embed_dim), requires_grad=True)
             nn.init.trunc_normal_(self.cls_token, std=0.02)
         else:
             self.cls_token = None
@@ -947,6 +1172,11 @@ class ParticleTransformer(nn.Module):
             self.init_weights(weight_init)
         if fix_init:
             self.fix_init_weight()
+
+        if compile:
+            self.__class__ = torch.compile(
+                self.__class__, dynamic=compile_dynamic, mode=compile_mode
+            )
 
     def fix_init_weight(self):
         def rescale(param, _layer_id):
@@ -969,15 +1199,49 @@ class ParticleTransformer(nn.Module):
             "cls_token",
         }
 
-    def _forward_encoder(self, x, v=None, mask=None, uu=None, uu_idx=None):
+    def _forward_encoder(self, x, v=None, mask=None, uu=None, uu_idx=None, frames=None):
         with torch.no_grad():
             if not self.for_inference:
                 if uu_idx is not None:
                     uu = build_sparse_tensor(uu, uu_idx, x.size(-1))
-            x, v, mask, uu = self.trimmer(x, v, mask, uu)
+            if frames is None or frames.is_identity or frames.is_global:
+                # identity/global frames are token-independent: no need to ride the trimmer
+                x, v, mask, uu, _ = self.trimmer(x, v, mask, uu)
+            else:
+                # per-particle frames MUST ride the trimmer with x/v/mask: the trimmer
+                # permutes and truncates the sequence, and preparing frames on the
+                # untrimmed order transports each token with another token's frame
+                # (adversarial-review finding; upstream lloca 1.3.6 has the same bug --
+                # crash on trimmed batches, silent frame misassignment on permuted ones).
+                # All frame tensor ops run under enable_grad: the surrounding no_grad is
+                # for data prep, but learned framesnets train THROUGH these matrices.
+                B, _, P = x.shape
+                with torch.enable_grad():
+                    fm = frames.matrices.reshape(B, P, 16).transpose(1, 2)
+                    # the WHOLE trimmer call, not just the frame rider: under a learned
+                    # framesnet x and v are functions of the framesnet's parameters too
+                    # (TaggerWrapper transports them), and the trimmer's gathers/slices
+                    # under the outer no_grad would DETACH them -- silently, and only
+                    # from warm-up step warmup_steps+1 onward, cutting the feature path's
+                    # gradient mid-run while the forward stays bit-identical (final-audit
+                    # finding: framesnet grads ~100% relative wrong from step 6)
+                    x, v, mask, uu, fm = self.trimmer(x, v, mask, uu, extra=fm)
+                # BATCH-shaped (B, P', 4, 4): prepare_frames inserts the head dim as
+                # (*batch, H, N), so flat (B*P, 4, 4) frames flatten in (H, B, P) order
+                # while q/k/v flatten in (B, H, P) -- a systematic token/frame
+                # misalignment for B>1 (third inherited library bug; the wrapper's flat
+                # framesnet output hits it too, which is why frames are re-shaped here)
+                with torch.enable_grad():
+                    frames = Frames(
+                        matrices=fm.transpose(1, 2).reshape(x.shape[0], -1, 4, 4),
+                        is_global=frames.is_global,
+                        is_identity=frames.is_identity,
+                    )
             padding_mask = ~mask.squeeze(1)  # (batch_size, seq_len)
+        if frames is not None:
+            self.attention.prepare_frames(frames)
 
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(x.device.type, enabled=self.use_amp):
             # input embedding
             x = self.embed(x).masked_fill(
                 ~mask.transpose(1, 2), 0
@@ -990,21 +1254,40 @@ class ParticleTransformer(nn.Module):
 
             # transform
             for block in self.blocks:
-                x = block(x, x_cls=None, padding_mask=padding_mask, attn_mask=attn_mask)
+                if self.checkpoint_blocks:
+                    x = checkpoint(
+                        block,
+                        x,
+                        x_cls=None,
+                        padding_mask=padding_mask,
+                        attn_mask=attn_mask,
+                        use_reentrant=False,
+                    )
+                else:
+                    x = block(x, x_cls=None, padding_mask=padding_mask, attn_mask=attn_mask)
 
         # x: (batch, seq_len, embed_dim)
         # padding_mask: (batch, seq_len)
         return x, padding_mask
 
     def _forward_aggregator(self, x, padding_mask):
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(x.device.type, enabled=self.use_amp):
             if self.cls_blocks is not None:
                 # for classification: extract using class token
                 cls_tokens = self.cls_token.expand(x.size(0), 1, -1)  # (batch, 1, embed_dim)
                 for block in self.cls_blocks:
-                    cls_tokens = block(
-                        x, x_cls=cls_tokens, padding_mask=padding_mask
-                    )  # (batch, 1, embed_dim)
+                    if self.checkpoint_blocks:
+                        cls_tokens = checkpoint(
+                            block,
+                            x,
+                            x_cls=cls_tokens,
+                            padding_mask=padding_mask,
+                            use_reentrant=False,
+                        )  # (batch, 1, embed_dim)
+                    else:
+                        cls_tokens = block(
+                            x, x_cls=cls_tokens, padding_mask=padding_mask
+                        )  # (batch, 1, embed_dim)
                 cls_tokens = cls_tokens.squeeze(1)  # (batch, embed_dim)
             else:
                 # for classification: simple average pooling
@@ -1017,21 +1300,22 @@ class ParticleTransformer(nn.Module):
             x_cls = self.norm(cls_tokens)  # (batch, embed_dim)
         return x_cls
 
-    def forward(self, x, v=None, mask=None, uu=None, uu_idx=None):
+    def forward(self, x, frames, v=None, mask=None, uu=None, uu_idx=None):
         # x: (batch_size, num_fts, seq_len)
         # v: (batch_size, 4, seq_len) [px,py,pz,energy]
         # mask: (batch_size, 1, seq_len) -- real particle = 1, padded = 0
         # for pytorch: uu (batch_size, C', num_pairs), uu_idx (batch_size, 2, num_pairs)
         # for onnx: uu (batch_size, C', seq_len, seq_len), uu_idx=None
-
-        x, padding_mask = self._forward_encoder(x, v=v, mask=mask, uu=uu, uu_idx=uu_idx)
+        x, padding_mask = self._forward_encoder(
+            x, v=v, mask=mask, uu=uu, uu_idx=uu_idx, frames=frames
+        )
 
         if self.cls_blocks is None and self.fc is None:
             # x: (batch, seq_len, embed_dim)
             # padding_mask: (batch, seq_len)
             return x, padding_mask
 
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(x.device.type, enabled=self.use_amp):
             # === for segmentation ===
             if self.for_segmentation:
                 x = self.norm(x)
@@ -1040,9 +1324,8 @@ class ParticleTransformer(nn.Module):
                 # x: (P, N, C) -> output: (N, C, P)
                 output = x.transpose(1, 2).contiguous()
                 if self.for_inference:
-                    # single-logit heads (top-tagging here: out_channels=1, BCE) must use sigmoid --
-                    # softmax over a 1-wide dim is identically 1.0, silently making every score
-                    # constant (AUC 0.5). Multi-class (JetClass) is unchanged.
+                    # single-logit heads (top-tagging: out=1, BCE) must use sigmoid --
+                    # softmax over a 1-wide dim is identically 1 (see module docstring)
                     output = (torch.sigmoid(output) if output.shape[1] == 1
                               else torch.softmax(output, dim=1))
                 # print('output:\n', output)
@@ -1055,9 +1338,7 @@ class ParticleTransformer(nn.Module):
             # fc
             output = self.fc(x_cls)
             if self.for_inference:
-                # single-logit heads (top-tagging here: out_channels=1, BCE) must use sigmoid --
-                # softmax over a 1-wide dim is identically 1.0, silently making every score
-                # constant (AUC 0.5). Multi-class (JetClass) is unchanged.
+                # single-logit heads use sigmoid (see module docstring)
                 output = (torch.sigmoid(output) if output.shape[1] == 1
                           else torch.softmax(output, dim=1))
             # print('output:\n', output)

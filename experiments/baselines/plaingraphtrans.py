@@ -40,10 +40,55 @@ from lloca.utils.lorentz import lorentz_eye
 from experiments.baselines.particlenettransformer import lloca_transport_attention
 
 
-def knn(x, k, metric='deltaR', mask=None):
-    # cap k so topk never exceeds the available points (small/sparse events)
+def knn(x, k, metric='deltaR', mask=None, static_k=False):
+    """kNN indices. ``static_k`` selects the COMPILE TWIN -- see PlainGraphTrans.compiled_knn.
+
+    Why the twin exists: the eager cap ``min(k, max(1, num_points - 1))`` makes ``k`` a
+    SYMBOLIC expression under ``dynamic=True``, and inductor cannot order the strides of the
+    topk output that carries it -- ``InductorError: cannot determine truth value of
+    Relational: 1 < Min(4, Max(1, s98 - 1))``, raised at the first ``loss.backward()``.
+    Forward-only compile is unaffected, which is why every eval/no_grad gate passed it.
+
+    The twin keeps ``k`` a python int. That is EQUAL to the eager path, not merely close,
+    whenever ``num_points - 1 >= k`` -- the cap is inert there, so both branches call
+    ``topk`` with the same integer.
+
+    WHY THE PRECONDITION IS UNREACHABLE, stated as the condition rather than as a sample.
+    ``num_points`` is ``x.size(-1)``, i.e. the width ``to_dense_batch`` chose: the MAXIMUM
+    constituent count over the batch, not a per-jet count. So the raise needs EVERY jet in
+    the batch to be sparser than ``k``, not merely one. Sparse jets themselves are ordinary
+    -- 1.9% of top-tagging jets carry <= 16 constituents (measured on the shipped mini
+    split: min 4, p1 14, median 49) -- but they have to arrive unanimously.
+      * Full batches: 0.019^B for B >= 128 is not a number worth writing down.
+      * Final partial batches are the only place B is small, and their size is fixed by
+        ``len(dataset) % batchsize``. Standard top-tagging (1,211,000 / 403,000 / 404,000,
+        no ``drop_last`` on any of the three loaders) leaves 120 / 56 / 32 at every batch
+        size from 128 to 512, and never less than 8 anywhere down to B=16. JetClass and
+        TopTagXL drop the last train/val batch outright and leave >= 128 on test.
+    The worst residue in any configuration this repo can be launched in is 8 jets, at
+    0.019^8 ~= 2e-14. The raise is therefore a statement about a regime that does not
+    occur, kept because a loud stop beats a silent divergence if one ever does.
+
+    The gates' own batchsize-4 batches sit far above ``config_quick``'s ``knn_k: 4`` for
+    the same reason.
+
+    Eager is untouched by construction (``static_k`` defaults False), so BIT stays pinned.
+    Not shared with the identical cap in ``particlenettransformer.py`` /
+    ``lorentznetlgatrslimgraphtrans.py``: those two compile and backward CLEANLY today,
+    so the cap is necessary-but-not-sufficient for the crash and there is nothing to fix
+    there. Touching them would move models that currently work.
+    """
     num_points = x.size(-1)
-    k = min(k, max(1, num_points - 1))
+    if static_k:
+        if num_points - 1 < k:
+            raise RuntimeError(
+                f"compiled kNN twin needs num_points - 1 >= k, got num_points={num_points}, "
+                f"k={k}. The eager path caps k here; the twin cannot, because a symbolic k "
+                f"is exactly what inductor fails to lower. Run this batch eager "
+                f"(model.compile=false) or raise the batch size.")
+    else:
+        # cap k so topk never exceeds the available points (small/sparse events)
+        k = min(k, max(1, num_points - 1))
     if metric == 'minkowski':
         # x: (N, 4, P) in (px, py, pz, E); rank by |(x_i - x_j)^2|_minkowski
         sig = x.new_tensor([-1.0, -1.0, -1.0, 1.0]).view(1, -1, 1)
@@ -193,6 +238,11 @@ class PlainTransformerBlock(nn.Module):
 
 
 class PlainGraphTrans(nn.Module):
+    # compile twin: set by PlainGraphTransWrapper when compile=True (and by the Stage-4
+    # gate's _pre_compile). Keeps the kNN k a python int so inductor can order strides;
+    # eager default False -> BIT-pinned path untouched. See knn() above.
+    compiled_knn = False
+
 
     def __init__(self,
                  input_dim,
@@ -300,9 +350,11 @@ class PlainGraphTrans(nn.Module):
         with torch.cuda.amp.autocast(enabled=self.use_amp):
             # static kNN graph (built once, reused by every GNN block)
             if self.knn_metric == 'minkowski' and v is not None:
-                idx = knn(v, self.knn_k, metric='minkowski', mask=mask_p)
+                idx = knn(v, self.knn_k, metric='minkowski', mask=mask_p,
+                          static_k=self.compiled_knn)
             else:
-                idx = knn(points, self.knn_k, metric='deltaR', mask=mask_p)
+                idx = knn(points, self.knn_k, metric='deltaR', mask=mask_p,
+                          static_k=self.compiled_knn)
             nbr_mask = gather_neighbors(mask.float(), idx).squeeze(1) > 0.5  # (N, P, K)
             # Exclude self: on jets with n_real < knn_k, topk fills from tied -inf/self slots
             # and the realness-only mask would re-admit the node's own index -- a spurious,

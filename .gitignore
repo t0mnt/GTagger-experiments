@@ -42,3 +42,8 @@ lr_finder_*.png
 # .out from scripts that forget the logs/ prefix (early download jobs did)
 logs/
 *.out
+
+# beta-PERF's append log: a RUNTIME artifact, not a record. utils/bperf.py appends a
+# table on every run; the runbook's flow is to paste the table into
+# docs/cgenn-compile.md and let this file stay local (cleanup.md step 6).
+bperf_results.md

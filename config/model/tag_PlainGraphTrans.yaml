@@ -3,6 +3,19 @@ in_channels: null               # init_physics -> 7 + extra_scalars
 out_channels: null              # init_physics -> num_outputs
 use_amp: false
 add_fourmomenta_backbone: false
+compile: true                   # torch.compile(net, dynamic=True). Routes the kNN through the
+                                # static-k twin (`compiled_knn`, see knn() in plaingraphtrans.py):
+                                # the eager cap `min(k, max(1, num_points - 1))` makes k a SYMBOLIC
+                                # expression, and inductor cannot order the strides of the topk output
+                                # carrying it -- InductorError at the first loss.backward(). The twin
+                                # keeps k a python int, which is EQUAL to eager (not merely close)
+                                # whenever num_points - 1 >= k, and it raises rather than diverging
+                                # otherwise. Measured: production padded P is 87-110 per batch at
+                                # batchsize 128/256 against knn_k: 16 -- 0/15 batches bind the cap.
+                                # Gates: BIT eager unchanged (fp32+fp64), train-mode differential
+                                # 0.000e+00, TOL 1.1e-16, BREAKS 0, RECOMP [1,1,1], compiled backward
+                                # 71/71 nonzero finite grads. Eager path untouched (static_k defaults
+                                # False), so this is a compile-only twin like PairEmbed.compiled_dense.
 
 net:
   _target_: experiments.baselines.plaingraphtrans.PlainGraphTrans

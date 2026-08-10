@@ -3,9 +3,10 @@ in_channels: null
 out_channels: null
 use_amp: false
 add_fourmomenta_backbone: false
+compile: false                  # quick tree stays eager; compile smoke is env-gated (CGENN_COMPILE_GATES=1)
 
 net:
- _target_: lloca.backbone.particletransformer.ParticleTransformer
+ _target_: experiments.baselines.particletransformer.ParticleTransformer
  _partial_: true
  input_dim: null
  num_classes: null

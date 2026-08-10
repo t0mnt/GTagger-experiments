@@ -1,9 +1,12 @@
 _target_: experiments.tagging.wrappers.CGENNLGATrGraphGPSWrapper
 out_channels: null              # init_physics -> num_outputs
+compile: false  # torch.compile(net, dynamic=True); edges hoisted eager -- flip on beta-PERF numbers
 
 net:
   _target_: experiments.baselines.cgennlgatrgraphgps.CGENNLGATrGraphGPS
   _partial_: true
+  # einsum (BIT-reference) | matmul | sparse; sparse = lgatr-2.0 sparse_gp campaign posture (docs/cgenn-compile.md)
+  gp_impl: sparse
   in_s_channels: null           # init_physics -> extra_scalars + tagging features
   # num_classes is supplied by the wrapper at call time (= out_channels)
 

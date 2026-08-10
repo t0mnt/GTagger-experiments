@@ -23,10 +23,13 @@ class MVSiLU(nn.Module):
             raise ValueError(f"Invariant {invariant} not recognized.")
 
     def _norms_except_scalar(self, input):
-        return self.algebra.norms(input, grades=self.algebra.grades[1:])
+        # grades_list (python ints), per cliffordalgebra's compiled-region convention --
+        # same values as the tensor grades[1:], no numeric change (the hybrid's copy
+        # already reads grades_list; aligned in the final operator round)
+        return self.algebra.norms(input, grades=self.algebra.grades_list[1:])
 
     def _mag2s_except_scalar(self, input):
-        return self.algebra.qs(input, grades=self.algebra.grades[1:])
+        return self.algebra.qs(input, grades=self.algebra.grades_list[1:])
 
     def forward(self, input):
         norms = self._get_invariants(input)
@@ -34,5 +37,5 @@ class MVSiLU(nn.Module):
         a = unsqueeze_like(self.a, norms, dim=2)
         b = unsqueeze_like(self.b, norms, dim=2)
         norms = a * norms + b
-        norms = norms.repeat_interleave(self.algebra.subspaces, dim=-1)
+        norms = norms.index_select(-1, self.algebra.blade_subspace_idx)
         return torch.sigmoid(norms) * input

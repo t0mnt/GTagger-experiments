@@ -13,7 +13,7 @@ from experiments.baselines.cgenn.mvsilu import MVSiLU
 
 
 def get_invariants(algebra, input):
-    norms = algebra.qs(input, grades=algebra.grades[1:])
+    norms = algebra.qs(input, grades=algebra.grades_list[1:])
     return torch.cat([input[..., :1], *norms], dim=-1)
 
 
@@ -265,7 +265,7 @@ class CGLayer(nn.Module):
 
         if self.use_invariants_to_update:
             weights = self.psi_x(m_h).view(len(m_h), self.out_features_x, self.algebra.n_subspaces)
-            weights = torch.repeat_interleave(weights, self.algebra.subspaces, dim=2)
+            weights = weights.index_select(2, self.algebra.blade_subspace_idx)
             m_x = m_x * torch.sigmoid(weights)
 
         x_red = self.reduce(m_x.flatten(1), i, num_segments=x.size(0)).view(len(x), *m_x.shape[1:])
@@ -284,7 +284,7 @@ class CGLayer(nn.Module):
         if self.use_invariants_to_update:
             weights = self.chi_x(h_u).view(len(h_u), self.out_features_x, self.algebra.n_subspaces)
 
-            weights = torch.repeat_interleave(weights, self.algebra.subspaces, dim=2)
+            weights = weights.index_select(2, self.algebra.blade_subspace_idx)
             x_u = x_u * torch.sigmoid(weights)
 
         if self.residual and self.in_features_h == self.out_features_h:
@@ -317,6 +317,7 @@ class CGENN(nn.Module):
         residual=False,
         aggregation="mean",
         layer_type="fc",
+        gp_impl="einsum",
     ):
         super().__init__()
 
@@ -331,6 +332,17 @@ class CGENN(nn.Module):
         self.use_invariant_network = use_invariant_network
 
         self.algebra = CliffordAlgebra((1.0, -1.0, -1.0, -1.0))
+        # geometric-product contraction used by the weighted GP layers (fcgp/gp):
+        #   einsum -- the reference two-operand chains, bit-identical to the recorded
+        #             fixtures (BIT gate); the default.
+        #   matmul -- dense outer product + one GEMM (lgatr 2.0's dense form).
+        #   sparse -- quasigroup gather over the 256 nonzero cayley entries, 16x fewer
+        #             MACs (lgatr 2.0's sparse_gp, adapted to per-path weights).
+        # matmul/sparse reorder the same arithmetic -> TOL-class (docs/cgenn-compile.md);
+        # layers read this off the shared algebra instance at construction.
+        if gp_impl not in ("einsum", "matmul", "sparse"):
+            raise ValueError(f"gp_impl must be einsum|matmul|sparse, got {gp_impl!r}")
+        self.algebra.gp_impl = gp_impl
         self.n_layers = n_layers
         self.embedding_h = nn.Linear(in_features_h, hidden_features_h)
         self.embedding_x = MVLinear(self.algebra, in_features_x, hidden_features_x, subspaces=False)
@@ -379,9 +391,13 @@ class CGENN(nn.Module):
         node_attr_h,
         node_attr_x,
         edges,
-        n_nodes,
         node_mask,
     ):
+        # node_mask arrives DENSE, (batch, n_nodes, 1): the padded-node count is read off
+        # this tensor's shape below, so under torch.compile(dynamic=True) it is a symbolic
+        # size. The previous python-int n_nodes argument specialized the graph per value --
+        # one recompilation for every distinct padded length, which is exactly what the
+        # RECOMP gate forbids.
         if not self.use_invariant_network:
             h = None
 
@@ -408,13 +424,13 @@ class CGENN(nn.Module):
         else:
             h = invariants
 
-        h = h * node_mask
+        h = h * node_mask.reshape(-1, 1)
         h = h.view(
             -1,
-            n_nodes,
+            node_mask.shape[1],
             self.hidden_features_h + self.hidden_features_x * self.algebra.n_subspaces,
         )
         h = torch.mean(h, dim=1)  # average over point cloud
-        #quirk from official repo kept, this divides by the padded batch max n_nodes, not each jet's true multiplicity so the readout depends on padding 
+        #quirk from official repo kept, this divides by the padded batch max n_nodes, not each jet's true multiplicity so the readout depends on padding
         pred = self.graph_dec(h)
         return pred

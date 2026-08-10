@@ -1,5 +1,34 @@
 _target_: experiments.tagging.wrappers.LorentzNetLGATrSlimGraphGPSWrapper
 out_channels: null              # init_physics -> num_outputs
+compile: true                   # torch.compile(net, dynamic=True), enabled by a SCOPED
+                                # torch._functorch.config.patch(recompute_views=True) around the net
+                                # call (LorentzNetLGATrSlimGraphGPSWrapper.forward).
+                                #
+                                # Why it was needed: a GPS layer fuses its local and global branches on
+                                # ONE stream, so it crosses between channel-first LorentzNet and
+                                # channel-last v2 slim (M8) twice per layer. AOT's partitioner saves that
+                                # transpose across the fwd/bwd boundary because views are cheap to save,
+                                # and inductor's stride-ordering for graph outputs THAT ARE VIEWS then has
+                                # to compare strides (16*P, 16, 1, 4) -- i.e. ask "is P > 1?" -- through a
+                                # code path that is never handed the ShapeEnv. With a symbolic P that
+                                # raises InductorError "cannot determine truth value of Relational: 1 < s53"
+                                # while lowering the JOINT graph. Forward-only compile was always fine,
+                                # which is why every eval/no_grad gate passed it.
+                                # recompute_views=True makes the backward RECOMPUTE the view instead of
+                                # saving it, so it is no longer a graph output and the path is never
+                                # entered. Numerics-preserving by construction, and measured so.
+                                #
+                                # Neither parent needs this and neither does the GraphTrans sibling:
+                                # tag_lorentznet and tag_slim each stay in one convention, and
+                                # tag_LorentzNetLGATrSlimGraphTrans runs the stacks SEQUENTIALLY (zero
+                                # `transpose(-1,-2)` in that file). The cost is the GPS topology itself.
+                                #
+                                # Measured (caches force-disabled, so no stale artifact):
+                                #   compiled-vs-eager  0.000e+00 in EVAL and 0.000e+00 in TRAIN
+                                #   BREAKS 0, RECOMP [1, 1, 1], TOL 0.000e+00
+                                #   3 optimizer steps: 65/65 gradients, zero non-finite
+                                # The patch is scoped to this wrapper's forward, NOT set globally, because
+                                # the training smoke and the FLOPs harness build many models per process.
 
 net:
   _target_: experiments.baselines.lorentznetlgatrslimgraphgps.LorentzNetLGATrSlimGraphGPS

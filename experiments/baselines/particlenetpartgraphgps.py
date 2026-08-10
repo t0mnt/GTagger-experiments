@@ -45,6 +45,7 @@ from experiments.baselines.particlenettransformer import (
     EdgeConvBlock,
     PairEmbed,
     lloca_transport_attention,
+    sdpa_plain_attention,
 )
 from experiments.baselines.plaingraphgps import MaskedNorm
 
@@ -58,6 +59,10 @@ class ParTGPSLayer(nn.Module):
     only the external norm is applied to the local branch; the attention branch
     gets the standard external dropout -> residual -> norm (Eq. 10).
     """
+
+    # compile knob (wrapper-set): route the identity-frames attention through the
+    # sdpa_plain_attention twin instead of nn.MHA's forward (see the twin's docstring)
+    compiled_attention = False
 
     def __init__(self, dim, num_heads, edge_k, edge_mlp_layers=2, ffn_ratio=2,
                  dropout=0.0, attn_dropout=0.0, act="relu", norm="batch",
@@ -104,11 +109,18 @@ class ParTGPSLayer(nn.Module):
 
         # ---- global branch (Eq. 10): ParT-biased attention (LLoCa transport for learned frames) ----
         if lloca_attn is None:
-            am = attn_bias
-            if am is not None and am.dim() == 4:
-                am = am.reshape(-1, am.size(-2), am.size(-1))        # (B*num_heads, P, P)
-            a = self.attn(h, h, h, attn_mask=am, key_padding_mask=key_padding_mask,
-                          need_weights=False)[0]
+            if self.compiled_attention:
+                # compiled twin -- see sdpa_plain_attention (skipped-fn break in nn.MHA)
+                a = sdpa_plain_attention(
+                    h, self.attn, key_padding_mask=key_padding_mask, attn_mask=attn_bias,
+                    dropout_p=self.attn.dropout if self.training else 0.0,
+                )
+            else:
+                am = attn_bias
+                if am is not None and am.dim() == 4:
+                    am = am.reshape(-1, am.size(-2), am.size(-1))        # (B*num_heads, P, P)
+                a = self.attn(h, h, h, attn_mask=am, key_padding_mask=key_padding_mask,
+                              need_weights=False)[0]
         else:
             a = lloca_transport_attention(
                 h, self.attn, lloca_attn, key_padding_mask=key_padding_mask,

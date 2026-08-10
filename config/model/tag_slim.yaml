@@ -5,7 +5,7 @@ use_amp: false
 attention_backend: xformers
 
 net:
- _target_: lgatr.nets.lgatr_slim.LGATrSlim
+ _target_: lgatr.LGATrSlim
  _partial_: true
 
  in_v_channels: 1
@@ -20,6 +20,11 @@ net:
  mlp_ratio: 4
  attn_ratio: 1
  compile: true
+ compile_kwargs:
+  dynamic: true  # M9: v1.4.4 forced compile_dynamic=True; v2's compile_kwargs default {} means
+                 # dynamic=None = torch AUTOMATIC (static first graph, dynamic re-trace on the
+                 # 2nd distinct shape) -- not "off", but it still burns one throwaway static
+                 # graph per code path; pinning true skips that and matches the v1 posture
 
 defaults:
  - framesnet: identity

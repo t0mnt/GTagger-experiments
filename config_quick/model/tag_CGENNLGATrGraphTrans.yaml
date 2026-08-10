@@ -1,5 +1,6 @@
 _target_: experiments.tagging.wrappers.CGENNLGATrGraphTransWrapper
 out_channels: null              # init_physics -> num_outputs 
+compile: false  # torch.compile(net, dynamic=True); edges hoisted eager -- flip on beta-PERF numbers
 
 net:
   _target_: experiments.baselines.CGENNLGATrGraphTransHybrid.CGENNLGATrGraphTrans
@@ -18,6 +19,8 @@ net:
   cgenn_layers: 1
   cgenn_hidden_h: 16
   cgenn_hidden_x: 4
+  # einsum (BIT-reference) | matmul | sparse; sparse = lgatr-2.0 sparse_gp campaign posture (docs/cgenn-compile.md)
+  gp_impl: sparse
   cgenn_aggregation: mean
   cgenn_residual: false           # match official CGENN top-tagging (LorentzCGGNN default) and the tag_cgenn reference row
   cgenn_layer_type: fc

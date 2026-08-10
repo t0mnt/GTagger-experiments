@@ -130,13 +130,17 @@ class LorentzNet(nn.Module):
             nn.Linear(self.n_hidden, n_class),
         )  # classification
 
-    def forward(self, scalars, x, edges, batch):
+    def forward(self, scalars, x, edges, batch, ptr):
         h = self.embedding(scalars)
 
         for i in range(self.n_layers):
             h, x, _ = self.LGEBs[i](h, x, edges, node_attr=scalars)
 
-        h = self.aggregator(h, index=batch)  # mean aggregation
+        # dim_size from ptr keeps the aggregation traceable: without it PyG derives
+        # int(index.max()) + 1 -- an in-trace .item() graph break under torch.compile --
+        # and ptr.numel() - 1 is also the TRUE event count if a trailing event ever had
+        # no real constituents (max+1 would silently drop its row).
+        h = self.aggregator(h, index=batch, dim_size=ptr.numel() - 1)  # mean aggregation
         pred = self.graph_dec(h)
         return pred
 

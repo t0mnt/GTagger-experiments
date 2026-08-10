@@ -3,6 +3,7 @@ in_channels: null               # init_physics -> 7 + extra_scalars
 out_channels: null              # init_physics -> num_outputs
 use_amp: false
 add_fourmomenta_backbone: false
+compile: false                  # quick tree stays eager; compile smoke is env-gated (CGENN_COMPILE_GATES=1)
 
 net:
   _target_: experiments.baselines.particlenetpartgraphgps.ParticleNetParTGraphGPS

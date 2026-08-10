@@ -304,6 +304,7 @@ class TransformerWrapper(AggregatedTaggerWrapper):
         use_amp=False,
         attention_backend="xformers",
         mean_aggregation=True,
+        compile=False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -314,6 +315,10 @@ class TransformerWrapper(AggregatedTaggerWrapper):
 
         if attention_backend == "flex":
             compile_flex_attention(package_name="lloca")
+        if compile:
+            # compile the net only, net-level like tag_lgatr (Stage-4 gates:
+            # tests/experiments/test_nonequi_compile.py)
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         # precompute attention mask to avoid cudaStreamSynchronize
@@ -411,7 +416,7 @@ class TransformerWrapper(AggregatedTaggerWrapper):
         frames = frames.reshape(1, *frames.shape)
 
         # network
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(features_local.device.type, enabled=self.use_amp):
             outputs = self.net(inputs=features_local, frames=frames, **mask_kwarg)
 
         # aggregation
@@ -428,10 +433,15 @@ class ParticleNetWrapper(AggregatedTaggerWrapper):
         self,
         net,
         *args,
+        compile=False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.net = net(input_dims=self.in_channels, num_classes=self.out_channels)
+        if compile:
+            # compile the net only; dense top-k kNN is shape-static and traces clean
+            # (Stage-4 gates: tests/experiments/test_nonequi_compile.py)
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         (
@@ -587,7 +597,7 @@ class LGATrWrapper(nn.Module):
         mv = embed_vector(fourmomenta).unsqueeze(-2)
         s = scalars if scalars.shape[-1] > 0 else None
 
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(mv.device.type, enabled=self.use_amp):
             mv_outputs, _ = self.net(mv, s, **mask_kwarg)
         out = extract_scalar(mv_outputs)[0, :, :, 0]
 
@@ -605,10 +615,21 @@ class ParTWrapper(TaggerWrapper):
         net,
         *args,
         use_amp=False,
+        compile=False,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+        if compile:
+            # compiled ParT runs the DENSE pair path: the default sparse path gathers
+            # real pairs via nonzero (data-dependent by design, untraceable); the dense
+            # twin is the same function at reassociation level (measured 2.2e-15, TOL
+            # gate bar 1e-10 -- tests/experiments/test_nonequi_compile.py)
+            if hasattr(self.net, "pair_embed") and self.net.pair_embed is not None:
+                self.net.pair_embed.sparse_eval = False
+                self.net.pair_embed.compiled_dense = True
+            self.net.compile(dynamic=True)
+            self._compiled = True
 
     def forward(self, embedding):
         (
@@ -649,6 +670,22 @@ class ParTWrapper(TaggerWrapper):
         mask = mask.unsqueeze(1).float()
 
         # network
+        if hasattr(self.net, "trimmer"):
+            self.net.trimmer.tick()  # warmup bookkeeping, eager by design (see trimmer)
+        if getattr(self, "_compiled", False) or hasattr(self.net, "_orig_mod"):
+            # dynamic=True alone never promotes the padded seq dim here: each new batch
+            # max-length compiles one more static graph (RECOMP gate found [1,2,3]).
+            # maybe_mark_dynamic is the SOFT per-tensor hint: on the shipped
+            # identity-frames path nothing specializes, so the net compiles ONE
+            # seqlen-dynamic graph (RECOMP [1,1,1]); under a LEARNED framesnet the
+            # lloca transport pins the seq dim to a constant, and the hard
+            # mark_dynamic turned that into a ConstraintViolationError (final audit
+            # finding) -- the soft hint degrades to per-shape specialization instead
+            for _t in (features_local, fourmomenta_local, mask):
+                torch._dynamo.maybe_mark_dynamic(_t, 2)
+            # the Frames object carries three tensors; an unmarked one re-pins the graph
+            for _t in (frames.matrices, frames.det, frames.inv):
+                torch._dynamo.maybe_mark_dynamic(_t, 1)
         score = self.net(
             x=features_local,
             frames=frames,
@@ -660,6 +697,10 @@ class ParTWrapper(TaggerWrapper):
 
 class MIParTWrapper(ParTWrapper):
     def __init__(self, *args, **kwargs):
+        # compile support was not pursued for MIParT (operator decision): its backbone
+        # keeps nn.MHA warn-breaks + trimmer counters that were only fixed in the local
+        # ParT port, and ParTWrapper's twin flags do not exist on its PairEmbed
+        assert not kwargs.get("compile", False), "MIParT has no compile support"
         super().__init__(*args, **kwargs)
         assert isinstance(self.framesnet, IdentityFrames)
 
@@ -696,9 +737,14 @@ class LorentzNetWrapper(nn.Module):
         net,
         framesnet,
         out_channels,
+        compile=False,
     ):
         super().__init__()
         self.net = net(n_class=out_channels)
+        if compile:
+            # compile the net only; the wrapper's edge building stays eager by design
+            # (Stage-2 gates: tests/experiments/test_lorentznet_compile.py)
+            self.net.compile(dynamic=True)
 
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
@@ -716,7 +762,7 @@ class LorentzNetWrapper(nn.Module):
 
         edge_index = get_edge_index_from_ptr(ptr, fourmomenta.shape, remove_self_loops=True)
         fourmomenta = fourmomenta.to(scalars.dtype)
-        output = self.net(scalars, fourmomenta, edges=edge_index, batch=batch)
+        output = self.net(scalars, fourmomenta, edges=edge_index, batch=batch, ptr=ptr)
         return output, {}, None
 
 
@@ -797,9 +843,14 @@ class PELICANWrapperOfficial(nn.Module):
 
 
 class CGENNWrapper(nn.Module):
-    def __init__(self, net, framesnet, out_channels):
+    def __init__(self, net, framesnet, out_channels, compile=False):
         super().__init__()
         self.net = net(n_outputs=out_channels)
+        if compile:
+            # net only -- the wrapper stays eager: pair.nonzero, the spurion rescale and
+            # to_dense_batch are data-dependent by design (docs/cgenn-compile.md section 2).
+            # dynamic=True: N = B*P and the fully-connected E vary per batch.
+            self.net.compile(dynamic=True)
         self.framesnet = framesnet
         assert isinstance(framesnet, IdentityFrames)
 
@@ -833,7 +884,10 @@ class CGENNWrapper(nn.Module):
         edge_index = torch.stack([b_idx * n_nodes + i_idx, b_idx * n_nodes + j_idx])
         fourmomenta = fourmomenta.view(batch_size * n_nodes, -1)
         scalars = scalars.view(batch_size * n_nodes, -1)
-        mask = mask.view(batch_size * n_nodes, -1)
+        # dense (B, n_nodes, 1): the net reads its padded dim from this tensor -- symbolic
+        # under compile(dynamic=True), where a python-int argument would re-specialize the
+        # graph per distinct padded length (docs/cgenn-compile.md, RECOMP gate)
+        node_mask = mask.unsqueeze(-1)
 
         x = fourmomenta.unsqueeze(-2)
         i, j = edge_index
@@ -862,8 +916,7 @@ class CGENNWrapper(nn.Module):
             edge_attr_h=edge_attr_h,
             node_attr_h=node_attr_h,
             edges=edge_index,
-            n_nodes=n_nodes,
-            node_mask=mask,
+            node_mask=node_mask,
         )
 
         return out, {}, None
@@ -969,7 +1022,7 @@ class LGATrSlimWrapper(nn.Module):
         v = fourmomenta.unsqueeze(-2)
         s = scalars
 
-        with torch.autocast("cuda", enabled=self.use_amp):
+        with torch.autocast(v.device.type, enabled=self.use_amp):
             _, out_s = self.net(v, s, **mask_kwarg)
         out = out_s[0, :, :]
 
@@ -981,9 +1034,13 @@ class LGATrSlimWrapper(nn.Module):
 
 
 class CGENNLGATrGraphTransWrapper(nn.Module):
-    def __init__(self, net, framesnet, out_channels):
+    def __init__(self, net, framesnet, out_channels, compile=False):
         super().__init__()
         self.net = net(num_classes=out_channels)
+        if compile:
+            # compile the net only; edge building is hoisted in forward (data-dependent
+            # nonzero, eager by design -- tests/experiments/test_cgenn_hybrid_compile.py)
+            self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1005,11 +1062,15 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         fourmomenta, mask = to_dense_batch(fourmomenta, batch)
         scalars, _ = to_dense_batch(scalars, batch)
         points, _ = to_dense_batch(points, batch)
+        # hoist the static kNN edges out of the (possibly compiled) net: identical values
+        # in identical order eager -- the edges depend only on these inputs
+        edges = self.net.build_edges(fourmomenta, mask, points)
         output = self.net(
             scalars,
             fourmomenta,
             mask,
             points,
+            edges=edges,
         )
         return output, {}, None
 
@@ -1024,9 +1085,13 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
     the time-first (E, px, py, pz) convention (no reorder).
     """
 
-    def __init__(self, net, framesnet, out_channels):
+    def __init__(self, net, framesnet, out_channels, compile=False):
         super().__init__()
         self.net = net(num_classes=out_channels)
+        if compile:
+            # compile the net only; edge building is hoisted in forward (data-dependent
+            # nonzero, eager by design -- tests/experiments/test_cgenn_hybrid_compile.py)
+            self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1048,11 +1113,15 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
         fourmomenta, mask = to_dense_batch(fourmomenta, batch)
         scalars, _ = to_dense_batch(scalars, batch)
         points, _ = to_dense_batch(points, batch)
+        # hoist the static kNN edges out of the (possibly compiled) net: identical values
+        # in identical order eager -- the edges depend only on these inputs
+        edges = self.net.build_edges(fourmomenta, mask, points)
         output = self.net(
             scalars,
             fourmomenta,
             mask,
             points,
+            edges=edges,
         )
         return output, {}, None
 
@@ -1074,12 +1143,22 @@ class ParticleNetParTGraphTransWrapper(TaggerWrapper):
     points for the EdgeConv kNN, which we read off the local four-momenta.
     """
 
-    def __init__(self, net, *args, use_amp=False, **kwargs):
+    def __init__(self, net, *args, use_amp=False, compile=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.use_amp = use_amp
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
         # the prepended class token rides in the covariant jet frame -> request it
         self.compute_jet_frames = True
+        if compile:
+            # route the identity-frames nn.MHA blocks and the tril PairEmbed through
+            # their compiled twins (eager default untouched, TOL-gated -- Stage-4 gates:
+            # tests/experiments/test_nonequi_compile.py)
+            for m in self.net.modules():
+                if hasattr(m, "compiled_attention"):
+                    m.compiled_attention = True
+                if hasattr(m, "compiled_dense"):
+                    m.compiled_dense = True
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         (
@@ -1149,9 +1228,13 @@ class LorentzNetLGATrSlimGraphTransWrapper(nn.Module):
     knn_metric='deltaR'.
     """
 
-    def __init__(self, net, framesnet, out_channels):
+    def __init__(self, net, framesnet, out_channels, compile=False):
         super().__init__()
         self.net = net(num_classes=out_channels)
+        if compile:
+            # compile the net only (dense top-k kNN inside the net is shape-static and
+            # traces clean -- tests/experiments/test_lorentznet_hybrid_compile.py)
+            self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1201,9 +1284,14 @@ class LorentzNetLGATrSlimGraphGPSWrapper(nn.Module):
     by 1/20, and reorders four-momenta to the (px, py, pz, E) the model expects.
     """
 
-    def __init__(self, net, framesnet, out_channels):
+    def __init__(self, net, framesnet, out_channels, compile=False):
         super().__init__()
         self.net = net(num_classes=out_channels)
+        if compile:
+            # compile the net only (dense top-k kNN inside the net is shape-static and
+            # traces clean -- tests/experiments/test_lorentznet_hybrid_compile.py)
+            self._recompute_views = True  # see forward(): AOT view-saving vs inductor
+            self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1235,12 +1323,30 @@ class LorentzNetLGATrSlimGraphGPSWrapper(nn.Module):
         scalars, _ = to_dense_batch(scalars, batch)  # (B, P, C)
         points, _ = to_dense_batch(points, batch)  # (B, P, 2)
 
-        output = self.net(
+        _args = (
             scalars.transpose(1, 2).contiguous(),  # x: (B, C, P)
             fourmomenta.transpose(1, 2).contiguous(),  # v: (B, 4, P)
             mask.unsqueeze(1),  # (B, 1, P)
             points.transpose(1, 2).contiguous(),  # (B, 2, P)
         )
+        if getattr(self, "_recompute_views", False):
+            # AOT's partitioner saves VIEWS across the fwd/bwd boundary because they are
+            # cheap. Here that saved view is this model's per-layer channel-first <->
+            # channel-last multivector transpose, shape (B, P, 4, V) with strides
+            # (16*P, 16, 1, 4), and inductor's stride-ordering for graph outputs that are
+            # views compares 16*P against 16 -- i.e. asks "is P > 1?" -- via a code path
+            # that is not given the ShapeEnv, so a symbolic P raises
+            # "cannot determine truth value of Relational: 1 < s53" while lowering the
+            # JOINT graph. recompute_views=True makes the backward recompute the view
+            # instead of saving it, so it is no longer a graph output and the path is
+            # never entered. Numerics-preserving by construction (a recomputed permute is
+            # the same permute); measured identical to the eager forward.
+            # Scoped to this call rather than set globally, because the smoke test and the
+            # FLOPs harness build many models in one process.
+            import torch._functorch.config as _fc
+            with _fc.patch(recompute_views=True):
+                return self.net(*_args), {}, None
+        output = self.net(*_args)
         return output, {}, None
 
 
@@ -1255,12 +1361,20 @@ class PlainGraphTransWrapper(TaggerWrapper):
     for the deltaR kNN. The prepended class token rides in the covariant jet frame.
     """
 
-    def __init__(self, net, *args, use_amp=False, **kwargs):
+    def __init__(self, net, *args, use_amp=False, compile=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.use_amp = use_amp
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
         # the prepended class token rides in the covariant jet frame -> request it
         self.compute_jet_frames = True
+        if compile:
+            # compile the net only; static kNN + torch-MHA trace clean (Stage-4 gates:
+            # tests/experiments/test_nonequi_compile.py).
+            # compiled_knn: keep the kNN k a python int -- the eager cap against a symbolic
+            # P is what inductor cannot lower on the BACKWARD graph (see knn()'s docstring).
+            # Provably identical wherever P - 1 >= k, which is every regime we run.
+            self.net.compiled_knn = True
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         (
@@ -1320,10 +1434,16 @@ class PlainGraphGPSWrapper(TaggerWrapper):
     mean-pool readout over invariant local features is already invariant.
     """
 
-    def __init__(self, net, *args, use_amp=False, **kwargs):
+    def __init__(self, net, *args, use_amp=False, compile=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.use_amp = use_amp
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+        if compile:
+            # compile the net only. KNOWN SPLITS: the masked BatchNorm over real nodes
+            # (MaskedNorm, norm='batch') is data-dependent by design -> a pinned number
+            # of documented graph splits, not a clean single graph (Stage-4 gates:
+            # tests/experiments/test_nonequi_compile.py, BREAK_BARS)
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         (
@@ -1382,10 +1502,22 @@ class ParticleNetParTGraphGPSWrapper(TaggerWrapper):
     needed -- the mean-pool readout over invariant local features is already invariant.
     """
 
-    def __init__(self, net, *args, use_amp=False, **kwargs):
+    def __init__(self, net, *args, use_amp=False, compile=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.use_amp = use_amp
         self.net = net(input_dim=self.in_channels, num_classes=self.out_channels, use_amp=use_amp)
+        if compile:
+            # route the identity-frames nn.MHA calls + the tril PairEmbed through their
+            # compiled twins (eager default untouched, TOL-gated). KNOWN SPLITS: the
+            # masked BatchNorm over real nodes (MaskedNorm, norm='batch') is
+            # data-dependent by design -> a pinned number of documented graph splits
+            # (Stage-4 gates: tests/experiments/test_nonequi_compile.py, BREAK_BARS)
+            for m in self.net.modules():
+                if hasattr(m, "compiled_attention"):
+                    m.compiled_attention = True
+                if hasattr(m, "compiled_dense"):
+                    m.compiled_dense = True
+            self.net.compile(dynamic=True)
 
     def forward(self, embedding):
         (

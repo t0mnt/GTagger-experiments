@@ -4,6 +4,7 @@ import math
 import torch
 from torch import nn
 
+from experiments.baselines.cgenn.cliffordalgebra import sparse_gp_tables
 from experiments.baselines.cgenn.linear import MVLinear
 from experiments.baselines.cgenn.normalization import NormalizationLayer
 
@@ -33,6 +34,15 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
             self.linear_left = MVLinear(algebra, in_features, out_features, bias=True)
 
         self.product_paths = algebra.geometric_product_paths
+        # integer indices of the allowed grade paths: index_put with these is the same values
+        # in the same order as the boolean-mask assignment, without rebuilding a mask each
+        # forward (and without the runtime nonzero() a bool mask implies under compile)
+        self.register_buffer("_path_idx", self.product_paths.nonzero().T.contiguous(),
+                             persistent=False)
+        self.gp_impl = getattr(algebra, "gp_impl", "einsum")
+        sp_path, sp_val = sparse_gp_tables(algebra, self._path_idx)
+        self.register_buffer("_sp_path", sp_path, persistent=False)
+        self.register_buffer("_sp_val", sp_val, persistent=False)
         self.weight = nn.Parameter(torch.empty(out_features, in_features, self.product_paths.sum()))
 
         self.reset_parameters()
@@ -51,12 +61,10 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
             dtype=self.weight.dtype,
             device=self.weight.device,
         )
-        weight[:, :, self.product_paths] = self.weight
-        subspaces = self.algebra.subspaces
+        weight[:, :, self._path_idx[0], self._path_idx[1], self._path_idx[2]] = self.weight
+        bsi = self.algebra.blade_subspace_idx
         weight_repeated = (
-            weight.repeat_interleave(subspaces, dim=-3)
-            .repeat_interleave(subspaces, dim=-2)
-            .repeat_interleave(subspaces, dim=-1)
+            weight.index_select(-3, bsi).index_select(-2, bsi).index_select(-1, bsi)
         )
         return self.algebra.cayley * weight_repeated
 
@@ -64,12 +72,30 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
         input_right = self.linear_right(input)
         input_right = self.normalization(input_right)
 
-        weight = self._get_weight()
+        if self.gp_impl == "sparse":
+            # quasigroup gather (lgatr 2.0 sparse_gp): contract only the 256 nonzero cayley
+            # entries -- 16x fewer MACs than the dense forms, no dense weight materialized
+            pair = input.unsqueeze(-1) * input_right[..., self.algebra.gp_k_idx]
+            w = self.weight[:, :, self._sp_path] * self._sp_val
+            product = torch.einsum("bnij,mnij->bmj", pair, w)
+        elif self.gp_impl == "matmul":
+            # dense outer product + one GEMM (lgatr 2.0 dense form)
+            weight = self._get_weight()
+            nb = self.algebra.n_blades
+            outer = (input.unsqueeze(-1) * input_right.unsqueeze(-2)).flatten(1)
+            wf = weight.permute(0, 3, 1, 2, 4).reshape(self.out_features * nb, -1)
+            product = (outer @ wf.T).view(-1, self.out_features, nb)
+        else:
+            # two-operand chain == opt_einsum's path for "bni,mnijk,bnk->bmj" at these
+            # shapes ("bnk,bni->bnki" then "bnki,mnijk->bmj"); a 3-operand einsum
+            # recomputes that path per call and re-specializes the compiled graph per
+            # batch shape (see cliffordalgebra.geometric_product). Bit-identity to the
+            # recorded fixtures enforced by the BIT gate -- this is the reference path.
+            weight = self._get_weight()
+            outer = torch.einsum("bnk,bni->bnki", input_right, input)
+            product = torch.einsum("bnki,mnijk->bmj", outer, weight)
 
         if self.include_first_order:
-            return (
-                self.linear_left(input)
-                + torch.einsum("bni, mnijk, bnk -> bmj", input, weight, input_right)
-            ) / math.sqrt(2)
+            return (self.linear_left(input) + product) / math.sqrt(2)
         else:
-            return torch.einsum("bni, mnijk, bnk -> bmj", input, weight, input_right)
+            return product

@@ -12,6 +12,19 @@ from experiments.baselines.cgenn.metric import (
 )
 
 
+def sparse_gp_tables(algebra, path_idx):
+    """(_sp_path, _sp_val) for the sparse gp_impl: for each (left blade i, output blade j)
+    the unique right blade is algebra.gp_k_idx[i, j]; the weight that entry sees is the
+    compact path weight of the grade triple (g_i, g_j, g_k), or zero where product_paths
+    masks the triple. One definition per self-contained file (review finding: this was
+    copy-pasted at every layer)."""
+    g = algebra.bbo_grades.long()
+    lookup = torch.full((algebra.n_subspaces,) * 3, -1, dtype=torch.long)
+    lookup[path_idx[0], path_idx[1], path_idx[2]] = torch.arange(path_idx.shape[1])
+    p = lookup[g[:, None], g[None, :], g[algebra.gp_k_idx]]
+    return p.clamp(min=0), algebra.gp_val * (p >= 0)
+
+
 class CliffordAlgebra(nn.Module):
     def __init__(self, metric):
         super().__init__()
@@ -27,6 +40,9 @@ class CliffordAlgebra(nn.Module):
             .to(torch.get_default_dtype())
         )
         self.grades = self.bbo.grades.unique()
+        # python-int copy for loops/indexing under torch.compile: int(0-d tensor) is a
+        # Tensor.item() call, and item() inside the traced region is a dynamo graph break.
+        self.grades_list = [int(g) for g in self.grades]
         self.register_buffer(
             "subspaces",
             torch.tensor(tuple(math.comb(self.dim, g) for g in self.grades)),
@@ -39,6 +55,39 @@ class CliffordAlgebra(nn.Module):
         self.register_buffer("even_grades", self.bbo_grades % 2 == 0)
         self.register_buffer("odd_grades", ~self.even_grades)
         self.register_buffer("cayley", cayley)
+        # blade index -> subspace(grade) index, e.g. [0,1,1,1,1,2,...,4]: index_select with
+        # this replaces every tensor-valued repeat_interleave over the blade dimension
+        # (pure data movement -> bit-identical; tensor-valued repeats are also a dynamo
+        # graph-break hazard). Non-persistent: derived data, state_dict unchanged.
+        self.register_buffer(
+            "blade_subspace_idx",
+            torch.arange(self.n_subspaces).repeat_interleave(
+                torch.tensor(tuple(math.comb(self.dim, g) for g in self.grades))),
+            persistent=False,
+        )
+        # The blade basis is quasigroup-like: blade_i * blade_k lands on exactly ONE output
+        # blade with a +-1 coefficient, so for each (left blade i, output blade j) exactly
+        # one right blade k has cayley[i, j, k] != 0 (256 nonzeros of 4096). Store that k
+        # and its value: the sparse gp_impl contracts only these (lgatr 2.0's sparse_gp
+        # trick, adapted to CGENN's per-path weights) -- 16x fewer MACs, gather + einsum
+        # only (no scatter), deterministic. Non-persistent: derived, state_dict unchanged.
+        assert ((cayley != 0).sum(-1) <= 1).all(), "cayley lost the one-nonzero-per-(i,j) property"
+        gp_k_idx = cayley.abs().argmax(dim=-1)
+        self.register_buffer("gp_k_idx", gp_k_idx, persistent=False)
+        self.register_buffer(
+            "gp_val",
+            torch.gather(cayley, -1, gp_k_idx.unsqueeze(-1)).squeeze(-1),
+            persistent=False,
+        )
+        # functools.cached_property materializes through an RLock (functools.__get__); a
+        # lock context manager inside the traced region is a dynamo graph break -- and one
+        # dynamo.explain cannot see, because any eager warm-up forward fills the caches
+        # first and explain then reads plain attributes. Touch every cached property here
+        # so the compiled net never triggers the descriptor (same values, computed once).
+        for klass in type(self).__mro__:
+            for name, member in vars(klass).items():
+                if isinstance(member, functools.cached_property):
+                    getattr(self, name)
 
     def geometric_product(self, a, b, blades=None):
         cayley = self.cayley
@@ -50,13 +99,30 @@ class CliffordAlgebra(nn.Module):
             assert isinstance(blades_r, torch.Tensor)
             cayley = cayley[blades_l[:, None, None], blades_o[:, None], blades_r]
 
-        return torch.einsum("...i,ijk,...k->...j", a, cayley, b)
+        # Two-operand chain replacing the 3-operand einsum "...i,ijk,...k->...j": with
+        # >= 3 operands torch.einsum computes an opt_einsum contraction path from the
+        # operands' concrete sizes on every call -- python work per forward, and under
+        # torch.compile(dynamic=True) it reads the symbolic batch size as an int and
+        # re-specializes the graph per shape (the RECOMP gate's per-shape recompiles).
+        # The chains below are exactly the paths opt_einsum selects at production sizes,
+        # written out pairwise; the selector reads only blade dims, which are static.
+        # Bit-identity to the old call is enforced by the cgenn_compile BIT gate.
+        if cayley.shape[1] == 1 and cayley.shape[0] > 1:
+            # grade-subset (g, 1, g), g > 1: GEMM-first ("ijk,bci->jkbc"; "jkbc,bck->bcj")
+            t = torch.einsum("ijk,...i->jk...", cayley, a)
+            return torch.einsum("jk...,...k->...j", t, b)
+        # full table (16, 16, 16) and the scalar subset (1, 1, 1): outer-first
+        # ("bck,bci->bcki"; "bcki,ijk->bcj")
+        t = torch.einsum("...k,...i->...ki", b, a)
+        return torch.einsum("...ki,ijk->...j", t, cayley)
 
     def _grade_to_slice(self, subspaces):
         grade_to_slice = list()
         subspaces = torch.as_tensor(subspaces)
         for grade in self.grades:
-            index_start = subspaces[:grade].sum()
+            # int endpoints: tensor-valued slice bounds call Tensor.item() (__index__) at
+            # every mv[..., s] -- the last graph-break source in the compiled net
+            index_start = int(subspaces[:grade].sum())
             index_end = index_start + math.comb(self.dim, grade)
             grade_to_slice.append(slice(index_start, index_end))
         return grade_to_slice
@@ -148,19 +214,29 @@ class CliffordAlgebra(nn.Module):
     def norm(self, mv, blades=None):
         return self._smooth_abs_sqrt(self.q(mv, blades=blades))
 
+
+    @staticmethod
+    def _as_int_grades(grades):
+        # iterate grades as python ints OUTSIDE the traced graph: indexing python lists with
+        # 0-d tensors (or int() on them) is a Tensor.item() call per element = dynamo graph
+        # break. Callers inside compiled regions must pass grades_list (already ints); this
+        # converts stragglers exactly once. Pure index bookkeeping -> bit-identical.
+        return [g if isinstance(g, int) else int(g) for g in grades]
+
     def norms(self, mv, grades=None):
         if grades is None:
-            grades = self.grades
+            grades = self.grades_list
         return [
             self.norm(self.get_grade(mv, grade), blades=self.grade_to_index[grade])
-            for grade in grades
+            for grade in self._as_int_grades(grades)
         ]
 
     def qs(self, mv, grades=None):
         if grades is None:
-            grades = self.grades
+            grades = self.grades_list
         return [
-            self.q(self.get_grade(mv, grade), blades=self.grade_to_index[grade]) for grade in grades
+            self.q(self.get_grade(mv, grade), blades=self.grade_to_index[grade])
+            for grade in self._as_int_grades(grades)
         ]
 
     def sandwich(self, u, v, w):

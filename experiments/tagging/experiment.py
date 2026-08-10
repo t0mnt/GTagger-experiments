@@ -7,7 +7,7 @@ import torch
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from torch_geometric.loader import DataLoader
 
-from experiments.base_experiment import BaseExperiment
+from experiments.base_experiment import BaseExperiment, lgatr_norm_gain_names
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
 from experiments.tagging.dataset import TopTaggingDataset
@@ -248,6 +248,10 @@ class TaggingExperiment(BaseExperiment):
         ]:
             # special treatment for ParT, see
             # https://github.com/hqucms/weaver-core/blob/dev/custom_train_eval/weaver/train.py#L464
+            # H15 (lgatr 2.0 posture flip): also exempt v2's affine norm gains -- the
+            # (mv_channels, 5) weight_mv fails both the rank and the name rule, and the two
+            # grouping paths must keep agreeing on parameter classes.
+            norm_gains = lgatr_norm_gain_names(self.model.net)
             decay, no_decay = {}, {}
             for name, param in self.model.net.named_parameters():
                 if not param.requires_grad:
@@ -259,6 +263,7 @@ class TaggingExperiment(BaseExperiment):
                         hasattr(self.model.net, "no_weight_decay")
                         and name in self.model.net.no_weight_decay()
                     )
+                    or name in norm_gains
                 ):
                     no_decay[name] = param
                 else:

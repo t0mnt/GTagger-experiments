@@ -1,5 +1,6 @@
 _target_: experiments.tagging.wrappers.CGENNWrapper
 out_channels: null
+compile: false  # quick tree stays eager; compile smoke is env-gated (CGENN_COMPILE_GATES=1)
 
 net:
  _target_: experiments.baselines.cgenn.cgenn.CGENN
@@ -13,6 +14,9 @@ net:
  n_outputs: null
  n_layers: 1
  dropout: 0.0
+ # campaign posture (lgatr-2.0 sparse_gp default analog); the BIT/reference gates pin
+ # gp_impl=einsum explicitly, so the suite exercises sparse while fixtures stay valid
+ gp_impl: sparse
 
 defaults:
  - framesnet: identity

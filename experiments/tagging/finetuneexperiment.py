@@ -3,7 +3,7 @@ import os
 import torch
 from hydra.core.hydra_config import HydraConfig
 from lgatr.layers.linear import EquiLinear
-from lgatr.nets.lgatr_slim import Linear as LorentzLinear
+from lgatr.layers import SlimLinear as LorentzLinear
 from omegaconf import OmegaConf, open_dict
 from torch_ema import ExponentialMovingAverage
 
@@ -51,6 +51,18 @@ class TopTaggingFineTuneExperiment(TopTaggingExperiment):
             # model: warmstart defaults, overridden only by CLI `model.*`
             model_cli = _extract_cli_overrides(self.cfg, "model.")
             self.cfg.model = OmegaConf.merge(self.warmstart_cfg.model, model_cli)
+            # backbones trained before the in-repo ParT port recorded the library
+            # _target_; rewrite it so finetune runs execute (and inherit fixes from)
+            # the local copy -- byte-compatible module tree, same state_dict keys
+            _old_part = "lloca.backbone.particletransformer.ParticleTransformer"
+            if OmegaConf.select(self.cfg, "model.net._target_") == _old_part:
+                self.cfg.model.net._target_ = (
+                    "experiments.baselines.particletransformer.ParticleTransformer"
+                )
+                LOGGER.info(
+                    "finetune: rewrote net._target_ from the lloca library ParT to the "
+                    "in-repo port (identical parameters; local fixes apply)"
+                )
 
             self.cfg.ema = self.warmstart_cfg.ema
 
@@ -107,6 +119,7 @@ class TopTaggingFineTuneExperiment(TopTaggingExperiment):
         elif self.warmstart_cfg.model._target_ == "experiments.tagging.wrappers.LGATrWrapper":
             self.model.net.linear_out = EquiLinear(
                 in_mv_channels=self.cfg.model.net.hidden_mv_channels,
+                primitives=self.model.net.linear_out.primitives,  # M10: reuse the replaced child's config
                 out_mv_channels=self.num_outputs,
                 in_s_channels=self.cfg.model.net.hidden_s_channels,
                 out_s_channels=self.cfg.model.net.out_s_channels,

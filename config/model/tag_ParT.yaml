@@ -3,9 +3,18 @@ in_channels: null
 out_channels: null
 use_amp: false
 add_fourmomenta_backbone: false
+compile: true                   # torch.compile(net, dynamic=True). Routes PairEmbed through the
+                                # all-pairs twin (tril/nonzero are untraceable) with a WEIGHTED pair
+                                # BatchNorm, so the twin's train-mode statistics are taken over exactly
+                                # the eager reference multiset -- the lower-triangular REAL pairs of the
+                                # sparse path. Measured compiled-vs-eager in TRAIN mode: 2.3e-15 outputs,
+                                # 1.1e-14 BN running buffers; eval <=4e-15. Clean graph (0 breaks) and
+                                # backward verified (217/217 params, finite grads). Pinned by
+                                # test_nonequi_compile: BREAK_BARS, test_train_mode_differential,
+                                # test_compiled_backward, test_compile_true_is_backward_verified.
 
 net:
- _target_: lloca.backbone.particletransformer.ParticleTransformer
+ _target_: experiments.baselines.particletransformer.ParticleTransformer
  _partial_: true
  input_dim: null
  num_classes: null

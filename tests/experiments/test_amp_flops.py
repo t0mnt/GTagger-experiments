@@ -44,6 +44,20 @@ def test_amplitudes(framesnet, model_list, equivectors):
         if framesnet != "identity":
             overrides.append(f"model/framesnet/equivectors={equivectors}")
         cfg = hydra.compose(config_name="amplitudes", overrides=overrides)
+        # FLOPs are compile-independent by construction; FX cannot symbolically trace a
+        # dynamo-compiled module -- force every compile knob (recursively: nested ones
+        # like framesnet.equivectors.net.compile were the misdiagnosed 'known pelican
+        # environment failures'; see test_tag_flops for the same walk)
+        from omegaconf import DictConfig, open_dict
+        def _force_eager(node):
+            if isinstance(node, DictConfig):
+                with open_dict(node):
+                    for k in list(node.keys()):
+                        if k == "compile" and isinstance(node[k], bool):
+                            node[k] = False
+                        elif isinstance(node[k], DictConfig):
+                            _force_eager(node[k])
+        _force_eager(cfg.model)
         exp = AmplitudeExperiment(cfg)
     exp._init()
     exp.init_physics()

@@ -4,6 +4,7 @@ import math
 import torch
 from torch import nn
 
+from experiments.baselines.cgenn.cliffordalgebra import sparse_gp_tables
 from experiments.baselines.cgenn.linear import MVLinear
 from experiments.baselines.cgenn.normalization import NormalizationLayer
 
@@ -25,6 +26,12 @@ class SteerableGeometricProductLayer(nn.Module):
             self.linear_left = MVLinear(algebra, features, features, bias=True)
 
         self.product_paths = algebra.geometric_product_paths
+        self.register_buffer("_path_idx", self.product_paths.nonzero().T.contiguous(),
+                             persistent=False)
+        self.gp_impl = getattr(algebra, "gp_impl", "einsum")
+        sp_path, sp_val = sparse_gp_tables(algebra, self._path_idx)
+        self.register_buffer("_sp_path", sp_path, persistent=False)
+        self.register_buffer("_sp_val", sp_val, persistent=False)
         self.weight = nn.Parameter(torch.empty(features, self.product_paths.sum()))
 
         self.reset_parameters()
@@ -39,12 +46,10 @@ class SteerableGeometricProductLayer(nn.Module):
             dtype=self.weight.dtype,
             device=self.weight.device,
         )
-        weight[:, self.product_paths] = self.weight
-        subspaces = self.algebra.subspaces
+        weight[:, self._path_idx[0], self._path_idx[1], self._path_idx[2]] = self.weight
+        bsi = self.algebra.blade_subspace_idx
         weight_repeated = (
-            weight.repeat_interleave(subspaces, dim=-3)
-            .repeat_interleave(subspaces, dim=-2)
-            .repeat_interleave(subspaces, dim=-1)
+            weight.index_select(-3, bsi).index_select(-2, bsi).index_select(-1, bsi)
         )
         return self.algebra.cayley * weight_repeated
 
@@ -52,13 +57,35 @@ class SteerableGeometricProductLayer(nn.Module):
         input_right = self.linear_right(input)
         input_right = self.normalization(input_right)
 
-        weight = self._get_weight()
+        if self.gp_impl == "sparse":
+            # quasigroup gather (lgatr 2.0 sparse_gp) -- see fcgp.forward
+            pair = input.unsqueeze(-1) * input_right[..., self.algebra.gp_k_idx]
+            w = self.weight[:, self._sp_path] * self._sp_val
+            product = torch.einsum("bnij,nij->bnj", pair, w)
+        elif self.gp_impl == "matmul":
+            # dense outer product + per-feature bmm (lgatr 2.0 dense form)
+            weight = self._get_weight()
+            nb = self.algebra.n_blades
+            outer = input.unsqueeze(-1) * input_right.unsqueeze(-2)
+            wf = weight.permute(0, 1, 3, 2).reshape(self.features, nb * nb, nb)
+            product = torch.bmm(
+                outer.permute(1, 0, 2, 3).reshape(self.features, -1, nb * nb), wf
+            ).permute(1, 0, 2)
+        else:
+            # two-operand chain == opt_einsum's path for "bni,nijk,bnk->bnj" at these
+            # shapes ("bnk,bni->bnki" then "bnki,nijk->bnj"); a 3-operand einsum
+            # recomputes that path per call and re-specializes the compiled graph per
+            # batch shape (see cliffordalgebra.geometric_product). Bit-identity to the
+            # recorded fixtures enforced by the BIT gate -- this is the reference path.
+            weight = self._get_weight()
+            outer = torch.einsum("bnk,bni->bnki", input_right, input)
+            product = torch.einsum("bnki,nijk->bnj", outer, weight)
 
         if self.include_first_order:
             return (
                 self.linear_left(input)
-                + torch.einsum("bni, nijk, bnk -> bnj", input, weight, input_right)
+                + product
             ) / math.sqrt(2)
 
         else:
-            return torch.einsum("bni, nijk, bnk -> bnj", input, weight, input_right)
+            return product

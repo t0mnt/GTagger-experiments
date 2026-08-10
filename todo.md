@@ -209,7 +209,14 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
 - [ ] ParT-GPS float attn_mask + bool key_padding_mask deprecation (merge masks before torch
       makes it fatal).
 - [ ] xformers pin note for the SLURM target (docs/SLURM.md install step).
+- [ ] Upstream lloca issue: request a public accessor for `_load_inner_product_factors`
+      (this repo imports the private name; fine at lloca 1.3.6 + lgatr 2.0.0, re-check on
+      any bump of either — docs/lgatr2-migration.md H6, Phase 5).
 - [ ] learnedpd boost-precision-floor methods sentence for the paper.
+- [ ] lgatr 2.0 methods sentence (§2.4 obligation, docs/lgatr2-migration.md): the
+      `tag_lgatr`/`tag_slim` reference rows are (re)trained under lgatr 2.0.0 at v2-native
+      defaults (sigmoid slim gate, affine norms, sparse geometric product, tanh-GeLU, no qkv
+      biases) — published-paper L-GATr numbers are indicative, not exact comparators.
 - [ ] LorentzNet GPS: zero padded slots between layers for exact BN-running-stat parity
       (cosmetic; logits unaffected).
 - [ ] LorentzNetKNNBlock phi_e BN normalises invalid edges (pre-existing, both variants).
@@ -230,28 +237,53 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
       hydra composes from both config trees, and a full CPU LR sweep ran end-to-end from
       the new path.
 
-## 4b-bis. torch.compile scope — revisit trigger (recorded 2026-08)
+## 4b-septies. Post-merge confirmation: the training smoke — BUILT, just run it
 
-Current scope: compile the equivariant-heavy paths (L-GATr / CGENN stages, where many
-small kernels fuse well and the rows are the expensive ones); leave the non-equivariant
-family (Plain, ParticleNet-ParT) uncompiled, since dense matmul + SDPA already run near
-roofline and the GraphTrans/GPS wrapper adds compile-hostile structure (PyG scatter,
-per-batch kNN, ragged shapes -> graph breaks and recompiles).
+`tests/experiments/test_training_smoke.py` exists and is the go/no-go before the
+campaign. It runs 8 real optimizer steps per model on the PRODUCTION config tree and
+asserts finite losses plus a non-degenerate nonzero-gradient fraction.
 
-**New evidence**: weaver-core has since added torch.compile support for ParticleNet and
-ParT upstream. That weakens the *feasibility* half of the argument (someone has done it
-and validated it) but not the *ROI* half, and their versions are standalone backbones,
-not wrapped in this repo's hybrid + LLoCa-frames machinery.
+    CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_training_smoke.py -q -s
+
+Two things it encodes, both learned the hard way:
+- it runs on `config/`, not `config_quick`: `tag_PlainGraphGPS` gets gradient on 230/230
+  parameters under production but 1/54 under quick (`dim: 16` narrows the SAN head to
+  4 units and a dead ReLU at init severs the backward — a test-config artifact, but it
+  makes a quick-tree smoke prove nothing for that model);
+- it asserts on GRADIENTS, not parameter movement: AdamW's decoupled weight decay moves
+  a parameter whose gradient is exactly zero, which is how that case first looked fine.
+
+EMA and checkpoint round-trip are deliberately NOT asserted here — those fail on
+pre-existing `main` defects (docs/audit-ledger.md), which are out of this branch's scope.
+
+**Run it on GPU too, and that is not a formality.** Every compile gate in this repo runs on
+CPU, so inductor's CUDA backend (Triton kernels, not the C++/OpenMP lowering) has never
+been exercised, and device-placement bugs are invisible to CPU runs by construction. The
+test auto-selects CUDA (`base_experiment._init_backend`, and `_extract_batch` moves each
+batch), so on a GPU node the same command is the GPU test. `CGENN_SMOKE_COMPILE=1` keeps
+each model's shipped compile knob instead of forcing eager — use it with `-k` to take a
+few models at a time, since building inductor kernels for all twelve in one process can
+exhaust the box. Full sequence in `cleanup.md`'s runbook, step 5.
+
+## 4b-bis. torch.compile scope — CLOSED (Stage 4 executed, 2026-08-08)
+
+The revisit trigger fired and the work is done: the non-equivariant family is now
+compile-gated like the equivariant one (`tests/experiments/test_nonequi_compile.py`,
+log in `docs/cgenn-compile.md` Stage 4). Outcome vs the recorded worry: the
+"compile-hostile structure" mostly wasn't — five of seven models reached BREAKS 0 /
+RECOMP [1,1,1] (dense top-k kNN traces fine), with twins for the two real offenders
+(nn.MHA's warn-break under a float ParT bias; tril_indices/nonzero PairEmbed paths).
+The GraphGPS pair keeps a documented, pinned masked-BatchNorm break class and ships
+`compile: false` until β-PERF shows the split graphs still win. MIParT was descoped
+by operator decision (BIT-pinned, no knob).
 
 ## 4c. Versioning
 
-`pyproject.toml` now reads **0.9.0** — pre-release: code complete, campaign not run,
-lgatr 2.0 merge pending. (It previously read 1.1.0, inherited from upstream
-lloca-experiments, which described *that* project's history rather than this fork's.)
-
-- [ ] **Bump to 1.0.0 when dev merges and the campaign tables exist** — that pairing is
-      what makes the number mean something: a reader can ask "which code produced the
-      table?" and get one answer.
+`pyproject.toml` now reads **1.0.0** (operator bump, 2026-08-08) with the forward
+roadmap in its comment: 1.1 once lloca 2.0 lands, 1.2 at paper (todo done, deforked,
+reproduce/readme refreshed). (History: 0.9.0 was this fork's pre-release marker; the
+1.1.0 before that was inherited from upstream lloca-experiments and described that
+project, not this fork.)
 - [ ] **Tag the pre-merge state before starting the campaign** (`git tag pre-lgatr2 &&
       git push --tags`). The campaign straddles the lgatr 1.x -> 2.0 boundary, so the
       top-tagging rows and the post-merge rows come from different code; a tag names the

@@ -405,24 +405,36 @@ path is version-sensitive, so smoke-test it on your GPU first).
 ## 8. Multiple trials and the results table
 
 - **One `run.py` invocation = one trial** (`run_idx=0`) and emits one table row.
-- **Several trials of the *same* model** — the simple way is to submit the identical
-  command again. `utils/aggregate_table.py` groups run directories by
-  `(task, model, frames, kNN)` and forms `mean ± std` across them, so three plain
-  `sbatch train.sbatch tag_X` submissions give you a `[3 trials]` row with no warm start,
-  no shared directory, and no flag to forget. Each run's own log keeps reporting *that*
-  run, which is what it should say; the ensemble number appears when you aggregate.
-  Raw per-trial values stay in the individual run dirs, so the statistic can be changed
-  (or a bad trial dropped) later without retraining.
-- **The in-run accumulator still works** and is the older path: re-run the *same*
-  experiment as a **fresh-trial warm start** — point `-cp`/`-cn` at the
-  saved run config and pass `warm_start_idx=<prev run_idx> warm_start_load=false`. It
-  increments `run_idx`, shares the run directory, appends to
-  `runs/<exp>/<run>/table_metrics_*.json`, and starts from a **new random initialization**
-  with a fresh optimizer/scheduler. The final row then reads
-  `… & <iters> [N trials] & $acc ± σ$ & …`. Use it when you want the consolidated number
-  visible in a single run's log; prefer independent runs otherwise. Mixing the two for one
-  variant is safe — the aggregator refuses to merge a group that already contains an
-  in-run `mean ± std` row (it would double-count) and keeps the newest instead, with a note.
+- **Several trials of the *same* model — canonical for campaign/table rows: the
+  shared-dir fresh-trial warm start.** Re-run the *same* experiment as a **fresh-trial
+  warm start** — point `-cp`/`-cn` at the saved run config and pass
+  `warm_start_idx=<prev run_idx> warm_start_load=false`. It increments `run_idx`, shares
+  the run directory, appends this trial's raw scalars to
+  `runs/<exp>/<run>/table_metrics_*.json` (lineage-keyed: a later continue-training
+  *extends its parent's row* instead of faking an extra trial), and starts from a **new
+  random initialization** with a fresh optimizer/scheduler. The final row reads
+  `… & <iters> [N trials] & $acc ± σ$ & …`. This is canonical because the grouping is
+  *explicit* — a directory IS its ensemble: continuations are bookkept, a pinned seed is
+  caught at launch (degenerate-trials warning), and the failure mode of a forgotten flag
+  is a visible `[N−1 trials]`, never a silently wrong row. Raw per-trial values persist in
+  the JSON, so switching statistic or dropping a bad trial later needs no retraining.
+  Trials of one variant run sequentially, but at campaign scale that does not stretch the
+  makespan (many variants × few GPUs: the queue, not one model's 3-trial chain, is the
+  critical path).
+- **Independent run dirs also group at aggregation** — submit the identical command N
+  times (plain `sbatch train.sbatch tag_X`); `utils/aggregate_table.py` groups run
+  directories by `(task, model, frames, kNN)` and forms `mean ± std` across them at parse
+  time, and each run's own log keeps reporting *that* run. Use this where wall-clock for
+  ONE variant matters (three parallel jobs beat three chained ones — e.g. adding a single
+  row late), or as recovery when trials were accidentally scattered across dirs. Its limit
+  is that the grouping is *inferred* from the table key, so the aggregator refuses to pool
+  (keeps the newest, with a note) whenever inference could lie: a group already containing
+  an in-run `mean ± std` row (double-counting), disagreeing `iters`/`params`/`FLOPs` cells
+  (different experiments sharing a key — budget/width ablations), or identical metrics
+  across dirs (a pinned seed produced clones; nothing warns at launch on this path, unlike
+  warm starts). One case it cannot detect: a deliberate continue-training run in its *own*
+  dir looks like a fresh trial — keep continuations in their parent's dir (lineage handles
+  them) or outside the aggregated tree.
   **Do NOT use a plain warm start (the `warm_start_load=true` default) for trials**: that
   reloads the previous model *and* the finished scheduler, so the "trial" is a correlated
   continuation of the same training — and the reloaded cosine steps past `T_max`, ramping

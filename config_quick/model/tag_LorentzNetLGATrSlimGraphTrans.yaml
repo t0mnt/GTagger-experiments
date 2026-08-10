@@ -1,5 +1,6 @@
 _target_: experiments.tagging.wrappers.LorentzNetLGATrSlimGraphTransWrapper
 out_channels: null              # init_physics -> num_outputs
+compile: false  # torch.compile(net, dynamic=True); quick tree stays eager; compile smoke is env-gated
 
 net:
   _target_: experiments.baselines.lorentznetlgatrslimgraphtrans.LorentzNetLGATrSlimGraphTrans

@@ -14,13 +14,13 @@ GraphGPS primitive replaced by its slim equivariant counterpart:
     local MPNN                LorentzNet edge conv (LorentzNetKNNBlock): invariant
                               edge features (|Δp|², <p_i,p_j>) -> SUM scalar /
                               MEAN vector aggregation, with the LorentzNet phi_m gate
-    global attention          lgatr.nets.lgatr_slim.SelfAttention (Lorentz attn)
-    FFN                       lgatr.nets.lgatr_slim.MLP (gated-linear-unit MLP)
-    BatchNorm/LayerNorm       lgatr.nets.lgatr_slim.RMSNorm -- the ONLY norm slim
+    global attention          lgatr.layers.SlimSelfAttention (Lorentz attn)
+    FFN                       lgatr.layers.SlimMLP (gated-linear-unit MLP)
+    BatchNorm/LayerNorm       lgatr.layers.SlimRMSNorm -- the ONLY norm slim
                               provides (a scale-only, invariant RMS rescale of v+s;
                               there is no slim LayerNorm, and centering vectors would
                               break equivariance)
-    Dropout                   lgatr.nets.lgatr_slim.Dropout (shared mask over a
+    Dropout                   lgatr.layers.SlimDropout (shared mask over a
                               vector's 4 components; plain dropout on scalars)
     residual / sum            vector + scalar addition (linear -> equivariant)
     mean-pool readout         mean over real tokens of the invariant scalar stream
@@ -47,11 +47,13 @@ Input convention (set by the wrapper, channels-first, four-momenta (px, py, pz, 
 
 import torch
 import torch.nn as nn
-from lgatr.nets.lgatr_slim import MLP as SlimMLP
-from lgatr.nets.lgatr_slim import Dropout as SlimDropout
-from lgatr.nets.lgatr_slim import Linear as SlimLinear
-from lgatr.nets.lgatr_slim import RMSNorm as SlimRMSNorm
-from lgatr.nets.lgatr_slim import SelfAttention as SlimSelfAttention
+from lgatr.layers import (  # shallow public path (M1: survived v2's own module moves)
+    SlimDropout,
+    SlimLinear,
+    SlimMLP,
+    SlimRMSNorm,
+    SlimSelfAttention,
+)
 
 from experiments.baselines.lorentznetlgatrslimgraphtrans import (
     LorentzNetKNNBlock,
@@ -65,6 +67,7 @@ class LorentzNetSlimGPSLayer(nn.Module):
 
     def __init__(self, v_channels, s_channels, num_heads, c_weight, use_phi_m,
                  attn_ratio, mlp_ratio, num_layers_mlp, nonlinearity, dropout_prob,
+                 nonlinearity_v="sigmoid",  # v2-native GLU vector-gate default; None = v1 routing (parity mode)
                  n_node_attr=0, attn_dropout=0.0):
         super().__init__()
         # local branch: LorentzNet edge conv (carries its own internal residual).
@@ -85,10 +88,11 @@ class LorentzNetSlimGPSLayer(nn.Module):
         # FFN: raw slim MLP (gated-linear-unit)
         self.mlp = SlimMLP(
             v_channels=v_channels, s_channels=s_channels, nonlinearity=nonlinearity,
+            nonlinearity_v=nonlinearity_v,
             mlp_ratio=mlp_ratio, num_layers=num_layers_mlp, dropout_prob=None,
         )
         # equivariant norm (stateless -> shared) + dropout
-        self.norm = SlimRMSNorm()
+        self.norm = SlimRMSNorm(v_channels, s_channels, elementwise_affine=False)  # M5: shared across call sites -> must stay stateless (affine off)
         self.dropout = SlimDropout(dropout_prob if dropout_prob is not None else 0.0)
         # attention-WEIGHTS dropout: lgatr's sdp_attention forwards dropout_p to one sdpa
         # call over concatenated (mv, s), so one joint mask keeps the streams consistent and
@@ -97,9 +101,12 @@ class LorentzNetSlimGPSLayer(nn.Module):
         self.attn_dropout = attn_dropout
 
     def forward(self, v, s, idx, nbr_mask, attn_mask, node_attr=None):
-        # v: (B, P, V, 4); s: (B, P, S); slim layers take (vectors, scalars)
+        # v: (B, P, 4, V) CHANNEL-LAST (v2 slim block layout, M8); s: (B, P, S).
+        # The LorentzNet local branch is the sole channel-first consumer -> transpose
+        # only around it instead of at seven slim call sites.
         # ---- local branch (Eq. 9): LorentzNet edge conv owns its residual ----
-        s_loc, v_loc = self.gnn(s, v, idx, nbr_mask, node_attr=node_attr)  # gnn(h, x) -> (h_new, x_new)
+        s_loc, v_loc = self.gnn(s, v.transpose(-1, -2), idx, nbr_mask, node_attr=node_attr)
+        v_loc = v_loc.transpose(-1, -2)
         v_M, s_M = self.norm(v_loc, s_loc)                  # external norm only
 
         # ---- global branch (Eq. 10): slim Lorentz attention ----
@@ -133,6 +140,7 @@ class LorentzNetLGATrSlimGraphGPS(nn.Module):
                  mlp_ratio=2,
                  num_layers_mlp=2,
                  nonlinearity="gelu",
+                 nonlinearity_v="sigmoid",
                  dropout_prob=None,
                  attn_dropout=0.0,
                  # static kNN graph + per-layer LorentzNet edge conv
@@ -181,6 +189,7 @@ class LorentzNetLGATrSlimGraphGPS(nn.Module):
             LorentzNetSlimGPSLayer(
                 hidden_v_channels, hidden_s_channels, num_heads, c_weight, use_phi_m,
                 attn_ratio, mlp_ratio, num_layers_mlp, nonlinearity, dropout_prob,
+                nonlinearity_v=nonlinearity_v,
                 n_node_attr=in_s_channels if use_node_attr else 0,
                 attn_dropout=attn_dropout,
             )
@@ -234,7 +243,7 @@ class LorentzNetLGATrSlimGraphGPS(nn.Module):
         # equivariant input projection, then interleaved GPS layers. The raw input
         # scalars ride along as per-layer node attributes (official LorentzNet's
         # node_attr), matching the CGENN GPS sibling's raw re-injection.
-        v_h, s_h = self.linear_in(x_vec, s_in)                  # (B,P,V,4), (B,P,S)
+        v_h, s_h = self.linear_in(x_vec.transpose(-1, -2), s_in)  # -> (B,P,4,V) channel-last (M8)
         node_attr = s_in if self.use_node_attr else None
         attn_mask = mask_b[:, None, None, :]                    # (B, 1, 1, P) bool, True = real
         for layer in self.layers:

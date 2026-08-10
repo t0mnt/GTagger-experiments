@@ -52,7 +52,7 @@ from dataclasses import replace
 
 import torch
 import torch.nn as nn
-from lgatr import embed_vector, get_num_spurions, get_spurions
+from lgatr import PrimitivesConfig, embed_vector, get_num_spurions, get_spurions
 from lgatr.layers.attention.config import SelfAttentionConfig
 from lgatr.layers.attention.self_attention import SelfAttention
 from lgatr.layers.dropout import GradeDropout
@@ -77,6 +77,7 @@ class CGENNLGATrGPSLayer(nn.Module):
                  cgenn_aggregation, cgenn_layer_type, cgenn_normalization_init,
                  increase_hidden_channels_attention, increase_hidden_channels_mlp,
                  num_hidden_layers_mlp, head_scale, multi_query, activation, dropout_prob,
+                 primitives,
                  edge_attr_x_dim=0, node_attr_x_dim=0, node_attr_h_dim=0, attn_dropout=0.0):
         super().__init__()
         # ---- local branch: one CGENN message-passing layer. residual=False (the GPS layer
@@ -97,21 +98,22 @@ class CGENNLGATrGPSLayer(nn.Module):
         #      dropout -> the GPS layer applies the external dropout) ----
         attn_cfg = replace(
             SelfAttentionConfig(num_heads=num_heads, multi_query=multi_query,
-                                increase_hidden_channels=increase_hidden_channels_attention,
+                                attn_ratio=increase_hidden_channels_attention,
                                 head_scale=head_scale),
             in_mv_channels=mv_channels, out_mv_channels=mv_channels,
             in_s_channels=s_channels, out_s_channels=s_channels,
             output_init="small", dropout_prob=None,
         )
-        self.attention = SelfAttention(attn_cfg)
+        self.attention = SelfAttention(attn_cfg, primitives)  # M10: required on v2
         # ---- FFN: raw GeoMLP (geometric product first) ----
         mlp_cfg = replace(
-            MLPConfig(activation=activation,
-                      increase_hidden_channels=increase_hidden_channels_mlp,
-                      num_hidden_layers=num_hidden_layers_mlp),
+            MLPConfig(nonlinearity=activation,
+                      mlp_ratio=increase_hidden_channels_mlp,
+                      # v2 counts ALL layers: v1 num_hidden_layers=N == v2 num_layers_mlp=N+1
+                      num_layers_mlp=num_hidden_layers_mlp + 1),
             mv_channels=mv_channels, s_channels=s_channels, dropout_prob=None,
         )
-        self.mlp = GeoMLP(mlp_cfg)
+        self.mlp = GeoMLP(mlp_cfg, primitives)  # M10: required on v2
         # ---- equivariant norm (stateless -> shared) + dropout ----
         self.norm = EquiLayerNorm()
         self.dropout = GradeDropout(dropout_prob if dropout_prob is not None else 0.0)
@@ -192,7 +194,10 @@ class CGENNLGATrGraphGPS(nn.Module):
                  dropout_prob: float = None,
                  attn_dropout: float = 0.0,
                  head_layers: int = 2,
-                 **kwargs):
+                 primitives_sparse_gp: bool = True,  # v2-native; parity tier-1 sets False
+                 gp_impl: str = "einsum",  # einsum (BIT ref) | matmul | sparse -- docs/cgenn-compile.md
+                 **kwargs,
+                 ):
         super().__init__()
         if kwargs:
             # hydra struct mode does not protect against `+model.net.<typo>=x`;
@@ -201,6 +206,9 @@ class CGENNLGATrGraphGPS(nn.Module):
         if knn_metric not in ("deltaR", "minkowski"):
             raise ValueError(f"knn_metric must be 'deltaR' or 'minkowski', got '{knn_metric}'")
         self.algebra = CliffordAlgebra((1.0, -1.0, -1.0, -1.0))
+        if gp_impl not in ("einsum", "matmul", "sparse"):
+            raise ValueError(f"gp_impl must be einsum|matmul|sparse, got {gp_impl!r}")
+        self.algebra.gp_impl = gp_impl
         self.k = k
         self.knn_metric = knn_metric
         self.spurion_kwargs = dict(
@@ -209,8 +217,10 @@ class CGENNLGATrGraphGPS(nn.Module):
         self.num_spurions = get_num_spurions(beam_spurion, add_time_spurion, beam_mirror=beam_mirror)
 
         # input embedding: (1 particle + num_spurions) mv channels + scalars -> hidden
+        self.primitives = PrimitivesConfig(sparse_gp=primitives_sparse_gp)  # M10: one shared config threaded to every layer
         self.linear_in = EquiLinear(
             in_mv_channels=1 + self.num_spurions, out_mv_channels=hidden_mv_channels,
+            primitives=self.primitives,
             in_s_channels=in_s_channels, out_s_channels=hidden_s_channels,
         )
         # static relative-momentum edge features = [p_i - p_j, raw_i, raw_j] over the raw
@@ -230,6 +240,7 @@ class CGENNLGATrGraphGPS(nn.Module):
                 cgenn_aggregation, cgenn_layer_type, cgenn_normalization_init,
                 increase_hidden_channels_attention, increase_hidden_channels_mlp,
                 num_hidden_layers_mlp, head_scale, multi_query, activation, dropout_prob,
+                self.primitives,
                 edge_attr_x_dim=edge_attr_x_dim,
                 node_attr_x_dim=node_attr_x_dim, node_attr_h_dim=node_attr_h_dim,
                 attn_dropout=attn_dropout,
@@ -256,7 +267,15 @@ class CGENNLGATrGraphGPS(nn.Module):
     def no_weight_decay(self):
         return cgenn_gain_and_bias_names(self)
 
-    def forward(self, x, v, mask, points):
+    def build_edges(self, v, mask, points):
+        """Static kNN edges from raw inputs -- eager by design; see the GraphTrans twin."""
+        fourmomenta_flat = v if (self.knn_metric == "minkowski" and self.k is not None) else None
+        return generate_edges_vectorized(
+            mask, points, self.k, points.shape[1], v.device,
+            metric=self.knn_metric, fourmomenta=fourmomenta_flat,
+        )
+
+    def forward(self, x, v, mask, points, edges=None):
         # x: (B, P, C_s); v: (B, P, 4) [E, px, py, pz]; mask: (B, P); points: (B, P, 2)
         B, P, _ = x.shape
         device = x.device
@@ -269,11 +288,8 @@ class CGENNLGATrGraphGPS(nn.Module):
         s = x
 
         # Stage 2: static kNN graph (native dtype; shared by every layer's local branch)
-        fourmomenta_flat = v if (self.knn_metric == "minkowski" and self.k is not None) else None
-        edges = generate_edges_vectorized(
-            mask, points, self.k, P, device,
-            metric=self.knn_metric, fourmomenta=fourmomenta_flat,
-        )
+        if edges is None:
+            edges = self.build_edges(v, mask, points)
 
         # Stage 2b: static relative-momentum edge features from the RAW input multivectors
         # (before linear_in), [p_i - p_j, raw_i, raw_j], shared across every layer's local

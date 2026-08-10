@@ -821,6 +821,21 @@ python run.py -cp ~/GTagger-experiments/runs/EXPNAME/RUNNAME -cn config \
 in the run dir carries everything else.) The run's table row consolidates to
 `[N trials] $mean ± std$` automatically.
 
+**How the error bars are made (and why this mechanism is the canonical one — GUIDE §8):**
+each trial appends its raw scalars to `table_metrics_<split>.json` in the shared run dir,
+lineage-keyed (a later continue-training *extends its parent's row* instead of counting as
+an extra trial); the row's `mean ± std` is the sample std (n−1) over those rows, recomputed
+whenever a trial lands. Because the raw per-trial values persist in the JSON, the statistic
+can be changed (median, min–max band) or a bad trial dropped later without retraining. The
+grouping is *explicit* — the directory IS the ensemble — so nothing can silently pool
+inequivalent runs, and a pinned `seed` is caught at launch (with `seed=null`, the default,
+every trial draws a fresh init; batch order stays sampler-seeded and identical across
+trials). Plain independent submissions of the same variant also work: the aggregator (§8)
+groups them by `(task, model, frames, kNN)` at parse time and refuses to pool whenever that
+inference could lie (disagreeing iters/params/FLOPs, identical-metric seed clones, or a mix
+with an in-run-aggregated row). Use independent dirs when wall-clock for ONE variant
+matters (three parallel jobs) — for campaign rows, prefer the warm-start mechanism above.
+
 ## 7. The full campaign (which models, and which need the LR finder)
 
 The study's grid is the 8 hybrids. **All 8 need §4** (their recipes deliberately leave
@@ -930,3 +945,25 @@ irreplaceable parts.
 
 Alternatives to raw SSH that CCV supports, if you prefer them: Open OnDemand (browser
 terminal + Jupyter at the CCV portal) and VS Code Remote-SSH (docs: "Remote IDE").
+
+## Appendix: upgrading the environment lgatr 1.4.4 → 2.0 (the dev branch requirement)
+
+On the login node, inside the venv/overlay you certified in §2/§2.9:
+
+```bash
+pip install --upgrade 'lgatr[xformers-attention]>=2.0.0'
+pip uninstall -y opt_einsum einops   # optional: v2 dropped both requirements (torch-only);
+                                     # keep them if any OTHER package in the env needs them
+python -c "import lgatr; print(lgatr.__version__)"   # expect 2.0.x
+```
+
+Nothing else on dev needs a new install — the compile program, gp_impl, and trial
+machinery are pure-repo changes on the packages you already have (torch, PyG, xformers,
+weaver, lloca). Then re-certify per §2.9 (`utils/env_check.py`) — the CUDA-gated backend
+checks must pass on a COMPUTE node — and run the repo suite once
+(`python -m pytest tests/ -q`): expected state is ZERO failures (the old "15 known
+pelican-FLOPs environment failures" were a misdiagnosis — unforced nested compile knobs
+in the FLOPs harness, fixed in the final operator round; migration log has the
+correction); the lgatr144 parity file (`test_lgatr_migration_parity.py`)
+is the migration's own acceptance gate and must be fully green. The `.sif` route (§2) is
+now a standard PyPI install — no source build needed for 2.0.

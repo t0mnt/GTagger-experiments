@@ -240,3 +240,65 @@ training smoke (`PlainGraphTrans + learnedpd`) ran end-to-end through evaluation
       shared block (`h_msg = m.sum(-1)`, commit `8a7b5fc`) and inherited by GraphGPS; both now match
       official LorentzNet (sum scalars / mean vectors).
 
+---
+
+## Pre-existing defects on `main` — found by the dev-branch audit, NOT introduced by it
+
+Recorded here rather than in `todo.md`: `todo.md` is the dev/campaign work queue, and
+these are `main`-side defects outside this branch's scope. Each was verified present on
+`origin/main` as well as dev. Each changes an existing recipe, so each wants its own
+commit, its own test, and its own decision — not a merge rider.
+
+### PRE-EXISTING (main-side) bug: finetune LGATr branch ignores weight_decay
+
+Found in the final audit; **not introduced by the dev PR** (`git log origin/main` shows
+the file's grouping predates it), so deliberately NOT fixed inside the merge — recorded
+for a separate, testable change because it silently alters an existing recipe.
+
+`experiments/tagging/finetuneexperiment.py::_init_optimizer`, the
+`LGATrWrapper`/`LGATrSlimWrapper` branch builds its param groups with `lr` only — no
+`weight_decay` key. No optimizer in `base_experiment._init_optimizer` passes a top-level
+`weight_decay=`, so those groups fall back to **torch's own default**: 0.01 for AdamW,
+0 for Adam/RAdam — never `cfg.training.weight_decay`. So finetuning an L-GATr backbone
+silently ignores the configured decay (and, with AdamW, decays the norm gains that the
+H15 exemption exists to protect). The ParT and Transformer branches in the same function
+set the key correctly, so this is a per-branch omission, not a design choice.
+
+Fix when taken: add `"weight_decay": self.cfg.training.weight_decay` (and the framesnet
+variant where applicable) to that branch, plus a test asserting every group returned by
+each `_init_optimizer` branch carries an explicit `weight_decay`. Note it CHANGES
+finetune results, so it wants its own commit and a line in the methods notes.
+
+### PRE-EXISTING (main-side) EMA / dtype-ordering defects — recorded, not fixed here
+
+All four verified on `origin/main` as well as dev, so they are NOT introduced by this PR
+and are deliberately left out of the merge (each changes an existing recipe and wants its
+own commit + test). Found by the final audit's aliasing/state sweep.
+
+1. **Finetune EMA is silently disabled.** `finetuneexperiment.py` does
+   `self.ema = ExponentialMovingAverage(...).to(self.device)`, but `torch_ema`'s `.to()`
+   returns `None` — so `self.ema` is `None` immediately after logging "Re-initializing
+   EMA". Every `if self.ema is not None` then takes the non-EMA branch: no updates, no
+   EMA validation, `"ema": None` in every finetune checkpoint. `base_experiment` does it
+   correctly (construct, then `.to()` on a separate line). One-line fix.
+2. **EMA shadow params are float32 under `use_float64: true`.** `init_model` builds the
+   EMA *before* `self.model.to(dtype=self.dtype)`, and torch_ema's `.to()` is called with
+   device only, so the shadows stay fp32 and `sub_`/`copy_to` silently truncate. Fix =
+   build the EMA after the dtype conversion (or pass dtype).
+3. **fp64 checkpoints truncate to fp32 on restore.** `load_state_dict` runs on the
+   freshly-instantiated fp32 model and only afterwards is the model widened; `copy_` casts
+   down and the widening cannot recover it (measured max rel error 5.4e-08 = fp32 eps).
+   Affects warm-start continuation, eval-reload and finetune backbone loading. Fix =
+   `.to(dtype)` before `load_state_dict`.
+4. **Amplitude standardization overwritten after warm start.** `AmplitudeWrapper` /
+   `GraphNetWrapper.init_standardization` have no `inited` guard (every tagging
+   equivalent does), and `init_data` runs after `init_model` has loaded the checkpoint.
+
+Also recorded (inherited from lloca/pelican, not our code): `self.__class__ =
+torch.compile(self.__class__)` in the ParT port and in `pelican/nets.py` mutates the
+CLASS in place, so one instance with `compile=True` routes every instance of that class
+in the process through dynamo — including instances whose own config says false. This is
+why the FLOPs harness's force-eager walk can be defeated within a single pytest process
+if a pelican model was built compiled earlier in the run. Not currently observed as a
+failure (the FLOPs suite passes 64/0/36), but it makes process-order a hidden variable.
+
