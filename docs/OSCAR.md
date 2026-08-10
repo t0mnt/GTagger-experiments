@@ -131,6 +131,18 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc '
   pip install -r /tmp/reqs-oscar.txt
 '
 
+# Every entry point in this repo runs `source venv/bin/activate` INSIDE the container, so the
+# venv's activate script is the one place that covers interactive work, find_lr and beta-PERF
+# alike. Put the Triton driver path there: inductor builds CUDA kernels through Triton, which
+# finds libcuda.so by parsing `ldconfig -p` -- and inside the NGC image that parse comes up
+# empty (the stub lives in /usr/local/cuda/compat/lib), so the FIRST torch.compile of any job
+# dies with "InductorError: AssertionError: libcuda.so cannot found!". 16 of 18 model configs
+# ship compile: true, so untreated this takes out most of the campaign, minutes into each job.
+# A host-side export does NOT survive into the container -- measured -- which is why it goes
+# here and not in your .bashrc. (Batch jobs are covered separately by docs/oscar-train.sbatch.)
+grep -qF 'TRITON_LIBCUDA_PATH' venv/bin/activate || \
+  echo 'export TRITON_LIBCUDA_PATH=/usr/local/cuda/compat/lib' >> venv/bin/activate
+
 # sanity: torch must still be the CONTAINER's own build -- a local +cuXXX / nvXX.XX string
 # (e.g. 2.8.0a0+...nv25.08 on the 25.08 image, or 2.3.0a0...nv24.3 on 24.03), NOT a plain
 # pip wheel (a bare "2.11.0+cu130"-style version here means a LEAKED pip torch is answering
