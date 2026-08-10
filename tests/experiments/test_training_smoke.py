@@ -88,6 +88,19 @@ def _build_production(model):
                    "tag_slim": "model.net.compile=false"}.get(model, "model.compile=false")
     if compile_off and not KEEP_COMPILE:
         overrides.append(compile_off)
+    # EXTRA overrides, so the go/no-go can be pointed at the configuration the campaign
+    # will actually run. The shipped configs all carry `framesnet: identity`, so without
+    # this the smoke test cannot cover learned frames -- and learned frames are exactly
+    # where the worst bug of this program lived (the PairEmbed twins computed pair
+    # features grad-enabled where eager uses no_grad; under a LEARNED framesnet the
+    # backward through sqrt(0) NaN'd the framesnet on step one).
+    #     CGENN_SMOKE_OVERRIDES="model/framesnet=learnedpd" \
+    #     CGENN_COMPILE_GATES=1 pytest tests/experiments/test_training_smoke.py -q -s \
+    #         -k "tag_ParT or tag_particlenet or tag_transformer or Plain or ParticleNetParT"
+    # Frames apply to the LLoCa-canonicalized family ONLY: the equivariant models
+    # (CGENN/LorentzNet hybrids, tag_lgatr, tag_slim) are equivariant by construction and
+    # their wrappers require IdentityFrames, so select with -k rather than running all 16.
+    overrides += os.environ.get("CGENN_SMOKE_OVERRIDES", "").split()
     with hydra.initialize_config_dir(config_dir=str(root / "config"), version_base=None):
         cfg = hydra.compose(config_name="toptagging", overrides=overrides)
     torch.manual_seed(0)
