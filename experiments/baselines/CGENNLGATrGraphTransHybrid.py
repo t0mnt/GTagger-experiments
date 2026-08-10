@@ -10,7 +10,7 @@ from torch import nn
 # CGENN machinery: imported from the single source of truth rather than duplicated here.
 # The copies this replaces had already drifted twice -- the b() device fix and the
 # _as_int_grades coercion each reached only one of the two -- which is why the import is
-# the right end state. BIT (tests/experiments/test_cgenn_hybrid_compile.py) proves the
+# the right end state. BIT (docs/cgenn-compile.md, Stage 3) proves the
 # swap changed nothing.
 from experiments.baselines.cgenn.cliffordalgebra import (
     CliffordAlgebra,

@@ -316,8 +316,8 @@ class TransformerWrapper(AggregatedTaggerWrapper):
         if attention_backend == "flex":
             compile_flex_attention(package_name="lloca")
         if compile:
-            # compile the net only, net-level like tag_lgatr (Stage-4 gates:
-            # tests/experiments/test_nonequi_compile.py)
+            # compile the net only, net-level like tag_lgatr (recorded:
+            # docs/cgenn-compile.md, Stage 4)
             self.net.compile(dynamic=True)
 
     def forward(self, embedding):
@@ -440,7 +440,7 @@ class ParticleNetWrapper(AggregatedTaggerWrapper):
         self.net = net(input_dims=self.in_channels, num_classes=self.out_channels)
         if compile:
             # compile the net only; dense top-k kNN is shape-static and traces clean
-            # (Stage-4 gates: tests/experiments/test_nonequi_compile.py)
+            # (recorded: docs/cgenn-compile.md, Stage 4)
             self.net.compile(dynamic=True)
 
     def forward(self, embedding):
@@ -624,7 +624,7 @@ class ParTWrapper(TaggerWrapper):
             # compiled ParT runs the DENSE pair path: the default sparse path gathers
             # real pairs via nonzero (data-dependent by design, untraceable); the dense
             # twin is the same function at reassociation level (measured 2.2e-15, TOL
-            # gate bar 1e-10 -- tests/experiments/test_nonequi_compile.py)
+            # gate bar 1e-10 -- docs/cgenn-compile.md, Stage 4)
             if hasattr(self.net, "pair_embed") and self.net.pair_embed is not None:
                 self.net.pair_embed.sparse_eval = False
                 self.net.pair_embed.compiled_dense = True
@@ -743,7 +743,7 @@ class LorentzNetWrapper(nn.Module):
         self.net = net(n_class=out_channels)
         if compile:
             # compile the net only; the wrapper's edge building stays eager by design
-            # (Stage-2 gates: tests/experiments/test_lorentznet_compile.py)
+            # (recorded: docs/cgenn-compile.md, Stage 2)
             self.net.compile(dynamic=True)
 
         self.framesnet = framesnet  # not actually used
@@ -1039,7 +1039,7 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         self.net = net(num_classes=out_channels)
         if compile:
             # compile the net only; edge building is hoisted in forward (data-dependent
-            # nonzero, eager by design -- tests/experiments/test_cgenn_hybrid_compile.py)
+            # nonzero, eager by design -- docs/cgenn-compile.md, Stage 3)
             self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
@@ -1090,7 +1090,7 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
         self.net = net(num_classes=out_channels)
         if compile:
             # compile the net only; edge building is hoisted in forward (data-dependent
-            # nonzero, eager by design -- tests/experiments/test_cgenn_hybrid_compile.py)
+            # nonzero, eager by design -- docs/cgenn-compile.md, Stage 3)
             self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
@@ -1151,8 +1151,8 @@ class ParticleNetParTGraphTransWrapper(TaggerWrapper):
         self.compute_jet_frames = True
         if compile:
             # route the identity-frames nn.MHA blocks and the tril PairEmbed through
-            # their compiled twins (eager default untouched, TOL-gated -- Stage-4 gates:
-            # tests/experiments/test_nonequi_compile.py)
+            # their compiled twins (eager default untouched, TOL-gated -- recorded:
+            # docs/cgenn-compile.md, Stage 4)
             for m in self.net.modules():
                 if hasattr(m, "compiled_attention"):
                     m.compiled_attention = True
@@ -1233,7 +1233,7 @@ class LorentzNetLGATrSlimGraphTransWrapper(nn.Module):
         self.net = net(num_classes=out_channels)
         if compile:
             # compile the net only (dense top-k kNN inside the net is shape-static and
-            # traces clean -- tests/experiments/test_lorentznet_hybrid_compile.py)
+            # traces clean -- docs/cgenn-compile.md, Stage 2)
             self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
@@ -1289,7 +1289,7 @@ class LorentzNetLGATrSlimGraphGPSWrapper(nn.Module):
         self.net = net(num_classes=out_channels)
         if compile:
             # compile the net only (dense top-k kNN inside the net is shape-static and
-            # traces clean -- tests/experiments/test_lorentznet_hybrid_compile.py)
+            # traces clean -- docs/cgenn-compile.md, Stage 2)
             self._recompute_views = True  # see forward(): AOT view-saving vs inductor
             self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
@@ -1368,8 +1368,8 @@ class PlainGraphTransWrapper(TaggerWrapper):
         # the prepended class token rides in the covariant jet frame -> request it
         self.compute_jet_frames = True
         if compile:
-            # compile the net only; static kNN + torch-MHA trace clean (Stage-4 gates:
-            # tests/experiments/test_nonequi_compile.py).
+            # compile the net only; static kNN + torch-MHA trace clean (recorded:
+            # docs/cgenn-compile.md, Stage 4).
             # compiled_knn: keep the kNN k a python int -- the eager cap against a symbolic
             # P is what inductor cannot lower on the BACKWARD graph (see knn()'s docstring).
             # Provably identical wherever P - 1 >= k, which is every regime we run.
@@ -1441,8 +1441,8 @@ class PlainGraphGPSWrapper(TaggerWrapper):
         if compile:
             # compile the net only. KNOWN SPLITS: the masked BatchNorm over real nodes
             # (MaskedNorm, norm='batch') is data-dependent by design -> a pinned number
-            # of documented graph splits, not a clean single graph (Stage-4 gates:
-            # tests/experiments/test_nonequi_compile.py, BREAK_BARS)
+            # of documented graph splits, not a clean single graph (recorded:
+            # docs/cgenn-compile.md, Stage 4)
             self.net.compile(dynamic=True)
 
     def forward(self, embedding):
@@ -1511,7 +1511,7 @@ class ParticleNetParTGraphGPSWrapper(TaggerWrapper):
             # compiled twins (eager default untouched, TOL-gated). KNOWN SPLITS: the
             # masked BatchNorm over real nodes (MaskedNorm, norm='batch') is
             # data-dependent by design -> a pinned number of documented graph splits
-            # (Stage-4 gates: tests/experiments/test_nonequi_compile.py, BREAK_BARS)
+            # (recorded: docs/cgenn-compile.md, Stage 4)
             for m in self.net.modules():
                 if hasattr(m, "compiled_attention"):
                     m.compiled_attention = True

@@ -255,7 +255,7 @@ Fixtures are trivial compared to the lgatr migration: eager outputs on a fixed s
 
 ## 4. Task split, prompts, operator gates
 
-> **Execution is driven from `docs/execution-playbook.md`** (steps C-α/C-β there, plus the LorentzNet Stage-2 and non-equivariant extensions this document's policy section calls for). It carries the canonical prompt copies and the exact operator check commands. On divergence, sync in a dedicated commit before running.
+> **The execution playbook that drove steps C-α/C-β has been deleted** (`cleanup.md`, post-merge wipe) — session scaffolding, historical once the branch landed. The task split below is the record of what was run; the Log section carries every measured number it produced.
 
 ### Task α — rewrites + knob + gates (CPU web session)
 

@@ -9,9 +9,10 @@ compile: true                   # torch.compile(net, dynamic=True). Routes the i
                                 # reference (the tril-dense path -- there is no sparse variant here).
                                 # Measured compiled-vs-eager in TRAIN mode: 3.1e-15 outputs, 5.6e-13 BN
                                 # running buffers; eval <=4e-15. Clean graph (0 breaks) and backward
-                                # verified (85/85 params, finite grads). Pinned by test_nonequi_compile:
-                                # BREAK_BARS, test_train_mode_differential, test_compiled_backward,
-                                # test_compile_true_is_backward_verified.
+                                # verified (85/85 params, finite grads). Numbers recorded in
+                                # docs/cgenn-compile.md (Log, Stage 4); the standing guards are
+                                # test_compile_posture.py -- test_compile_true_is_backward_verified
+                                # and test_train_mode_differential.
 
 net:
   _target_: experiments.baselines.particlenettransformer.ParticleNetParTGraphTrans

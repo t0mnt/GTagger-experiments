@@ -9,9 +9,12 @@ compile: true                   # torch.compile(net, dynamic=True). Routes PairE
                                 # the eager reference multiset -- the lower-triangular REAL pairs of the
                                 # sparse path. Measured compiled-vs-eager in TRAIN mode: 2.3e-15 outputs,
                                 # 1.1e-14 BN running buffers; eval <=4e-15. Clean graph (0 breaks) and
-                                # backward verified (217/217 params, finite grads). Pinned by
-                                # test_nonequi_compile: BREAK_BARS, test_train_mode_differential,
-                                # test_compiled_backward, test_compile_true_is_backward_verified.
+                                # backward verified (217/217 params, finite grads). Numbers recorded
+                                # in docs/cgenn-compile.md (Log, Stage 4); the standing guards are
+                                # test_compile_posture.py -- test_compile_true_is_backward_verified
+                                # and test_train_mode_differential. (The BREAKS/RECOMP gates that
+                                # first measured this were port instruments, deleted post-merge per
+                                # cleanup.md; re-record fixtures before any refactor here.)
 
 net:
  _target_: experiments.baselines.particletransformer.ParticleTransformer

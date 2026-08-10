@@ -189,6 +189,25 @@ there is no longer any ordering constraint on the fixture deletion.
 - `todo.md` (446 lines) — the §4b-* chain is a work queue, not documentation. Each entry
   is deleted as it is completed, not archived.
 
+## DONE 2026-08-10: the first half of step 7
+
+The port instruments and their fixture packs are **deleted** (43 MB): the five gate files,
+`tests/fixtures/{cgenn,cgenn_hybrid,lorentznet,lorentznet_hybrid,nonequi}_compile/`, and
+`docs/execution-playbook.md`. The 14 shipped citations below were repointed in the same
+commit, at `docs/cgenn-compile.md`'s Log (per-stage numbers, including the 11/7 break
+counts) and at `test_compile_posture.py` (the standing posture guards).
+
+**Still present, on purpose** — each is needed by a step that has not run yet:
+`utils/bperf.py` (step 6), `tests/experiments/test_lgatr_v2_inventory.py` (step 2's env
+check), `tests/fixtures/lgatr144/` + the transplant half of the parity test (Gates G/H are
+still open), and this file. Delete them after step 6.
+
+Step 4's full gate battery can no longer run — the gate files are gone. That is the
+accepted cost of taking the deletion early: the battery's last verdict (760 passed /
+37 skipped / 0 failed) was recorded on the tree this merge produced, and `main`'s tree is
+byte-identical to the `dev` tip that was measured, so there is nothing left for it to tell
+you. `python -m pytest tests/ -q` still runs and still has to be green.
+
 ## Before you wipe: the citations that outlive their target
 
 Deleting the gate files does not only remove code — it invalidates the **references to

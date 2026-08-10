@@ -327,7 +327,7 @@ No hybrids, no direct block construction ⇒ no M8 surface except their `finetun
 
 ## 7. Task split and operator protocol (Claude Code web)
 
-> **Execution is driven from `docs/execution-playbook.md`** — it holds the canonical copies of these prompts *plus the exact check commands*, sequenced with the CGENN/LorentzNet/non-equivariant compile steps. Paste prompts from there. If this section and the playbook diverge, that is a bug: sync them in their own commit before running anything.
+> **The execution playbook that drove these steps has been deleted** (`cleanup.md`, post-merge wipe): it was session-operational scaffolding — prompt copies and per-step operator commands — and became historical the moment the branch landed. The prompts below are the record of what was run; the surviving operational documents are `cleanup.md` (merge → campaign) and `docs/OSCAR.md` (the campaign itself).
 
 Three sessions. The gates catch math mistakes; **the operator's job between sessions is to catch what no gate can self-police: gate tampering and scope creep.** Each task below has a copy-pasteable prompt and the operator checklist that gates the *next* task.
 
