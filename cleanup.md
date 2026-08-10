@@ -45,8 +45,10 @@ why below.
     pip install -r requirements.txt        # lgatr[xformers-attention]>=2.0.0, lloca>=1.3.6
     #
     #    OSCAR: NO .sif rebuild is needed -- lgatr/lloca are plain pip installs into the
-    #    venv, and v2 actually DROPPED the einops/opt_einsum/numpy requirements (torch
-    #    only). Re-run the venv install block of docs/OSCAR.md §2 verbatim, inside the
+    #    venv, and v2 DROPPED the einops/opt_einsum/numpy requirements (torch only) --
+    #    but einops is now pinned DIRECTLY in requirements.txt, because lloca imports it
+    #    without declaring it and was relying on lgatr 1.4.x to supply it. Do not remove
+    #    it. Re-run the venv install block of docs/OSCAR.md §2 verbatim, inside the
     #    container, with the same requirements filtering (it strips torch/xformers and the
     #    [xformers-attention] extras so the container's CUDA-tuned torch is not clobbered).
     #

@@ -61,7 +61,7 @@ below was checked by construction and by parameter inventory. Results:
 
 Execution split (Claude Code web containers are **CPU-only**):
 - **CPU/web:** fixture record/check, manifests, transplant checks, the 64-test suite, all porting.
-- **Cluster (OSCAR):** training-parity run (Gate G), throughput (Gate H), `.sif` rebuild — now standard PyPI installs; v2 also *dropped* the `einops`/`opt_einsum`/`numpy` requirements (torch-only), slightly simplifying the image.
+- **Cluster (OSCAR):** training-parity run (Gate G), throughput (Gate H), `.sif` rebuild — now standard PyPI installs; v2 also *dropped* the `einops`/`opt_einsum`/`numpy` requirements (torch-only). **That is not a simplification in practice**: `lloca` imports `einops` unconditionally without declaring it, and was relying on lgatr 1.4.x to supply it, so dropping it broke `import lloca` on every clean install (caught by CI post-merge). `einops` is now a direct pin in `requirements.txt`; `numpy` always was.
 
 ## 2. Verified inventory (v2.0.0 release + CHANGELOG + source diffs)
 
@@ -285,7 +285,7 @@ Both param counts and forward outputs *legitimately* differ across versions, so 
 - **H7 — checkpoints**: state_dict keys and (S2/S5) shapes change; migrate before the campaign so no checkpoint survives the boundary. Cross-version checkpoint porting is explicitly a **non-goal** — the transplant machinery is a verification instrument, never a model-delivery path.
 - **H8 — literal `None` s-channels**: direction corrected by Phase −1 (run-verified): v1 *raised* on a literal `None`, v2 tolerates it. Yaml `null`s are placeholders filled by `init_physics`; Gate A confirms no live `None` path — non-break.
 - **H9 — CPU-only web containers**: every parity gate is fp64-CPU by design; the container's xformers is ABI-mismatched (`--no-deps`), so gates must not touch CUDA kernels. The attention path is verified safe (§2.1): on CPU, `misc.py` materializes a dense `attn_mask` instead of passing xformers/flash kwargs, so both versions dispatch native sdpa and v2's off-CUDA backend gate is never hit.
-- **H10 — installs are now standard PyPI** (2.0.0 released); v2 even drops `einops`/`opt_einsum`/`numpy` deps. The `.sif` rebuild is routine — but rebuild it *once, before* the campaign, not between runs.
+- **H10 — installs are now standard PyPI** (2.0.0 released); v2 even drops `einops`/`opt_einsum`/`numpy` deps — but see the correction above: `einops` had to be pinned directly, because `lloca` imports it without declaring it. The `.sif` rebuild is routine — but rebuild it *once, before* the campaign, not between runs.
 - **H11 — compile expectations**: slim already compiled on 1.4.4 (keep `dynamic: true` via M9); the genuinely new capability is compile for **full-LGATr** + `warmup_caches` + compiled-xformers custom ops (attention no longer graph-breaks). Enabling it is a *post-migration* enhancement gated by Gate H numbers. For compile+DDP, note v2's own fixes here (unused-param `requires_grad_(False)`, tensor-ized norm eps/gains) — mirror that pattern in any local module you compile under DDP.
 - **H12 — the official migration doc is renames-only** (verified). The CHANGELOG is the behavioral source of truth. Port by both.
 - **H13 — `v_channels == 4` is the silent-alias width** for the M8 layout flip (transpose becomes shape-legal). All current widths differ from 4; keep fixtures and tests that way so layout mistakes stay loud.

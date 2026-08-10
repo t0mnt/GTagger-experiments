@@ -22,6 +22,11 @@ xformers # might be challenging to install, see https://github.com/facebookresea
 pelican-lite
 lgatr[xformers-attention]>=2.0.0  # upgraded to 2.0 (not backwards compatabible)
 lloca[xformers-attention]>=1.3.6  # jet_frames uses fn.mass_regularize (first in 1.3.6)
+einops  # REQUIRED, do not remove: lloca/equivectors/lgatr.py does an unconditional
+        # top-level `from einops import rearrange` but does NOT declare einops in its
+        # own metadata. lgatr 1.4.x declared it, so it arrived transitively and nobody
+        # noticed; lgatr 2.0 dropped it, which broke `import lloca` outright on any
+        # clean install. Ours until lloca declares it upstream.
 
 # weaver packages
 tqdm>=4.41.0
