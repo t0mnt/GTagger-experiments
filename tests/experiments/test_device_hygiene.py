@@ -34,8 +34,44 @@ import os
 import pytest
 import torch
 
-from tests.experiments.test_cgenn_compile import REPO, _fixed_batch
-from tests.experiments.test_nonequi_compile import _build
+from pathlib import Path
+
+# SELF-CONTAINED ON PURPOSE. This file is KEEP-permanently (cleanup.md) while
+# test_cgenn_compile.py and test_nonequi_compile.py are port instruments scheduled for
+# deletion. Importing REPO/_fixed_batch/_build from them would turn the wipe into a
+# collection ERROR for the one device test that is supposed to outlive the port, so the
+# three helpers are inlined here instead. They are small and stable; keeping a copy is
+# cheaper than coupling a permanent test to a temporary one.
+REPO = Path(__file__).resolve().parents[2]
+
+
+def _fixed_batch(exp):
+    torch.manual_seed(1)
+    return next(iter(exp.train_loader))
+
+
+def _build(model, float64, extra_overrides=()):
+    import logging.handlers  # noqa: F401
+    import hydra
+    import experiments.logger
+    from experiments.tagging.experiment import TopTaggingExperiment
+
+    experiments.logger.LOGGER.disabled = True
+    overrides = ["save=false", "training.batchsize=4", "data.dataset=mini",
+                 f"model={model}", f"use_float64={'true' if float64 else 'false'}",
+                 *extra_overrides]
+    with hydra.initialize_config_dir(config_dir=str(REPO / "config_quick"), version_base=None):
+        cfg = hydra.compose(config_name="toptagging", overrides=overrides)
+    torch.manual_seed(0)
+    exp = TopTaggingExperiment(cfg)
+    exp._init()
+    exp.init_physics()
+    exp.init_model()
+    exp.init_data()
+    exp._init_dataloader()
+    exp._init_loss()
+    exp.model.eval()
+    return exp
 
 RUN_SLOW = os.environ.get("CGENN_COMPILE_GATES") == "1"
 

@@ -168,6 +168,16 @@ there is no longer any ordering constraint on the fixture deletion.
 - `todo.md` (446 lines) — the §4b-* chain is a work queue, not documentation. Each entry
   is deleted as it is completed, not archived.
 
+## Before you wipe: the dependency that used to break it
+
+`test_device_hygiene.py` is KEEP-permanently but used to `import` REPO/_fixed_batch/_build
+from `test_cgenn_compile.py` and `test_nonequi_compile.py`, both of which the wipe deletes
+— so step 7 would have turned the one surviving device test into a collection ERROR. Those
+three helpers are now inlined there, and the wipe was rehearsed: with all five gate files
+and every fixture pack removed, `pytest tests/ --collect-only` reports **706 tests
+collected**, no errors. If you add a new keep-file, check it the same way before trusting
+the wipe.
+
 ## KEEP permanently (earns its place)
 
 - `tests/experiments/test_device_hygiene.py` — small, fast, and guards a class that CPU
