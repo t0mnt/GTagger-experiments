@@ -25,7 +25,12 @@ net:
   nonlinearity: gelu
   mlp_ratio: 2
  # net-level compile, upstream tagging-guide practice (their tag_lgatr ships exactly this);
- # operator-adopted default -- supersedes the earlier Gate-H parking (docs/cgenn-compile.md)
+ # operator-adopted default -- supersedes the earlier Gate-H parking (docs/cgenn-compile.md).
+ # NOT covered by test_compile_true_is_backward_verified, which scopes itself to the
+ # WRAPPER knob (see its docstring). Measured instead, from this config with no overrides:
+ # dynamo 2 frames / 2 ok, inductor 4 entries, backward 405/405 finite gradients; and 8
+ # real optimizer steps at 100% nonzero-grad via
+ #   CGENN_SMOKE_COMPILE=1 pytest tests/experiments/test_training_smoke.py -k tag_lgatr
  compile: true
  compile_kwargs:
   dynamic: true

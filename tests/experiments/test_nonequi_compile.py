@@ -206,11 +206,29 @@ BACKWARD_VERIFIED = {
 def test_compile_true_is_backward_verified():
     """POSTURE: no production config may ship `compile: true` unless the model is in
     BACKWARD_VERIFIED. Cheap (reads yaml), runs in the default suite; the expensive
-    half that earns membership is test_compiled_backward below."""
+    half that earns membership is test_compiled_backward below.
+
+    SCOPE, and how the rest is covered. This checks the WRAPPER knob only. The nested
+    `net.compile` belongs to third-party nets that compile themselves (tag_lgatr,
+    tag_slim, the pelicans), which this file has no fixtures or twins for -- so they can
+    never earn BACKWARD_VERIFIED membership here, and a naive widening of the regex would
+    just fail the gate forever.
+
+    They are not unchecked, though. `tag_slim` and the pelicans carry `net.compile: true`
+    from `main`, i.e. they predate this branch. `tag_lgatr` does NOT -- its knob is new
+    here (operator-adopted, matching upstream tagging-guide practice), which makes it
+    exactly the round-4 shape: a compile default whose backward nothing exercised, since
+    test_training_smoke forces `net.compile=false` for lgatr/slim by default. So it was
+    measured directly, from the shipped config with no overrides at all: dynamo compiled
+    2 frames (total 2, ok 2), inductor produced 4 entries, and the backward gave 405/405
+    finite gradients. `CGENN_SMOKE_COMPILE=1 pytest tests/experiments/test_training_smoke.py
+    -k "tag_lgatr or tag_slim"` re-runs that as 8 real optimizer steps (100% / 98%
+    nonzero-grad) and is the reproducible form.
+    """
     offenders = []
     for cfg in sorted((REPO / "config" / "model").glob("tag_*.yaml")):
         text = cfg.read_text()
-        # only the wrapper-level knob; `net.compile` belongs to third-party nets
+        # only the wrapper-level knob -- see the docstring for how net.compile is covered
         if re.search(r"^compile:\s*true\b", text, flags=re.M):
             if cfg.stem not in BACKWARD_VERIFIED:
                 offenders.append(cfg.stem)
