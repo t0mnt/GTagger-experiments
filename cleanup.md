@@ -20,12 +20,13 @@ file's docstring.
 
 ## RUNBOOK — merge to campaign, in order
 
-Steps 1–2 are setup, 3–5 are the go/no-go, 6 is the wipe, 7 is the campaign. **The
-campaign instructions themselves are unchanged** — step 7 hands off to `docs/OSCAR.md`
+Steps 1–2 are setup, 3–6 are the go/no-go, 7 is the wipe, 8 is the campaign. **The
+campaign instructions themselves are unchanged** — step 8 hands off to `docs/OSCAR.md`
 exactly as it stands. Everything before it is what this branch adds to the front.
 
-Steps 3–4 are CPU and can run anywhere, including a laptop. Step 5 needs a GPU and is the
-one that cannot be skipped on the grounds that "the CPU gates were green" — see why below.
+Steps 3–4 are CPU and can run anywhere, including a laptop. Steps 5–6 need a GPU, and step
+5 is the one that cannot be skipped on the grounds that "the CPU gates were green" — see
+why below.
 
     # 1. MERGE (squash or merge commit, your preference)
     #    ...merge PR #18 on GitHub...
