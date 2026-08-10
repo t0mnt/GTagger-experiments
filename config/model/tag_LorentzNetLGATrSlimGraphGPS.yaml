@@ -9,23 +9,39 @@ compile: false                  # CANNOT BE LOWERED under the shipped dynamic=Tr
                                 #
                                 # NOT a NaN and NOT a numerics problem -- stated explicitly because the
                                 # two get conflated. It is a compile-time raise; eager is untouched and
-                                # is what ships. Measured 2026-08-10 under dynamic=False (which DOES
-                                # lower it): 5 optimizer steps, 65/65 gradients, ZERO non-finite tensors,
-                                # loss 0.7101 -> 0.7115. So the math is fine; only the lowering fails.
+                                # is what ships. Measured under dynamic=False (which DOES lower it):
+                                # 5 optimizer steps, 65/65 gradients, ZERO non-finite tensors,
+                                # loss 0.7101 -> 0.7115. The math is fine; only the lowering fails.
                                 #
-                                # NEGATIVE RESULTS, recorded so nobody re-spends the time:
-                                #   * this is NOT the kNN k-cap. That was tag_PlainGraphTrans, fixed with
-                                #     a static-k twin (see its yaml). THIS file contains no k-cap at all,
-                                #     so that fix does not transfer.
-                                #   * adding `.contiguous()` to all three M8 channel-last transposes
-                                #     (lines ~108/109/246) does NOT help -- same InductorError.
-                                #   * dynamic=False lowers it but recompiles per padded length, which for
-                                #     variably-padded jets is a recompile almost every batch: a pathology,
-                                #     not a speedup.
-                                # The traceback dies inside inductor's own graph runner with no user
-                                # frame, so localizing it means bisecting the graph -- open-ended work
-                                # for a bounded walltime gain on a model that is already correct eager.
-                                # Left as the single remaining bperf NO_APPLY entry.
+                                # ROOT CAUSE, localized 2026-08-10 by instrumenting inductor's
+                                # GraphLowering.run_node. The failing node was aten.permute at
+                                # lorentznetlgatrslimgraphgps.py:109 (`v_loc.transpose(-1, -2)`) on a
+                                # tensor of shape (B, P, 4, V) with strides (16*P, 16, 1, 4). To order
+                                # those strides inductor must decide `1 < P`, and nothing constrains the
+                                # particle dim away from 0/1. It is the M8 CHANNEL-LAST 4-D LAYOUT
+                                # meeting a symbolic particle dim -- not any single line.
+                                #
+                                # FOUR NEGATIVE RESULTS, so the next attempt starts here:
+                                #  1. NOT the kNN k-cap. (Correcting an earlier note in this file: this
+                                #     module DOES reach a capped knn -- it imports it from
+                                #     lorentznetlgatrslimgraphtrans -- so "no k-cap here" was wrong. But
+                                #     substituting the static-k twin that fixed tag_PlainGraphTrans
+                                #     changes NOTHING here: same error, same symbol.)
+                                #  2. `.contiguous()` on all three M8 transposes: same error.
+                                #  3. flatten(0,1) -> transpose(1,2) -> reshape, so the transpose sees
+                                #     only STATIC dims: the permute then succeeds (strides 16,4,1) and
+                                #     the error MOVES to the reshape rebuilding (B, P, 4, V). Confirms
+                                #     the layout, not the op, is the problem.
+                                #  4. torch._check(P > 1) at the top of forward: no effect.
+                                #     torch._dynamo.mark_dynamic(t, dim, min=2) at the wrapper boundary:
+                                #     rejected by this torch (2.13) -- "not simple sympy type".
+                                #
+                                # THE LEVER that would work is making `P >= 2` known to the ShapeEnv, so
+                                # `1 < P` becomes decidable. Neither available API landed it here; the
+                                # next things to try are a torch upgrade or export-style Dim(min=2)
+                                # constraints. Until then: bounded walltime gain on a model that is
+                                # already correct in eager, so it stays false and is the single
+                                # remaining bperf NO_APPLY entry.
 
 net:
   _target_: experiments.baselines.lorentznetlgatrslimgraphgps.LorentzNetLGATrSlimGraphGPS

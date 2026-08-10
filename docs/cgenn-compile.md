@@ -827,6 +827,33 @@ the cap necessary-but-not-sufficient in the first place. `tag_LorentzNetLGATrSli
 keeps `compile: false`: that file contains no k-cap at all and its `1 < s53` comes from the
 M8 channel-last transpose, so this fix does not transfer.
 
+**Round 7b: LNetSlimGraphGPS localized to the node, still not fixed — and one earlier
+claim corrected.** Instrumenting inductor's `GraphLowering.run_node` names the failing
+node exactly: `aten.permute` at `lorentznetlgatrslimgraphgps.py:109`
+(`v_loc.transpose(-1, -2)`) on shape `(B, P, 4, V)` with strides `(16*P, 16, 1, 4)`.
+Ordering those requires deciding `1 < P`, and nothing constrains the particle dim away
+from 0/1. So the blocker is the **M8 channel-last 4-D layout meeting a symbolic particle
+dim**, not any one line — proven by attempt 3 below, where fixing the transpose simply
+moved the error to the reshape that rebuilds the same shape.
+
+Correction to round 7: that entry said this module "contains no k-cap at all". Wrong — it
+imports a capped `knn` from `lorentznetlgatrslimgraphtrans`. The *conclusion* survives
+anyway, because substituting the static-k twin that fixed `tag_PlainGraphTrans` changes
+nothing here: same error, same symbol.
+
+| attempt | outcome |
+|---|---|
+| static-k kNN twin (the PlainGraphTrans fix) | same error |
+| `.contiguous()` on all three M8 transposes | same error |
+| `flatten(0,1) → transpose(1,2) → reshape` | permute now succeeds (strides 16,4,1); error **moves** to the reshape |
+| `torch._check(P > 1)`; `mark_dynamic(min=2)` | no effect; rejected by torch 2.13 |
+
+The lever that would work is making `P >= 2` known to the ShapeEnv so `1 < P` is
+decidable. Neither available API landed it on this torch. Next things to try: a torch
+upgrade, or export-style `Dim(min=2)` constraints. Until then it stays `compile: false` —
+bounded walltime gain on a model that is already correct in eager, and the sole
+`bperf.NO_APPLY` entry.
+
 **Round 6c (2026-08-10): the gap the train-mode gate leaves, measured.** That gate is
 deliberately FLAGS-ONLY — it sets the twin flags and never invokes dynamo, on the stated
 premise that dynamo is numerics-preserving. Nothing had tested the premise in TRAIN mode,
