@@ -3,14 +3,15 @@ in_channels: null               # init_physics -> 7 + extra_scalars
 out_channels: null              # init_physics -> num_outputs
 use_amp: false
 add_fourmomenta_backbone: false
-compile: false                  # TRAIN-MODE SEMANTICS: the compile knob flips the PairEmbed to the
-                                # all-pairs twin (tril/nonzero are untraceable), so the pair BatchNorm
-                                # sees the padded PxP grid instead of real pairs only -- measured train
-                                # divergence 1.5e-02 outputs, 1.1 BN buffers, and BN running buffers are persistent
-                                # state that would carry into checkpoints. Eval is exact (<=4e-15, TOL-gated).
-                                # Pinned by test_nonequi_compile.test_train_mode_differential, which also
-                                # asserts this key stays false. Revisit only with a masked pair-BN
-                                # (todo 4b-quater) -- not with a bare flip.
+compile: true                   # torch.compile(net, dynamic=True). Routes the identity-frames nn.MHA
+                                # blocks and the tril PairEmbed through their twins; the pair BatchNorm is
+                                # WEIGHTED so the twin's train-mode statistics match this file's eager
+                                # reference (the tril-dense path -- there is no sparse variant here).
+                                # Measured compiled-vs-eager in TRAIN mode: 3.1e-15 outputs, 5.6e-13 BN
+                                # running buffers; eval <=4e-15. Clean graph (0 breaks) and backward
+                                # verified (85/85 params, finite grads). Pinned by test_nonequi_compile:
+                                # BREAK_BARS, test_train_mode_differential, test_compiled_backward,
+                                # test_compile_true_is_backward_verified.
 
 net:
   _target_: experiments.baselines.particlenettransformer.ParticleNetParTGraphTrans

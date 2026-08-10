@@ -20,7 +20,12 @@ file's docstring.
 
 ## RUNBOOK — merge to campaign, in order
 
-Copy-paste sequence. Steps 1–3 are the go/no-go; step 4 is the wipe; step 5 is the run.
+Steps 1–2 are setup, 3–5 are the go/no-go, 6 is the wipe, 7 is the campaign. **The
+campaign instructions themselves are unchanged** — step 7 hands off to `docs/OSCAR.md`
+exactly as it stands. Everything before it is what this branch adds to the front.
+
+Steps 3–4 are CPU and can run anywhere, including a laptop. Step 5 needs a GPU and is the
+one that cannot be skipped on the grounds that "the CPU gates were green" — see why below.
 
     # 1. MERGE (squash or merge commit, your preference)
     #    ...merge PR #18 on GitHub...
@@ -31,20 +36,77 @@ Copy-paste sequence. Steps 1–3 are the go/no-go; step 4 is the wipe; step 5 is
     #    config.yaml. The tag just spares you resolving a sha later when the paper needs to
     #    say which code produced the pre-migration top-tagging rows. Skip it if you prefer.
 
-    # 2. SMOKE TEST — the go/no-go. 8 real optimizer steps per model, production configs.
+    # 2. ENVIRONMENT UPGRADE -- lgatr 1.4.4 -> 2.0. NOT backwards compatible in either
+    #    direction: post-merge code will not run on a 1.4.4 env, and the pre-merge code
+    #    will not run on 2.0. Upgrade the env in the same step as the merge, not before.
+    #
+    #    Local / any plain venv:
+    pip install -r requirements.txt        # lgatr[xformers-attention]>=2.0.0, lloca>=1.3.6
+    #
+    #    OSCAR: NO .sif rebuild is needed -- lgatr/lloca are plain pip installs into the
+    #    venv, and v2 actually DROPPED the einops/opt_einsum/numpy requirements (torch
+    #    only). Re-run the venv install block of docs/OSCAR.md §2 verbatim, inside the
+    #    container, with the same requirements filtering (it strips torch/xformers and the
+    #    [xformers-attention] extras so the container's CUDA-tuned torch is not clobbered).
+    #
+    #    Then VERIFY rather than trust -- both versions, and that torch is still the
+    #    container's own nv-tagged build, not a leaked pip wheel:
+    python -c "import importlib.metadata as m, torch; \
+        print('lgatr', m.version('lgatr'), '| lloca', m.version('lloca')); \
+        print('torch', torch.__version__, torch.__file__)"
+    #    want: lgatr >= 2.0.0, lloca >= 1.3.6, and on OSCAR a torch path NOT under ~/.local
+    #    (the leaked-user-site failure mode is documented in docs/OSCAR.md).
+    #
+    #    The executable check that the env really is v2:
+    python -m pytest tests/experiments/test_lgatr_v2_inventory.py -q
+
+    # 3. SMOKE TEST -- the go/no-go. 8 real optimizer steps per model, PRODUCTION configs.
     CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_training_smoke.py -q -s
     #    Expect: 16 passed, every model "nonzero-grad params 100%" (>=50% is the bar).
     #    A failure here means a severed backward -- do not start the campaign.
+    #    Runs EAGER by design (see the file's docstring); step 5 covers the compiled paths.
 
-    # 3. CONFIRM the rest still holds on main
+    # 4. CONFIRM the rest still holds on main (CPU)
     python -m pytest tests/ -q                            # expect 0 failures
-    python utils/bperf.py                                 # optional: knob decisions
-    #    paste bperf's table into docs/cgenn-compile.md, commit any knob flips
+    CGENN_COMPILE_GATES=1 python -m pytest tests/ -q      # + the full gate battery
 
-    # 4. WIPE the vestigial bits (everything below), commit once
-    # 5. RUN the campaign
+    # 5. GPU TEST -- the one genuinely new regime. EVERY compile gate in this repo runs on
+    #    CPU, so inductor's CUDA backend (Triton kernels) has never been exercised by
+    #    anything here, and device-placement bugs are invisible to CPU runs by
+    #    construction. Two parts, on a GPU node:
+    #
+    #    (a) the smoke test again -- it auto-selects CUDA (base_experiment._init_backend)
+    #        and _extract_batch moves each batch to the device, so no flags are needed.
+    #        This is the device-hygiene proof that test_device_hygiene.py can only
+    #        approximate statically.
+    CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_training_smoke.py -q -s
+    #
+    #    (b) the same test with each model's SHIPPED compile knob, a few models at a time
+    #        (all at once builds inductor kernels for 12 models in one process and can
+    #        exhaust the box -- that is why the default forces eager):
+    CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 python -m pytest \
+        tests/experiments/test_training_smoke.py -q -s -k "tag_ParT or tag_cgenn"
+    #    ...repeat over the 12 models that ship compile: true. Step 6 (beta-PERF) also runs
+    #    every knob-bearing model compiled on GPU through run.py, so if you are doing
+    #    beta-PERF anyway, (b) is belt-and-braces rather than a separate obligation.
 
-Nothing in step 4 is required before step 5 -- deleting is hygiene, not a prerequisite.
+    # 6. beta-PERF -- decides the remaining knobs. Needs a GPU to be decision-grade
+    #    (the script says so in its header line if CUDA is absent).
+    python utils/bperf.py
+    #    Shells out to run.py with save=false, so it writes no run directories.
+    #    Decides: the two GPS compile knobs (tag_PlainGraphGPS, tag_ParticleNetParTGraphGPS
+    #    -- both ship false purely on unmeasured performance grounds, correctness is
+    #    settled) and the campaign gp_impl. --apply will flip knobs for you; it refuses to
+    #    touch tag_PlainGraphTrans / tag_LorentzNetLGATrSlimGraphGPS, which are false for a
+    #    CORRECTNESS reason (InductorError on the joint backward graph) that no walltime
+    #    number can overrule.
+    #    Paste the table into docs/cgenn-compile.md and commit any flips.
+
+    # 7. WIPE the vestigial bits (everything below), commit once
+    # 8. RUN the campaign -- docs/OSCAR.md, UNCHANGED. Nothing in this branch alters how
+    #    the campaign is launched, only what it runs.
+
+Nothing in step 7 is required before step 8 -- deleting is hygiene, not a prerequisite.
 The CGENN dedup that used to gate this is DONE (landed pre-merge, BIT bit-identical), so
 there is no longer any ordering constraint on the fixture deletion.
 
@@ -111,9 +173,12 @@ there is no longer any ordering constraint on the fixture deletion.
   already drifted twice — the `b()` device fix and the `_as_int_grades` coercion each
   reached only one copy — so the import is the correct end state. BIT bit-identical,
   full CGENN battery 26/26.
-- §4b-quater mask-aware pair BatchNorm — **REQUIRED** (operator ruling): compile must be
-  numerically faithful to the reference, not merely fast. Spec + acceptance criterion in
-  todo.md; `test_train_mode_differential` is the executable gate.
+- ~~§4b-quater mask-aware pair BatchNorm~~ DONE pre-merge (operator ruling: compile must
+  be numerically faithful to the reference, not merely fast). The twins now weight the
+  pair-BN statistics by the eager reference multiset: train-mode delta 1.6e-15 / 3.1e-15 /
+  2.8e-17 and BN buffers 1.1e-14 / 5.6e-13 / 5.6e-13, from 6.5e-01 / 1.5e-02 / 4.4e-04 and
+  15.0 / 1.1 / 1.1. `tag_ParT` and `tag_ParticleNetParTGraphTrans` returned to
+  `compile: true`; the GPS pair stays false on the β-PERF performance rule alone.
 - Pre-existing `main`-side defects (finetune weight_decay, the EMA/dtype family incl. the
   fp64 restore truncation) are NOT in `todo.md` — out of this branch's scope. Diagnoses
   live in `docs/audit-ledger.md` for whenever someone wants them.

@@ -406,6 +406,12 @@ def _weighted_batchnorm1d(x, bn, w):
 
     Eval is unchanged (running statistics, elementwise), which is why the TOL gate was
     green even while training diverged.
+
+    Degenerate regime, stated rather than papered over: ``w.sum() <= 1`` (a single real
+    pair in the entire batch) makes the ``n/(n-1)`` correction blow up. Eager raises
+    "Expected more than 1 value per channel when training" on the same input, so neither
+    path is usable there; it needs a batch of one with a one-constituent jet. No clamp,
+    because a clamp would silently change results in a regime where loud failure is right.
     """
     # Mirror nn.BatchNorm's own branch: eval uses running statistics only when they
     # exist. With track_running_stats=False there are no buffers and BN keeps computing

@@ -55,14 +55,18 @@ MATRIX = [
 
 ITER_RE = re.compile(r"Finished iteration (\d+) after ([0-9.]+)s")
 
-# Rows whose compile knob changes MORE than kernel fusion, so speed must not decide them:
-#   - the three PairEmbed-twin models change TRAINING numerics (pair BatchNorm over the
-#     padded grid instead of real pairs; docs/cgenn-compile.md train-mode finding)
-#   - the two backward-crashers raise InductorError at the first loss.backward()
-# Measuring them is still useful (it prices todo 4b-quater), but --apply must never flip
-# them; test_nonequi_compile also fails on a bare flip, by design.
-NO_APPLY = {"tag_ParT", "PNParTGraphTrans", "PNParTGraphGPS",
-            "PlainGraphTrans", "LNetSlimGraphGPS"}
+# Rows whose compile knob changes MORE than kernel fusion, so speed must not decide them.
+# What remains after the weighted pair-BN landed (todo 4b-quater, done): only the two
+# backward-crashers, which raise InductorError at the first loss.backward() regardless of
+# how fast the forward is. test_nonequi_compile.test_compile_true_is_backward_verified
+# also fails on a bare flip of either, by design.
+#
+# The three PairEmbed-twin models used to be here for TRAINING-numerics reasons and no
+# longer are: the twins now weight the pair-BN statistics by the eager reference multiset
+# (train delta <= 3.2e-15), so speed is once again the only open question for them. The
+# GPS pair still ships false, but that is exactly the performance call --apply is allowed
+# to make: they are in the sweep precisely so beta-PERF can decide them.
+NO_APPLY = {"PlainGraphTrans", "LNetSlimGraphGPS"}
 
 
 def run_once(overrides, iters, window, config_path, timeout):

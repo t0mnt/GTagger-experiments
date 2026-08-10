@@ -172,10 +172,14 @@ TWIN_TOL_MODELS = {
 TRAIN_TOL = 1e-10
 
 
-# Models VERIFIED to survive a real `loss.backward()` under their shipped compile knob.
+# Models VERIFIED to survive a real `loss.backward()` under `compile: true`.
 # This list is the gate for the whole tree, not just this file's family: every
 # production config that ships `compile: true` must appear here (asserted below), and
 # membership is earned by test_compiled_backward actually running the backward.
+#
+# Membership is NECESSARY but not SUFFICIENT for shipping true: a model can be
+# backward-verified and still ship false on a performance posture (see the GPS pair,
+# whose backward is verified here but whose graphs split at the masked BatchNorm).
 #
 # WHY THIS EXISTS: `dynamo.explain`, TOL, DET, BIT and the train-mode differential are
 # all no_grad/eval measurements, so they compile the INFERENCE graph. With autograd on,
@@ -191,6 +195,11 @@ BACKWARD_VERIFIED = {
     "tag_LorentzNetLGATrSlimGraphTrans",
     "tag_particlenet",
     "tag_transformer",
+    # added once the weighted pair-BN made the twins train-faithful; measured
+    # 217/217, 85/85, 64/64 parameters with nonzero finite gradients under compile
+    "tag_ParT",
+    "tag_ParticleNetParTGraphTrans",
+    "tag_ParticleNetParTGraphGPS",
 }
 
 

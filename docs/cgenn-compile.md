@@ -589,13 +589,14 @@ Knobs (all in-place `net.compile(dynamic=True)`, state_dict keys stable): `ParTW
 `PlainGraphGPSWrapper`, and the PN-ParT pair (twin-flag loop over
 `compiled_attention`/`compiled_dense`). End-to-end knob probe (hydra-composed quick tree,
 `model.compile=true`, fixture weights): all seven ≤ 9.0e-16 vs the eager fixtures,
-deterministic, twin flags exactly where expected. **Posture** *(revised by the train-mode
-finding below — as first written, the five break-free models shipped `compile: true`;
-ParT and PNParTGraphTrans have since flipped to `false` because their twin changes
-training numerics)*: the production tree ships `compile: true` for the three train-clean
-non-equivariant models (particlenet, transformer, PlainGraphTrans); ParT, both PN-ParT
-hybrids and PlainGraphGPS ship `compile: false` with their reasons in the yaml;
-`config_quick` stays eager everywhere.
+deterministic, twin flags exactly where expected. **Posture — ⚠ SUPERSEDED TWICE, see
+Round 5 at the end of this log for what actually ships.** As first written, the five
+break-free models shipped `compile: true`; round 3 flipped ParT and PNParTGraphTrans to
+`false` over training numerics; round 5 fixed those numerics and flipped both back. The
+text as written at the time: *the production tree ships `compile: true` for the three
+train-clean non-equivariant models (particlenet, transformer, PlainGraphTrans); ParT, both
+PN-ParT hybrids and PlainGraphGPS ship `compile: false` with their reasons in the yaml;
+`config_quick` stays eager everywhere.*
 
 **⚠ SUPERSEDED — this "honest caveat" was a MIS-CLASSIFICATION; see the train-mode
 finding below.** It called the twins' training difference "the same disclosure class as
@@ -760,6 +761,48 @@ Decisions the table makes: every `compile:` default; the campaign `gp_impl` (spa
 lgatr-2.0-posture default — GPU numbers confirm or flip to matmul in one line; only
 `sparse` changes the FLOPs column and needs the row footnote); whether full-LGATr compile
 ships (Gate H per H11). **Then:** Gates G/H from the migration runbook (cluster).
+
+**Round 5 (2026-08-10): the pair BatchNorm was made mask-aware, and the round-3 posture
+rows above are SUPERSEDED.** Round 3 flipped `tag_ParT` and `tag_ParticleNetParTGraphTrans`
+to `compile: false` because the twin's training statistics differed from eager, and
+recorded the mask-aware pair-BN as the path back. Operator ruling: take that path — a
+compile knob whose semantics differ from eager is a trap regardless of the current
+default. Implemented as `particletransformer._weighted_batchnorm1d` / `_embed_weighted`:
+BN statistics are computed over a WEIGHT tensor equal to the eager reference multiset,
+which makes the weighted mean/var over the full grid identical to the unweighted mean/var
+over the eager multiset. Traceable, because `w.sum()` is a scalar tensor rather than a
+shape — the exact property the eager `nonzero()` gather lacks.
+
+The weight is per file because the reference is per file: ParT defaults to
+`sparse_eval=True`, so its reference is `mask.tril(offset).nonzero()` (tril of REAL
+pairs); the PN-ParT hybrids have no sparse path and no mask argument, so theirs is the
+tril over ALL positions. A `(1,1,P,P)` broadcast weight is WRONG in both — `w.sum()` is
+the element count the statistics divide by, so a missing batch dim undercounts by `bsz`
+and made the PN-ParT BN buffers worse than doing nothing (1.14 → 464). Measured after
+the fix, and the backward matrix re-run under the compiled knob:
+
+| model | train max abs delta (was) | BN buffers (was) | compiled backward | posture |
+|---|---|---|---|---|
+| tag_ParT | **1.554e-15** (6.5e-01) | **1.110e-14** (15.0) | 217/217 finite | **`compile: true`** |
+| tag_ParticleNetParTGraphTrans | **3.109e-15** (1.5e-02) | **5.578e-13** (1.1) | 85/85 finite | **`compile: true`** |
+| tag_ParticleNetParTGraphGPS | **2.776e-17** (4.4e-04) | **5.578e-13** (1.1) | 64/64 finite | `false` (perf posture) |
+
+So the current table-wide posture, superseding every earlier posture line in this
+document: **`compile: true`** for the eight equivariant models plus `tag_particlenet`,
+`tag_transformer`, `tag_ParT` and `tag_ParticleNetParTGraphTrans`; **`compile: false`**
+for `tag_PlainGraphTrans` and `tag_LorentzNetLGATrSlimGraphGPS` (InductorError on the
+joint backward graph — round 4, a correctness blocker) and for `tag_PlainGraphGPS` and
+`tag_ParticleNetParTGraphGPS` (masked-BN graph splits, a *performance* posture that
+β-PERF resolves in one line); `tag_MIParT` has no knob by operator decision; and
+`config_quick` stays eager everywhere. The GPS pair's correctness question is now
+closed — only the walltime question remains, which is what the β-PERF row above measures.
+
+`TWIN_TRAIN_DIVERGENT` is accordingly replaced by `TWIN_TOL_MODELS` + `TRAIN_TOL = 1e-10`:
+the gate asserts agreement now instead of documenting disagreement, and every other model
+must still be bit-zero. Note the GPS backward emits `Backend compiler exception ...
+aten.nonzero.default → Adding a graph break`, with dynamo briefly enabling anomaly mode to
+attribute it. That is the documented masked-BN break class reappearing in the backward,
+not a new failure; gradients come out finite.
 
 ---
 

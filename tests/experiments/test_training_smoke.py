@@ -46,6 +46,18 @@ MODELS = [
 ]
 
 RUN = os.environ.get("CGENN_COMPILE_GATES") == "1"
+
+# Default OFF: building inductor kernels for every compiled model and running 8 optimizer
+# steps each in ONE process exhausted resources and killed the interpreter (a harness
+# flaw that looked like a model crash), which is why this gate forces eager.
+#
+# Set CGENN_SMOKE_COMPILE=1 to keep each model's SHIPPED knob instead. Use it with `-k` to
+# select a few models at a time, and use it on GPU: every compile gate in this repo runs on
+# CPU, so inductor's CUDA backend (Triton kernels) is a code path nothing has exercised.
+#     CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 \
+#         python -m pytest tests/experiments/test_training_smoke.py -q -s -k "tag_ParT"
+KEEP_COMPILE = os.environ.get("CGENN_SMOKE_COMPILE") == "1"
+
 STEPS = 8          # past ParT's warmup_steps=5, so the trimmer's post-warm-up path runs
 MIN_GRAD_FRACTION = 0.5
 # Structurally-unused parameters are legitimate: a scalar readout never consumes the
@@ -64,12 +76,9 @@ def _build_production(model):
 
     experiments.logger.LOGGER.disabled = True
     root = pathlib.Path(__file__).resolve().parents[2]
-    # Force EAGER. This gate answers "does the MODEL train?"; whether the compile stack
-    # survives a training step is a different question, already answered by
-    # test_nonequi_compile.test_compiled_backward. Leaving compile on made this test
-    # build inductor kernels for 7 models and run 8 optimizer steps each in one process,
-    # which exhausted resources and killed the interpreter -- a harness flaw that looked
-    # like a model crash.
+    # Force EAGER unless CGENN_SMOKE_COMPILE=1 (see KEEP_COMPILE above). This gate answers
+    # "does the MODEL train?"; whether the compile stack survives a training step is a
+    # different question, already answered by test_nonequi_compile.test_compiled_backward.
     overrides = ["save=false", "training.batchsize=4", "data.dataset=mini",
                  f"model={model}"]
     # MIParT deliberately has NO compile knob (operator decision), so overriding it
@@ -77,7 +86,7 @@ def _build_production(model):
     compile_off = {"tag_MIParT": None,
                    "tag_lgatr": "model.net.compile=false",
                    "tag_slim": "model.net.compile=false"}.get(model, "model.compile=false")
-    if compile_off:
+    if compile_off and not KEEP_COMPILE:
         overrides.append(compile_off)
     with hydra.initialize_config_dir(config_dir=str(root / "config"), version_base=None):
         cfg = hydra.compose(config_name="toptagging", overrides=overrides)

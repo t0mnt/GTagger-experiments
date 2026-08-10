@@ -209,9 +209,8 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   GraphGPS pair's masked BatchNorm over real nodes is a **documented data-dependent break
   class** (GraphGPS-official `norm: batch`): break-event counts pinned (11 / 7), every
   reason asserted to be that class, RECOMP still strict ([10,10,10] / [8,8,8]).
-  Posture (revised by the train-mode finding below): `compile: true` for the three
-  train-clean non-equivariant models (particlenet, transformer, PlainGraphTrans);
-  `false` for ParT, both PN-ParT hybrids and PlainGraphGPS; quick tree stays eager.
+  For the posture that actually ships, see the round-5 entry below — it supersedes every
+  earlier posture line in this file.
 - **Train-mode blind spot closed (final audit round 2)** — the single most important
   finding of the review program. Every compile gate ran under `.eval()` with a
   `no_grad`-wrapped forward helper, so nothing constrained TRAINING numerics. Measured:
@@ -221,11 +220,11 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   training step moves all 217 ParT gradients by >1%. Eval stays exact, which is why the
   TOL gates were green. BN buffers are persistent state, so a compiled-trained checkpoint
   would carry padded-grid statistics into eager eval/export/finetune. ParT and
-  PNParTGraphTrans therefore flip to `compile: false` (nothing measured is lost — β-PERF
-  has not run). New `test_train_mode_differential` reproduces the table every run,
-  requires the clean models to stay bit-zero, and asserts the divergent models keep
-  `compile: false` (verified to fail on a bare flip). Equivariant models re-checked with
-  the real compile knob in train mode: 2.9e-15 / 3.3e-16 / 2.8e-17 — clean.
+  PNParTGraphTrans therefore flipped to `compile: false` (nothing measured was lost —
+  β-PERF had not run). New `test_train_mode_differential` reproduces the table every run
+  and requires the clean models to stay bit-zero. Equivariant models re-checked with the
+  real compile knob in train mode: 2.9e-15 / 3.3e-16 / 2.8e-17 — clean.
+  **Round 5 closed the finding rather than living with it** — see below.
 - **Round 4: no gate ever ran a backward** — the gap behind the gap. The round-3
   train-mode gate is itself `no_grad`, and no tagging model anywhere in `tests/` calls
   `.backward()`. Under `no_grad` inductor lowers the INFERENCE graph fine; with autograd
@@ -237,6 +236,24 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   `test_compile_true_is_backward_verified` (default suite: no config may ship
   `compile: true` unless the model is in `BACKWARD_VERIFIED`) and `test_compiled_backward`
   (env-gated: runs the compiled training step, requires finite grads).
+- **Round 5: the pair BatchNorm is now mask-aware, and the compiled twins are faithful in
+  TRAINING, not only in eval.** Round 3 recorded the divergence and shipped `false`;
+  operator ruling was that compile must be accurate to the reference, not dropped.
+  `particletransformer._weighted_batchnorm1d` / `_embed_weighted` compute BN statistics
+  over a WEIGHT tensor equal to the eager reference multiset — tril of REAL pairs for ParT
+  (whose eager default is the sparse mask-aware path), tril over ALL positions for the two
+  PN-ParT hybrids (which have no sparse path). Weighted mean/var over the grid then equal
+  unweighted mean/var over the eager multiset, and it traces because `w.sum()` is a scalar
+  tensor rather than a shape. Train-mode delta / BN buffers: **1.554e-15 / 1.110e-14**
+  (ParT), **3.109e-15 / 5.578e-13** (PNParTGraphTrans), **2.776e-17 / 5.578e-13**
+  (PNParTGraphGPS) — was 6.5e-01 / 15.0, 1.5e-02 / 1.1, 4.4e-04 / 1.1. All three then
+  passed `test_compiled_backward` (217/217, 85/85, 64/64 params with nonzero finite grads)
+  and joined `BACKWARD_VERIFIED`. **Posture now shipping:** `compile: true` for ParT and
+  PNParTGraphTrans (clean graphs, forward and backward); `false` stays for PlainGraphTrans
+  and LNetSlimGraphGPS (backward InductorError — correctness) and for the two GPS models
+  (masked-BN graph splits — a *performance* posture β-PERF resolves in one line, no longer
+  a correctness one). Gate: `TWIN_TRAIN_DIVERGENT` → `TWIN_TOL_MODELS` + `TRAIN_TOL=1e-10`,
+  asserting agreement instead of documenting disagreement.
 - **Round 4: the trimmer silently cut the learned-framesnet gradient at step 6.**
   `_forward_encoder` wraps the trimmer in `no_grad` and re-enabled grad only for the frame
   matrices; under learned frames `x`/`v` also carry framesnet gradient, so once `_trim`
