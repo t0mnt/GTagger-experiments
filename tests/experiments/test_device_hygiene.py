@@ -218,3 +218,65 @@ def test_no_default_device_tensor_creation():
     assert not offenders, (
         "per-forward tensor creation without device= (CPU by default, so this is a "
         "host->device transfer or a mismatch on GPU):\n  " + "\n  ".join(offenders))
+
+
+# Tensors held as PLAIN ATTRIBUTES (not buffers/parameters) that are nonetheless safe,
+# each with the reason it cannot cause a device fault. Verified by call-site inspection.
+# The bar for an entry here is: never used as a tensor operand in a forward -- only its
+# shape, a count, or python ints derived from it.
+_UNMOVABLE_OK = {
+    ("CliffordAlgebra", "grades"):
+        "__init__ only: grades_list (python ints), n_subspaces (len), subspaces (comb), "
+        "and _grade_to_slice, which reduces it to int slice bounds",
+    ("CliffordAlgebra", "geometric_product_paths"):
+        "__init__ only: .nonzero() -> the _path_idx BUFFER, .sum() -> a count, .size()",
+    ("FullyConnectedSteerableGeometricProductLayer", "product_paths"):
+        "copy of the above; same three init-time uses (.nonzero()/.sum()/.size())",
+    ("SteerableGeometricProductLayer", "product_paths"):
+        "copy of the above; same three init-time uses (.nonzero()/.sum()/.size())",
+}
+
+
+@pytest.mark.skipif(not RUN_SLOW, reason="device hygiene sweep: set CGENN_COMPILE_GATES=1")
+@pytest.mark.parametrize("model", MODELS)
+def test_no_unmovable_tensor_attributes(model):
+    """STRUCTURAL: no module may hold a forward-used tensor that `.to(device)` cannot move.
+
+    The third net in this file, and the one that would have caught the bug the other two
+    missed. `nn.Module.to()` walks `_buffers` and `_parameters`. A tensor that reaches
+    `__dict__` by any other route -- a plain `self.x = tensor`, or a
+    `functools.cached_property` (whose `__get__` writes to `instance.__dict__` directly,
+    bypassing `nn.Module.__setattr__`) -- is invisible to it and stays on CPU forever.
+
+    What this caught, on `main` as much as on this branch: `CliffordAlgebra`'s
+    `_alpha/_beta/_gamma_signs` were cached properties, materialized during `__init__`, so
+    every instance carried CPU sign vectors unconditionally. `mvlayernorm -> norm -> q ->
+    b -> beta` does `signs * mv` on the live forward path, so tag_cgenn and both CGENN
+    hybrids raised "Expected all tensors to be on the same device" at the first forward on
+    a GPU -- while passing every CPU gate in this repo, including the other two nets here.
+    The dynamic net only watches `torch.<factory>` calls (these came from `torch.pow`); the
+    static scan exempts `__init__` (which is exactly where they were built). Neither could
+    see it. This one is structural, so it needs no GPU and no forward.
+
+    Fixed by registering them as non-persistent buffers -- values bit-identical,
+    `state_dict` unchanged.
+    """
+    exp = _build(model, float64=False)
+    offenders = []
+    for mod in exp.model.modules():
+        held = {n for n, _ in mod.named_buffers(recurse=False)}
+        held |= {n for n, _ in mod.named_parameters(recurse=False)}
+        for name, val in vars(mod).items():
+            if not isinstance(val, torch.Tensor) or name in held:
+                continue
+            if (type(mod).__name__, name) in _UNMOVABLE_OK:
+                continue
+            offenders.append(f"{type(mod).__name__}.{name} {tuple(val.shape)}")
+
+    print(f"GATE-UNMOVABLE[{model}] unregistered tensor attributes = {len(offenders)}")
+    assert not offenders, (
+        f"{model}: tensor(s) held where `.to(device)` cannot reach them -- a plain "
+        f"attribute or a functools.cached_property:\n  " + "\n  ".join(sorted(set(offenders)))
+        + "\n\nRegister them with `register_buffer(..., persistent=False)` if they are "
+          "derived constants, or add them to _UNMOVABLE_OK with the call-site reason they "
+          "can never be a tensor operand in a forward.")

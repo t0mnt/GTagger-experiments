@@ -54,6 +54,29 @@ class CliffordAlgebra(nn.Module):
         self.register_buffer("bbo_grades", self.bbo.grades.to(torch.get_default_dtype()))
         self.register_buffer("even_grades", self.bbo_grades % 2 == 0)
         self.register_buffer("odd_grades", ~self.even_grades)
+        # Grade-involution sign vectors. BUFFERS, not @functools.cached_property.
+        #
+        # cached_property writes its value straight into instance.__dict__, bypassing
+        # nn.Module.__setattr__ -- so the tensor is not a buffer, `.to(device)` cannot see
+        # it, and it stays on CPU forever. `__init__` reaches all three (via _grade_to_slice
+        # -> the involution helpers), so the cache is ALWAYS populated before the model is
+        # moved: not an ordering hazard, an unconditional one. On GPU, `signs * mv` in
+        # alpha/beta/gamma then raises "Expected all tensors to be on the same device"
+        # -- and mvlayernorm -> norm -> q -> b -> beta is on the live forward path, so
+        # tag_cgenn and both CGENN hybrids could not run on a GPU at all. Invisible to every
+        # gate in this repo because they all run on CPU. (Pre-existing: identical in both
+        # pre-dedup copies on main.)
+        #
+        # persistent=False keeps state_dict byte-identical: these are derived constants
+        # (+/-1 per blade), fully determined by the metric, with no learnable content.
+        self.register_buffer("_alpha_signs", torch.pow(-1, self.bbo_grades),
+                             persistent=False)
+        self.register_buffer("_beta_signs",
+                             torch.pow(-1, self.bbo_grades * (self.bbo_grades - 1) // 2),
+                             persistent=False)
+        self.register_buffer("_gamma_signs",
+                             torch.pow(-1, self.bbo_grades * (self.bbo_grades + 1) // 2),
+                             persistent=False)
         self.register_buffer("cayley", cayley)
         # blade index -> subspace(grade) index, e.g. [0,1,1,1,1,2,...,4]: index_select with
         # this replaces every tensor-valued repeat_interleave over the blade dimension
@@ -126,18 +149,6 @@ class CliffordAlgebra(nn.Module):
             index_end = index_start + math.comb(self.dim, grade)
             grade_to_slice.append(slice(index_start, index_end))
         return grade_to_slice
-
-    @functools.cached_property
-    def _alpha_signs(self):
-        return torch.pow(-1, self.bbo_grades)
-
-    @functools.cached_property
-    def _beta_signs(self):
-        return torch.pow(-1, self.bbo_grades * (self.bbo_grades - 1) // 2)
-
-    @functools.cached_property
-    def _gamma_signs(self):
-        return torch.pow(-1, self.bbo_grades * (self.bbo_grades + 1) // 2)
 
     def alpha(self, mv, blades=None):
         signs = self._alpha_signs
