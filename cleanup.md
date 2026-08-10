@@ -146,7 +146,9 @@ there is no longer any ordering constraint on the fixture deletion.
 - `utils/bperf.py` — one-shot instrument. Delete once its table is pasted into
   `docs/cgenn-compile.md` and the flips are committed. (Stow the *output table*, not the
   script.)
-- `bperf_results.md` — its append-log, same fate.
+- `bperf_results.md` — its append-log. NOT tracked (it is gitignored, since bperf
+  appends to it on every run), so there is nothing to `git rm`: paste the table into
+  `docs/cgenn-compile.md` and delete the local file.
 - `tests/fixtures/*/dynamo_explain*.txt` — large committed explain reports; every one is
   rewritten by its BREAKS gate on each gated run, so they are convenience diffs, not
   sources of truth. Go with the gate files below.
