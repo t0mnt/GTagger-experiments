@@ -197,78 +197,20 @@ TWIN_TOL_MODELS = {
 TRAIN_TOL = 1e-10
 
 
-# Models VERIFIED to survive a real `loss.backward()` under `compile: true`.
-# This list is the gate for the whole tree, not just this file's family: every
-# production config that ships `compile: true` must appear here (asserted below), and
-# membership is earned by test_compiled_backward actually running the backward.
-#
-# Membership is NECESSARY but not SUFFICIENT for shipping true: a model can be
-# backward-verified and still ship false on a performance posture (see the GPS pair,
-# whose backward is verified here but whose graphs split at the masked BatchNorm).
-#
-# WHY THIS EXISTS: `dynamo.explain`, TOL, DET, BIT and the train-mode differential are
-# all no_grad/eval measurements, so they compile the INFERENCE graph. With autograd on,
-# AOTAutograd emits the joint fwd+bwd graph and inductor can fail to lower it -- which is
-# exactly what tag_PlainGraphTrans and tag_LorentzNetLGATrSlimGraphGPS did (InductorError,
-# "cannot determine truth value of Relational", from symbolic shapes under dynamic=True).
-# Both shipped `compile: true` and would have died at the first training step.
-BACKWARD_VERIFIED = {
-    "tag_cgenn",
-    "tag_lorentznet",
-    "tag_CGENNLGATrGraphTrans",
-    "tag_CGENNLGATrGraphGPS",
-    "tag_LorentzNetLGATrSlimGraphTrans",
-    "tag_particlenet",
-    "tag_transformer",
-    # added once the weighted pair-BN made the twins train-faithful; measured
-    # 217/217, 85/85, 64/64 parameters with nonzero finite gradients under compile
-    "tag_ParT",
-    "tag_ParticleNetParTGraphTrans",
-    "tag_ParticleNetParTGraphGPS",
-    # added once the static-k kNN twin removed the InductorError that used to kill this
-    # model at its first loss.backward(): 71/71 nonzero finite grads under compile
-    "tag_PlainGraphTrans",
-    # added once scoped recompute_views stopped AOT saving the per-layer channel-first <->
-    # channel-last view that inductor could not stride-order: 65/65 finite grads, and
-    # compiled-vs-eager is 0.000e+00 in BOTH eval and train
-    "tag_LorentzNetLGATrSlimGraphGPS",
-}
+# SINGLE SOURCE OF TRUTH: BACKWARD_VERIFIED, TWIN_TOL_MODELS and TRAIN_TOL live in
+# test_compile_posture.py, which is KEEP-permanently. This file is a port instrument that
+# cleanup.md deletes, so it imports them rather than carrying a second copy that could
+# drift out of step with the one that survives.
+from tests.experiments.test_compile_posture import (  # noqa: E402
+    BACKWARD_VERIFIED,
+    TRAIN_TOL,
+    TWIN_TOL_MODELS,
+)
 
 
-def test_compile_true_is_backward_verified():
-    """POSTURE: no production config may ship `compile: true` unless the model is in
-    BACKWARD_VERIFIED. Cheap (reads yaml), runs in the default suite; the expensive
-    half that earns membership is test_compiled_backward below.
-
-    SCOPE, and how the rest is covered. This checks the WRAPPER knob only. The nested
-    `net.compile` belongs to third-party nets that compile themselves (tag_lgatr,
-    tag_slim, the pelicans), which this file has no fixtures or twins for -- so they can
-    never earn BACKWARD_VERIFIED membership here, and a naive widening of the regex would
-    just fail the gate forever.
-
-    They are not unchecked, though. `tag_slim` and the pelicans carry `net.compile: true`
-    from `main`, i.e. they predate this branch. `tag_lgatr` does NOT -- its knob is new
-    here (operator-adopted, matching upstream tagging-guide practice), which makes it
-    exactly the round-4 shape: a compile default whose backward nothing exercised, since
-    test_training_smoke forces `net.compile=false` for lgatr/slim by default. So it was
-    measured directly, from the shipped config with no overrides at all: dynamo compiled
-    2 frames (total 2, ok 2), inductor produced 4 entries, and the backward gave 405/405
-    finite gradients. `CGENN_SMOKE_COMPILE=1 pytest tests/experiments/test_training_smoke.py
-    -k "tag_lgatr or tag_slim"` re-runs that as 8 real optimizer steps (100% / 98%
-    nonzero-grad) and is the reproducible form.
-    """
-    offenders = []
-    for cfg in sorted((REPO / "config" / "model").glob("tag_*.yaml")):
-        text = cfg.read_text()
-        # only the wrapper-level knob -- see the docstring for how net.compile is covered
-        if re.search(r"^compile:\s*true\b", text, flags=re.M):
-            if cfg.stem not in BACKWARD_VERIFIED:
-                offenders.append(cfg.stem)
-    assert not offenders, (
-        f"ships compile: true but not in BACKWARD_VERIFIED: {offenders}. Every "
-        f"compile gate is eval/no_grad, so a model can pass all of them and still "
-        f"raise InductorError at the first loss.backward(); earn membership by "
-        f"running test_compiled_backward (CGENN_COMPILE_GATES=1) first.")
+# test_compile_true_is_backward_verified now lives in test_compile_posture.py
+# (KEEP) -- it must outlive this file, since the twins it guards are permanent
+# model code. Not duplicated here.
 
 
 @pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile smoke gates: set CGENN_COMPILE_GATES=1")
