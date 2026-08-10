@@ -258,6 +258,24 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   gone. Also verified: compiled and eager `state_dict` keys are identical for `tag_ParT`
   and `tag_ParticleNetParTGraphTrans` (245/245 and 303/303, strict load OK both ways), so
   the `compile: true` flip is checkpoint-safe.
+- **Round 6b: the same comparison in TRAIN mode and at PRODUCTION width.** Round 6 ran
+  eval-only on `config_quick`, which leaves BatchNorm running-statistic updates and the
+  shipped dims unexamined. Re-run in train mode (3 steps, dropout zeroed including
+  `nn.MultiheadAttention.dropout`, comparing outputs, **gradients** and BN buffers):
+  nine of ten models bit-identical on every axis, `tag_ParT` included. Repeated on the
+  production tree for `tag_ParT` (2.14M), `tag_particlenet` (366k),
+  `tag_ParticleNetParTGraphTrans` (2.34M), `tag_PlainGraphGPS` (2.33M): all four
+  bit-identical, forward, gradients and BN buffers.
+  `tag_cgenn` is the one model whose gradients differ, and it is fully attributed: with
+  `gp_impl=einsum` (main's effective kernel) the top-decile gradients match to **3.6e-16**
+  — one ulp, the six largest exactly zero — so the CGENN restructuring is faithful; with
+  the shipped `gp_impl=sparse` they match to **2.8e-13**, pure backward reassociation from
+  the intended kernel. Forward and BN buffers are bit-identical under both. Beware the
+  statistic: relative error on gradient *sums* or on near-zero tensors reports up to 24%
+  on parameters whose gradient norm is 1e-22 against a median of 1e-8; 100% of the total
+  gradient norm sits on parameters with |g| > 1e-12, and that is the population above.
+  Determinism control: dev against itself, two processes, production tree — 0/124
+  gradients differ, so none of this is run-to-run noise.
 - **Round 5: the pair BatchNorm is now mask-aware, and the compiled twins are faithful in
   TRAINING, not only in eval.** Round 3 recorded the divergence and shipped `false`;
   operator ruling was that compile must be accurate to the reference, not dropped.
