@@ -399,7 +399,20 @@ def _transplant_check(name, overrides):
             degenerate = learned_frames and int(data.ptr.diff().min()) == 1
             pack = _forward_pack(exp, data, mode)
             if degenerate:
-                trip = 1e-6 if tier1 else 1e-4
+                # 1e-3 both tiers, NOT the original 1e-6/1e-4. That pair was calibrated
+                # against ONE machine (the n=1 jet measured 2.8e-9 tier-1 there) and does
+                # not survive a change of BLAS: the same commit and the same fixtures give
+                # rel(n=1) = 1.7e-09 on the dev container and 2.9e-05 on OSCAR's NGC image
+                # -- four orders of magnitude, on the SAME degenerate input. That is the
+                # documented conditioning of this case doing exactly what the comment above
+                # says it does (it peaks at 6.9e-4 inside the frames net's block 0), not a
+                # regression: on both machines every n>=2 jet still meets the strict 1e-10
+                # bar asserted below, and no campaign jet has multiplicity 1 (measured on
+                # the shipped split: min 4 constituents on train, 8 on test/val).
+                # 1e-3 keeps the tripwire's stated purpose -- it still sits an order below
+                # mistake scale O(1e-2..1), so a broken frames path fails here as loudly as
+                # before -- while being portable across environments.
+                trip = 1e-3
                 keep = data.ptr.diff() >= 2
                 y, yr = pack["y"], ref[tag]["y"]
                 rel_keep = (y[keep] - yr[keep]).abs().max() / (1 + yr[keep].abs().max())
