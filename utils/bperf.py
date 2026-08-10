@@ -26,9 +26,23 @@ WHAT PAIRING DOES NOT CANCEL, worth knowing before trusting a 3%% margin:
     warmer card. A BIAS, not noise; pairing does not touch it.
   * order effect -- states always run false-then-true, so drift favours the same state on
     every row.
-Both shrink if the window starts past the thermal ramp. For decision-grade numbers use
-``--iters 310 --window 100 300``, and if a row lands inside the margin, re-run it with the
-states swapped before believing the sign.
+Both shrink if the window starts past the thermal ramp.
+
+WHICH WINDOWS ARE EVEN POSSIBLE. The it/s comes from the run's own
+"Finished iteration N after Ts" lines, and ``base_experiment`` emits those only at
+``step in [0, 9, 99, 999, 9999, 99999]`` -- N in {1, 10, 100, 1000, 10000, 100000} -- or
+every ``validate_every_n_steps``, which this driver deliberately pushes past the end of
+the run so a validation pass cannot land inside the timing window (the logged time is raw
+wall clock since training start; it has no train-only component to parse instead). So the
+window bounds must BOTH be powers-of-ten marks <= --iters. ``--window 100 300`` cannot
+work at any --iters, and earlier revisions of this docstring recommended exactly that;
+``check_window`` now rejects it in a second rather than after the runs.
+
+  * cheap screen:      --iters 110  --window 10 100      (the default; 90 steps from 10)
+  * decision-grade:    --iters 1010 --window 100 1000    (900 steps, all past the ramp)
+
+If a row lands inside the margin, re-run it with the states swapped before believing the
+sign.
 
 One-shot instrument: cleanup.md schedules its deletion once the numbers are recorded in
 the compile log and the knob flips are committed.
@@ -36,7 +50,7 @@ the compile log and the knob flips are committed.
 Usage:
     python utils/bperf.py                       # full matrix, table only
     python utils/bperf.py --models tag_cgenn    # substring filter
-    python utils/bperf.py --iters 210 --window 10 200
+    python utils/bperf.py --iters 1010 --window 100 1000
     python utils/bperf.py --find-batchsize      # size each row first (GPU); otherwise the
                                                 # yaml value is used, which is the unswept
                                                 # 512 fallback until you sweep
@@ -75,6 +89,31 @@ MATRIX = [
 ]
 
 ITER_RE = re.compile(r"Finished iteration (\d+) after ([0-9.]+)s")
+
+# The iterations base_experiment logs a timing line for, absent a validation pass:
+# `step in [0, 9, 99, 999, 9999, 99999]`. run_once() pushes validate_every_n_steps past
+# the end of the run, so these are the ONLY marks available -- see the module docstring.
+TORCH_MARKS = [1, 10, 100, 1000, 10000, 100000]
+
+
+def check_window(window, iters):
+    """Reject an unachievable --window before spending the runs on it.
+
+    A window bound that is never logged makes every row fail with 'missing timing lines'
+    -- after the full matrix has already run. On a GPU with --find-batchsize that is hours
+    for zero numbers, so this is a fail-fast, not a nicety.
+    """
+    lo, hi = window
+    marks = [m for m in TORCH_MARKS if m <= iters]
+    bad = [b for b in (lo, hi) if b not in marks]
+    if bad or lo >= hi:
+        raise SystemExit(
+            f"--window {lo} {hi} is not measurable at --iters {iters}. The run only logs a "
+            f"timing line at {marks} (base_experiment logs at steps [0, 9, 99, 999, ...], "
+            f"and validation is pushed past the end of the run on purpose so it cannot "
+            f"pollute the window). Pick both bounds from that list, lo < hi -- e.g. "
+            f"`--iters 110 --window 10 100` to screen, `--iters 1010 --window 100 1000` "
+            f"for a decision.")
 
 # Rows --apply must never flip. EMPTY as of 2026-08-10: every knob-bearing model now
 # compiles and survives a real backward, so beta-PERF decides all of them on speed.
@@ -196,8 +235,13 @@ def main():
     ap.add_argument("--apply", action="store_true",
                     help="edit the production yaml compile knobs per the verdicts")
     args = ap.parse_args()
+    check_window(tuple(args.window), args.iters)   # before any run, not after all of them
 
     rows = [r for r in MATRIX if not args.models or any(m in r[0] for m in args.models)]
+    if not rows:
+        raise SystemExit(
+            f"--models {args.models} matched no row. Available: "
+            f"{[r[0] for r in MATRIX]}")
     results, recs = [], []
     for name, base, knob, yaml_path in rows:
         row_base = list(base)
