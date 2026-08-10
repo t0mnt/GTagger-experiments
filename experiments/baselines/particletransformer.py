@@ -389,6 +389,58 @@ class Embed(nn.Module):
         return self.embed(x)
 
 
+def _weighted_batchnorm1d(x, bn, w):
+    """``nn.BatchNorm1d`` whose train-mode statistics are computed over a WEIGHTED
+    subset of the N axis, instead of over every entry.
+
+    This is what makes the compiled all-pairs twin numerically faithful to the eager
+    reference rather than merely fast. The eager path feeds BN a packed list of the
+    lower-triangular REAL pairs (``mask.tril(offset).nonzero()``); the twin builds the
+    full ``seq_len**2`` grid, so unweighted statistics would additionally include the
+    mirrored upper triangle and every padded pair. Passing ``w`` = that same tril-of-real
+    mask makes the weighted mean/var over the grid *identical* to the unweighted mean/var
+    over the eager multiset.
+
+    Traceable by construction: ``w.sum()`` is a scalar TENSOR, not a shape, so unlike the
+    eager ``nonzero`` gather this introduces no data-dependent shapes.
+
+    Eval is unchanged (running statistics, elementwise), which is why the TOL gate was
+    green even while training diverged.
+    """
+    # Mirror nn.BatchNorm's own branch: eval uses running statistics only when they
+    # exist. With track_running_stats=False there are no buffers and BN keeps computing
+    # batch statistics even in eval, so that case falls through to the weighted path.
+    if not bn.training and bn.running_mean is not None:
+        return F.batch_norm(x, bn.running_mean, bn.running_var, bn.weight, bn.bias,
+                            False, 0.0, bn.eps)
+    n = w.sum()
+    mean = (x * w).sum(dim=(0, 2)) / n
+    xc = x - mean.view(1, -1, 1)
+    var = ((xc * xc) * w).sum(dim=(0, 2)) / n
+    if bn.training and bn.track_running_stats:
+        with torch.no_grad():
+            bn.num_batches_tracked.add_(1)
+            m = (bn.momentum if bn.momentum is not None
+                 else 1.0 / bn.num_batches_tracked.to(x.dtype))
+            bn.running_mean.mul_(1 - m).add_(m * mean.detach())
+            # running_var takes the UNBIASED estimate, exactly as nn.BatchNorm1d does,
+            # while the normalization above uses the biased one
+            bn.running_var.mul_(1 - m).add_(m * var.detach() * n / (n - 1))
+    y = xc / torch.sqrt(var.view(1, -1, 1) + bn.eps)
+    if bn.affine:
+        y = y * bn.weight.view(1, -1, 1) + bn.bias.view(1, -1, 1)
+    return y
+
+
+def _embed_weighted(seq, x, w):
+    """Run an embed Sequential, swapping every BatchNorm1d for its weighted twin.
+    Conv/activation layers are pointwise along N, so applying them to the whole grid and
+    weighting only the STATISTICS is exact."""
+    for mod in seq:
+        x = _weighted_batchnorm1d(x, mod, w) if isinstance(mod, nn.BatchNorm1d) else mod(x)
+    return x
+
+
 class PairEmbed(nn.Module):
     def __init__(
         self,
@@ -478,13 +530,25 @@ class PairEmbed(nn.Module):
             uu = uu.detach() if uu is not None else None
             bsz = (x if x is not None else uu).shape[0]
             slen = (x if x is not None else uu).shape[-1]
+            # statistics weight: the eager reference feeds BN the lower-triangular REAL
+            # pairs, so weight the grid by exactly that set (see _weighted_batchnorm1d)
+            with torch.no_grad():
+                offset = -1 if self.remove_self_pair else 0
+                if mask is not None:
+                    pair = mask.reshape(bsz, 1, slen, 1) * mask.reshape(bsz, 1, 1, slen)
+                else:
+                    pair = x.new_ones(bsz, 1, slen, slen)
+                w = pair.tril(offset).reshape(bsz, 1, slen * slen).to(
+                    (x if x is not None else uu).dtype)
             elements = 0
             if x is not None:
                 fts = self.pairwise_lv_fts(x.unsqueeze(-1), x.unsqueeze(-2))
                 # embed's BatchNorm1d wants (batch, channels, num_pairs)
-                elements = elements + self.embed(fts.reshape(bsz, -1, slen * slen))
+                elements = elements + _embed_weighted(
+                    self.embed, fts.reshape(bsz, -1, slen * slen), w)
             if uu is not None:
-                elements = elements + self.fts_embed(uu.reshape(bsz, -1, slen * slen))
+                elements = elements + _embed_weighted(
+                    self.fts_embed, uu.reshape(bsz, -1, slen * slen), w)
             y = elements.reshape(bsz, self.out_dim, slen, slen)
             if self.remove_self_pair:
                 di = torch.arange(slen, device=y.device)

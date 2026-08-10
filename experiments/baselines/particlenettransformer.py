@@ -38,6 +38,7 @@ from functools import partial
 from lloca.backbone.attention import LLoCaAttention
 from lloca.backbone.particlenet import change_local_frame
 from lloca.backbone.particletransformer import _canonical_mask
+from experiments.baselines.particletransformer import _embed_weighted
 from lloca.framesnet.frames import Frames
 from lloca.reps.tensorreps import TensorReps
 from lloca.reps.tensorreps_transform import TensorRepsTransform
@@ -508,7 +509,18 @@ class PairEmbed(nn.Module):
             x = x.detach()
             bsz, _, slen = x.size()
             fts = self.pairwise_lv_fts(x.unsqueeze(-1), x.unsqueeze(-2))
-            elements = self.embed(fts.reshape(bsz, -1, slen * slen))
+            # BN statistics weight: this file's eager reference is the tril-dense path
+            # (no sparse variant and no mask argument here), so the reference multiset is
+            # the lower triangle over ALL positions -- padded included. Weighting the grid
+            # by exactly that makes the twin's train-mode statistics match eager's.
+            # See particletransformer._weighted_batchnorm1d for the mechanism.
+            with torch.no_grad():
+                # NB: the batch dim must be REAL, not 1 -- `w.sum()` is the element count
+                # the statistics divide by, so a broadcast-only weight undercounts by a
+                # factor of bsz and scales the mean by bsz.
+                w = torch.ones(bsz, 1, slen, slen, dtype=fts.dtype, device=fts.device)
+                w = w.tril(-1 if self.remove_self_pair else 0).reshape(bsz, 1, slen * slen)
+            elements = _embed_weighted(self.embed, fts.reshape(bsz, -1, slen * slen), w)
             y = elements.reshape(bsz, self.out_dim, slen, slen)
             if self.remove_self_pair:
                 di = torch.arange(slen, device=y.device)

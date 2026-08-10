@@ -156,16 +156,20 @@ def _pre_compile(model, net):
                 m.compiled_dense = True  # PairEmbed all-pairs twin (tril_indices pins seq_len)
 
 
-# Models whose compile knob changes TRAINING semantics, not just kernel fusion: the
-# PairEmbed twin feeds the padded PxP grid to a BatchNorm-first embed where the eager
-# sparse path feeds real pairs only. Eval is exact (running stats); train is not, and BN
-# running buffers are persistent state that would carry into checkpoints. Every model
-# listed here MUST ship compile: false -- asserted below, so a bare flip fails the gate.
-TWIN_TRAIN_DIVERGENT = {
+# Models whose twin reaches the eager statistics through a WEIGHTED BatchNorm rather
+# than by feeding the identical tensor, so train-mode agreement is TOL-class (float
+# reassociation) instead of bit-exact. Everything else must be bit-zero.
+#
+# History worth keeping: these three used to diverge by 6.5e-01 / 1.5e-02 / 4.4e-04 with
+# BN running buffers off by 15.0 / 1.1 / 1.1, because the twin fed BN the full padded
+# grid where eager feeds the lower-triangular real pairs. Fixed by weighting the
+# statistics (particletransformer._weighted_batchnorm1d); they now sit at <= 3.2e-15.
+TWIN_TOL_MODELS = {
     "tag_ParT",
     "tag_ParticleNetParTGraphTrans",
     "tag_ParticleNetParTGraphGPS",
 }
+TRAIN_TOL = 1e-10
 
 
 # Models VERIFIED to survive a real `loss.backward()` under their shipped compile knob.
@@ -278,16 +282,15 @@ def test_train_mode_differential(model):
     db = max((b_flags[k] - b_eager[k]).abs().max().item() for k in b_eager) if b_eager else 0.0
     print(f"GATE-TRAIN[{model}] train-mode max|dy|={dy:.3e} max|d(BN buffers)|={db:.3e}")
 
-    if model in TWIN_TRAIN_DIVERGENT:
-        assert dy > 0 or db > 0, (
-            f"TRAIN[{model}]: listed as twin-divergent but now bit-identical -- if the "
-            f"twin was made train-exact (masked pair-BN), remove it from "
-            f"TWIN_TRAIN_DIVERGENT and revisit the compile posture")
-        cfg = (REPO / "config" / "model" / f"{model}.yaml").read_text()
-        assert re.search(r"^compile:\s*false\b", cfg, flags=re.M), (
-            f"TRAIN[{model}]: ships a compile knob that changes TRAINING numerics "
-            f"(max|dy|={dy:.3e}, max|d(BN)|={db:.3e}) -- production config must keep "
-            f"compile: false until the pair-BN is made mask-aware")
+    if model in TWIN_TOL_MODELS:
+        scale = 1 + abs(out[False][0]).max().item()
+        rel = dy / scale
+        assert rel < TRAIN_TOL and db < TRAIN_TOL, (
+            f"TRAIN[{model}]: weighted-BN twin no longer reproduces the eager training "
+            f"statistics (rel={rel:.3e}, max|d(BN)|={db:.3e}); the statistics weight must "
+            f"be exactly the eager reference multiset -- tril of real pairs for ParT, tril "
+            f"of all positions for the PN-ParT pair, with the REAL batch dim in the weight "
+            f"(a broadcast-only weight undercounts w.sum() by bsz).")
     else:
         assert dy == 0.0 and db == 0.0, (
             f"TRAIN[{model}]: compile knob changed training numerics "
