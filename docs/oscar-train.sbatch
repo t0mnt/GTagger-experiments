@@ -48,10 +48,12 @@ export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"
 export PYTHONUNBUFFERED=1         # live logs (batch jobs have no tty -> python buffers)
 export PYTHONNOUSERSITE=1         # never import from ~/.local (the docs/OSCAR.md leak class);
                                   # --export=NONE strips the .bashrc copy, so set it here too
-# for compiled models. APPTAINERENV_ prefix, NOT a bare export: a plain host-side export does
-# NOT reach the container (verified on gpu2703 -- env_check --gpu inside apptainer reported
-# "TRITON_LIBCUDA_PATH unset" with the host variable set). Apptainer strips the prefix on entry.
-export APPTAINERENV_TRITON_LIBCUDA_PATH=/usr/local/cuda/compat/lib
+# NOTE: TRITON_LIBCUDA_PATH (needed by every compiled model -- inductor builds CUDA kernels
+# through Triton, which cannot find libcuda.so inside the NGC image) is NOT set here. It lives
+# in venv/bin/activate, added once by the docs/OSCAR.md §2 setup block, because the `source
+# venv/bin/activate` below is inside the container and so covers batch jobs, interactive
+# sessions and find_lr from one place. Setting it here too would be a second copy to drift.
+# A host-side export would not reach the container anyway (measured on gpu2703).
 
 [ $# -gt 0 ] || { echo "usage: sbatch train.sbatch tag_<Model> [task] [hydra overrides...]
    or: sbatch train.sbatch <any run.py argument list, verbatim>"; exit 1; }
@@ -85,7 +87,6 @@ if [ -z "$RECIPE" ] && [ -n "$MODEL" ] && [ -f "$CP/training/${P}_${MODEL#tag_}.
 fi
 
 "$APPTAINER" exec --nv "$IMG" bash -c "
-  export TRITON_LIBCUDA_PATH=/usr/local/cuda/compat/lib   # belt AND braces; see the note above
   source venv/bin/activate
   python run.py -cp $CP -cn $TASK \
       $MODELARG $RECIPE gpus=1 \
