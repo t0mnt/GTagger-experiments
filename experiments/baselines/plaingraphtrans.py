@@ -51,11 +51,26 @@ def knn(x, k, metric='deltaR', mask=None, static_k=False):
 
     The twin keeps ``k`` a python int. That is EQUAL to the eager path, not merely close,
     whenever ``num_points - 1 >= k`` -- the cap is inert there, so both branches call
-    ``topk`` with the same integer. Measured: production padded ``P`` is 87-110 per batch
-    at batchsize 128/256 against ``knn_k: 16`` (0/15 batches bind), and the gates' own
-    batchsize-4 batches sit far above ``knn_k: 4``. So no regime this repo runs can tell
-    the two apart, and the assert makes the pathological case loud rather than silently
-    divergent.
+    ``topk`` with the same integer.
+
+    WHY THE PRECONDITION IS UNREACHABLE, stated as the condition rather than as a sample.
+    ``num_points`` is ``x.size(-1)``, i.e. the width ``to_dense_batch`` chose: the MAXIMUM
+    constituent count over the batch, not a per-jet count. So the raise needs EVERY jet in
+    the batch to be sparser than ``k``, not merely one. Sparse jets themselves are ordinary
+    -- 1.9% of top-tagging jets carry <= 16 constituents (measured on the shipped mini
+    split: min 4, p1 14, median 49) -- but they have to arrive unanimously.
+      * Full batches: 0.019^B for B >= 128 is not a number worth writing down.
+      * Final partial batches are the only place B is small, and their size is fixed by
+        ``len(dataset) % batchsize``. Standard top-tagging (1,211,000 / 403,000 / 404,000,
+        no ``drop_last`` on any of the three loaders) leaves 120 / 56 / 32 at every batch
+        size from 128 to 512, and never less than 8 anywhere down to B=16. JetClass and
+        TopTagXL drop the last train/val batch outright and leave >= 128 on test.
+    The worst residue in any configuration this repo can be launched in is 8 jets, at
+    0.019^8 ~= 2e-14. The raise is therefore a statement about a regime that does not
+    occur, kept because a loud stop beats a silent divergence if one ever does.
+
+    The gates' own batchsize-4 batches sit far above ``config_quick``'s ``knn_k: 4`` for
+    the same reason.
 
     Eager is untouched by construction (``static_k`` defaults False), so BIT stays pinned.
     Not shared with the identical cap in ``particlenettransformer.py`` /
