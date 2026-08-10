@@ -93,7 +93,7 @@ ITER_RE = re.compile(r"Finished iteration (\d+) after ([0-9.]+)s")
 NO_APPLY = set()
 
 
-def find_batchsize(row_overrides, config_path, bs_start, bs_max, safety):
+def find_batchsize(row_overrides, knob, config_path, bs_start, bs_max, safety):
     """Largest power-of-two batchsize that survives a full training step, for THIS row.
 
     Reuses ``utils.find_lr.find_max_batch_size`` rather than reimplementing the doubling
@@ -102,23 +102,44 @@ def find_batchsize(row_overrides, config_path, bs_start, bs_max, safety):
 
     Sized ONCE per row and then applied to BOTH states, which is what keeps the
     eager-vs-compiled comparison paired. Sizing per state would compare two different
-    batch sizes and measure the wrong thing. Sizing is done with compile OFF; the search
-    returns a power of two, and inductor's memory delta is nowhere near a factor of two,
-    so the two states land on the same rung in practice. If a compiled row ever OOMs at
-    the eager-sized batch, that is itself the finding and the row reports it.
+    batch sizes and measure the wrong thing. The search returns a power of two, and
+    inductor's memory delta is nowhere near a factor of two, so the two states land on the
+    same rung in practice. If a compiled row ever OOMs at the eager-sized batch, that is
+    itself the finding and the row reports it.
+
+    ``knob=false`` IS PASSED EXPLICITLY, not left to the yaml. Eleven production configs now
+    ship ``compile: true``, so a bare ``model=tag_ParT`` sizes a COMPILED model -- which
+    contradicts the paragraph above, spends an inductor build per row inside the driver
+    process, and leaves dynamo cache entries holding those models alive for every
+    subsequent row's search.
+
+    Everything is torn down between rows for the same reason: the timing runs are
+    subprocesses and start clean, but the searches all share THIS process, so a row that
+    left 4 GB resident would hand the next row a smaller ceiling and silently undersize it.
 
     CUDA only -- find_max_batch_size returns the configured batchsize unchanged on CPU.
     """
+    import gc
+
     import hydra
+    import torch
     from utils.find_lr import build_experiment, find_max_batch_size
 
     with hydra.initialize_config_dir(config_dir=str(REPO / config_path), version_base=None):
         cfg = hydra.compose(config_name="toptagging",
-                            overrides=[*row_overrides, "save=false"])
+                            overrides=[*row_overrides, f"{knob}=false", "save=false"])
     exp = build_experiment(cfg)
-    bs = find_max_batch_size(exp, bs_start, bs_max, safety)
-    del exp
-    return int(bs)
+    try:
+        return int(find_max_batch_size(exp, bs_start, bs_max, safety))
+    finally:
+        del exp
+        try:
+            torch._dynamo.reset()
+        except Exception:
+            pass
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
 
 def run_once(overrides, iters, window, config_path, timeout, seed):
@@ -182,11 +203,11 @@ def main():
         row_base = list(base)
         if args.find_batchsize:
             try:
-                bs = find_batchsize(row_base, args.config_path,
+                bs = find_batchsize(row_base, knob, args.config_path,
                                     args.bs_start, args.bs_max, args.bs_safety)
                 row_base = row_base + [f"training.batchsize={bs}"]
-                print(f"[bperf] {name} batchsize={bs} (sized once, used for both states)",
-                      flush=True)
+                print(f"[bperf] {name} batchsize={bs} (sized once eager, used for both "
+                      f"states)", flush=True)
             except Exception as e:
                 print(f"[bperf] {name} batchsize search FAILED ({type(e).__name__}: {e}); "
                       f"falling back to the config value", flush=True)
