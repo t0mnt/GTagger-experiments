@@ -176,7 +176,7 @@ there is no longer any ordering constraint on the fixture deletion.
   full CGENN battery 26/26.
 - ~~§4b-quater mask-aware pair BatchNorm~~ DONE pre-merge (operator ruling: compile must
   be numerically faithful to the reference, not merely fast). The twins now weight the
-  pair-BN statistics by the eager reference multiset: train-mode delta 1.6e-15 / 3.1e-15 /
+  pair-BN statistics by the eager reference multiset: train-mode delta 2.3e-15 / 3.1e-15 /
   2.8e-17 and BN buffers 1.1e-14 / 5.6e-13 / 5.6e-13, from 6.5e-01 / 1.5e-02 / 4.4e-04 and
   15.0 / 1.1 / 1.1. `tag_ParT` and `tag_ParticleNetParTGraphTrans` returned to
   `compile: true`; the GPS pair stays false on the β-PERF performance rule alone.

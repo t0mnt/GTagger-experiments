@@ -284,7 +284,7 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   (whose eager default is the sparse mask-aware path), tril over ALL positions for the two
   PN-ParT hybrids (which have no sparse path). Weighted mean/var over the grid then equal
   unweighted mean/var over the eager multiset, and it traces because `w.sum()` is a scalar
-  tensor rather than a shape. Train-mode delta / BN buffers: **1.554e-15 / 1.110e-14**
+  tensor rather than a shape. Train-mode delta / BN buffers: **2.331e-15 / 1.110e-14**
   (ParT), **3.109e-15 / 5.578e-13** (PNParTGraphTrans), **2.776e-17 / 5.578e-13**
   (PNParTGraphGPS) — was 6.5e-01 / 15.0, 1.5e-02 / 1.1, 4.4e-04 / 1.1. All three then
   passed `test_compiled_backward` (217/217, 85/85, 64/64 params with nonzero finite grads)

@@ -283,11 +283,35 @@ def test_compiled_backward(model):
 
 
 def _kill_dropout(model):
+    """Zero every stochastic path, in all THREE forms it takes in this tree.
+
+    A train-mode differential is meaningless unless dropout is fully off, and "fully" is
+    the tricky part -- probability lives in three different places here:
+      1. `nn.Dropout` modules (`.p`),
+      2. `nn.MultiheadAttention.dropout` -- a float ATTRIBUTE, not a module,
+      3. the local ParT port's own `Attention.dropout` -- also a float attribute, and the
+         one that is easiest to miss because it looks like (2) but is a different class.
+    Production ParT ships 0.1 on eight `net.blocks.*.attn`, so missing (3) makes eager and
+    compiled draw different masks and reports a ~5e-2 relative "divergence" that is purely
+    RNG desynchronization. Measured: tag_ParT train-mode compiled-vs-eager reads 4.7e-02
+    with (3) missed and 8.8e-16 with it zeroed. `DropPath.drop_prob` is included for the
+    same reason, though it currently ships at 0.
+
+    The flags-only comparison below happens to be insensitive to (3) -- the twin changes
+    PairEmbed only, so both sides consume the RNG identically -- but anything that adds
+    real dynamo to the comparison is NOT, which is exactly when someone would chase a
+    phantom bug.
+    """
     for m in model.modules():
         if isinstance(m, torch.nn.Dropout):
             m.p = 0.0
         if isinstance(m, torch.nn.MultiheadAttention):
             m.dropout = 0.0
+        # float-attribute dropouts on custom classes (ParT's Attention, DropPath)
+        if isinstance(getattr(m, "dropout", None), float):
+            m.dropout = 0.0
+        if isinstance(getattr(m, "drop_prob", None), float):
+            m.drop_prob = 0.0
 
 
 def _bn_buffers(model):

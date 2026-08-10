@@ -783,7 +783,7 @@ the fix, and the backward matrix re-run under the compiled knob:
 
 | model | train max abs delta (was) | BN buffers (was) | compiled backward | posture |
 |---|---|---|---|---|
-| tag_ParT | **1.554e-15** (6.5e-01) | **1.110e-14** (15.0) | 217/217 finite | **`compile: true`** |
+| tag_ParT | **2.331e-15** (6.5e-01) | **1.110e-14** (15.0) | 217/217 finite | **`compile: true`** |
 | tag_ParticleNetParTGraphTrans | **3.109e-15** (1.5e-02) | **5.578e-13** (1.1) | 85/85 finite | **`compile: true`** |
 | tag_ParticleNetParTGraphGPS | **2.776e-17** (4.4e-04) | **5.578e-13** (1.1) | 64/64 finite | `false` (perf posture) |
 
@@ -796,6 +796,25 @@ joint backward graph — round 4, a correctness blocker) and for `tag_PlainGraph
 β-PERF resolves in one line); `tag_MIParT` has no knob by operator decision; and
 `config_quick` stays eager everywhere. The GPS pair's correctness question is now
 closed — only the walltime question remains, which is what the β-PERF row above measures.
+
+**Round 6c (2026-08-10): the gap the train-mode gate leaves, measured.** That gate is
+deliberately FLAGS-ONLY — it sets the twin flags and never invokes dynamo, on the stated
+premise that dynamo is numerics-preserving. Nothing had tested the premise in TRAIN mode,
+so the shipped configuration (flags **and** dynamo) was unmeasured there. Measured now,
+production tree, compiled vs eager, train mode: **tag_ParT 8.757e-16, PNParTGraphTrans
+6.798e-16, tag_particlenet 1.318e-15** — the premise holds and the shipped knob is clean.
+
+Getting that number required falling into a trap worth recording, because it cost real
+time and looked exactly like a serious bug (a 4.7e-02 relative divergence at the gate's own
+batch size). Dropout probability lives in THREE places in this tree: `nn.Dropout.p`,
+`nn.MultiheadAttention.dropout` (a float attribute), and — the one that bites — the local
+ParT port's own `Attention.dropout`, also a float attribute but on a different class.
+Production ParT ships **0.1** on all eight `net.blocks.*.attn`. Miss it and eager and
+compiled draw different masks; the resulting RNG desynchronization reads as a 5–9%
+"divergence" that scales with nothing and reproduces perfectly. `_kill_dropout` now zeroes
+all three forms plus `DropPath.drop_prob`, and says so. Zeroing the third form shifts the
+gate's own tag_ParT reading from 1.554e-15 to 2.331e-15 — same machine-precision class,
+different values flowing.
 
 `TWIN_TRAIN_DIVERGENT` is accordingly replaced by `TWIN_TOL_MODELS` + `TRAIN_TOL = 1e-10`:
 the gate asserts agreement now instead of documenting disagreement, and every other model

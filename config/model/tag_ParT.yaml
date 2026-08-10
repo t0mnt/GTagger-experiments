@@ -7,7 +7,7 @@ compile: true                   # torch.compile(net, dynamic=True). Routes PairE
                                 # all-pairs twin (tril/nonzero are untraceable) with a WEIGHTED pair
                                 # BatchNorm, so the twin's train-mode statistics are taken over exactly
                                 # the eager reference multiset -- the lower-triangular REAL pairs of the
-                                # sparse path. Measured compiled-vs-eager in TRAIN mode: 1.6e-15 outputs,
+                                # sparse path. Measured compiled-vs-eager in TRAIN mode: 2.3e-15 outputs,
                                 # 1.1e-14 BN running buffers; eval <=4e-15. Clean graph (0 breaks) and
                                 # backward verified (217/217 params, finite grads). Pinned by
                                 # test_nonequi_compile: BREAK_BARS, test_train_mode_differential,
