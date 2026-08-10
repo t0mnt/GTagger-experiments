@@ -143,6 +143,12 @@ there is no longer any ordering constraint on the fixture deletion.
 - All five compile gate files: `test_cgenn_compile.py`, `test_cgenn_hybrid_compile.py`,
   `test_lorentznet_compile.py`, `test_lorentznet_hybrid_compile.py`,
   `test_nonequi_compile.py`.
+  **The regression guards inside `test_nonequi_compile.py` have already been carved out**
+  into `tests/experiments/test_compile_posture.py` (KEEP). Port instruments and permanent
+  guards had ended up in the same file, so deleting it wholesale would have stripped the
+  drift protection off the compile TWINS — which are permanent model code, not port
+  scaffolding. Verified: with all five gate files and every fixture pack removed,
+  `test_compile_posture.py` still passes 8/8.
 - All `tests/fixtures/*_compile/` packs (~43 MB, including the MIParT pins and the two
   large ParT packs).
 - `tests/experiments/test_lgatr_v2_inventory.py` — a v1-vs-v2 API inventory. Its job ends
@@ -182,6 +188,12 @@ the wipe.
 
 - `tests/experiments/test_device_hygiene.py` — small, fast, and guards a class that CPU
   runs are structurally blind to. Not a port instrument; it stays useful forever.
+- `tests/experiments/test_compile_posture.py` — the two guards that must outlive the port:
+  `test_compile_true_is_backward_verified` (ungated, so it runs on every suite; it is what
+  stands between a one-character yaml edit and a campaign that dies at its first optimizer
+  step) and `test_train_mode_differential` (the guard that caught the eval-exact /
+  train-wrong pair-BN bug). Deliberately fixture-free, so the fixture wipe cannot
+  neuter it.
 - `tests/internal/` and every equivariance/invariance/FLOPs test — table-integrity guards
   that predate this branch's concerns.
 - `docs/diffs.md` — the one summary a future reader needs, and the natural home for
