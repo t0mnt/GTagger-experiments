@@ -182,3 +182,97 @@ def test_no_default_device_tensor_creation():
     assert not offenders, (
         "per-forward tensor creation without device= (CPU by default, so this is a "
         "host->device transfer or a mismatch on GPU):\n  " + "\n  ".join(offenders))
+
+
+# ---------------------------------------------------------------------------------
+# DDP-class bugs: the same "only on the real training rig" shape as the device bugs
+# above. base_experiment._init_model REPLACES `self.model.net` with
+# DistributedDataParallel(net) whenever world_size > 1, and run.py sets
+# world_size = torch.cuda.device_count() -- so this is the DEFAULT on a multi-GPU node.
+# Every gate here runs single-process on CPU and cannot see it.
+#
+# Found by audit, not by a gate: this branch added two wrapper->net reach-ins that DDP
+# breaks. `edges = self.net.build_edges(...)` (both CGENN-LGATr wrappers) raises
+# AttributeError, and `if hasattr(self.net, "trimmer"): self.net.trimmer.tick()`
+# (ParTWrapper) silently evaluates False -- so ParT's SequenceTrimmer would never warm
+# up and never trim, changing training behaviour with no error at all. The silent one is
+# the dangerous shape, and a crash-only test would have missed it.
+# ---------------------------------------------------------------------------------
+
+
+def test_wrappers_reach_into_net_through_inner_net():
+    """STATIC: no wrapper may touch `self.net.<attr>` at RUNTIME without inner_net().
+
+    __init__ is exempt: it runs before DDP wrapping, so `self.net.compile(...)` there is
+    fine. Everything else runs after, where `self.net` may be a DDP object that proxies
+    nothing.
+    """
+    import ast as _ast
+
+    path = REPO / "experiments" / "tagging" / "wrappers.py"
+    tree = _ast.parse(path.read_text())
+    offenders = []
+    for cls in [n for n in tree.body if isinstance(n, _ast.ClassDef)]:
+        for fn in [n for n in cls.body if isinstance(n, _ast.FunctionDef)]:
+            if fn.name == "__init__":
+                continue
+            for node in _ast.walk(fn):
+                if (
+                    isinstance(node, _ast.Attribute)
+                    and isinstance(node.value, _ast.Attribute)
+                    and node.value.attr == "net"
+                    and isinstance(node.value.value, _ast.Name)
+                    and node.value.value.id == "self"
+                ):
+                    offenders.append(
+                        f"{path.name}:{node.lineno}: {cls.name}.{fn.name} -> self.net.{node.attr}"
+                    )
+    assert not offenders, (
+        "wrapper reaches into self.net outside __init__ without inner_net(). Under DDP "
+        "`self.net` is a DistributedDataParallel that proxies NO attribute access, so "
+        "this either raises AttributeError or -- worse -- silently no-ops behind a "
+        "hasattr() guard. Route it through experiments.tagging.wrappers.inner_net:\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_inner_net_sees_through_ddp():
+    """FUNCTIONAL: inner_net() actually recovers attributes through a real DDP wrap.
+
+    Pairs with the static test above: that one says "you used the helper", this one says
+    "the helper works". Uses a single-process gloo group, so it needs no GPU.
+    """
+    from experiments.tagging.wrappers import inner_net
+
+    class _Inner(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.lin = torch.nn.Linear(2, 2)
+            self.trimmer = torch.nn.Identity()
+
+        def build_edges(self, *a):
+            return "edges"
+
+        def forward(self, x):
+            return self.lin(x)
+
+    inner = _Inner()
+    assert inner_net(inner) is inner, "inner_net must be a no-op on a bare module"
+
+    os.environ.setdefault("MASTER_ADDR", "127.0.0.1")
+    os.environ["MASTER_PORT"] = "29591"
+    already = torch.distributed.is_initialized()
+    if not already:
+        torch.distributed.init_process_group("gloo", rank=0, world_size=1)
+    try:
+        ddp = torch.nn.parallel.DistributedDataParallel(inner)
+        # the properties that made the bug possible, asserted so nobody "simplifies"
+        # inner_net away on the belief that DDP forwards attributes
+        assert not hasattr(ddp, "trimmer"), "DDP started proxying attributes; re-audit"
+        assert not hasattr(ddp, "build_edges")
+        assert inner_net(ddp) is inner
+        assert hasattr(inner_net(ddp), "trimmer")
+        assert inner_net(ddp).build_edges() == "edges"
+    finally:
+        if not already:
+            torch.distributed.destroy_process_group()

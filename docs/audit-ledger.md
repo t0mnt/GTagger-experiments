@@ -302,3 +302,33 @@ why the FLOPs harness's force-eager walk can be defeated within a single pytest 
 if a pelican model was built compiled earlier in the run. Not currently observed as a
 failure (the FLOPs suite passes 64/0/36), but it makes process-order a hidden variable.
 
+## DDP-only regression: wrappers reaching into `self.net` (FOUND AND FIXED on dev, 2026-08-10)
+
+Not a `main` defect — this one was introduced by this branch and caught in the final
+cross-revision audit, after the greenlight. Recorded here because the *class* outlives
+the fix.
+
+`base_experiment._init_model` replaces `self.model.net` with
+`DistributedDataParallel(net)` when `world_size > 1`, and `run.py` sets
+`world_size = torch.cuda.device_count()` — so DDP is the DEFAULT on a multi-GPU node.
+DDP proxies no attribute access. This branch added two wrapper→net reach-ins inside
+`forward`, i.e. after the wrapping:
+
+| site | shape of failure |
+|---|---|
+| `CGENNLGATrGraphTransWrapper.forward` / `...GPSWrapper.forward`: `self.net.build_edges(...)` | **AttributeError** — crash on the first multi-GPU step |
+| `ParTWrapper.forward`: `if hasattr(self.net, "trimmer"): self.net.trimmer.tick()` | **silent no-op** — `hasattr` is False under DDP, so ParT's SequenceTrimmer never warms up and never trims. No error, changed training behaviour |
+
+The silent one is the dangerous shape and the reason a crash-only check would have been
+insufficient. Neither is visible to any gate in this repo: all of them run single-process
+on CPU, exactly like the `b()` device bug that motivated `test_device_hygiene.py`.
+
+Fixed by `experiments.tagging.wrappers.inner_net()`, used at all three sites. Guarded by
+two new tests in `test_device_hygiene.py`: a static scan that fails on any runtime
+`self.net.<attr>` outside `__init__` (proven non-vacuous — reverting one site names it),
+and a functional test that DDP-wraps a stand-in under a single-process gloo group and
+asserts `inner_net` recovers the attributes. `__init__` stays exempt: it runs before the
+wrapping, so `self.net.compile(...)` there is correct.
+
+**Standing lesson**: a wrapper that reaches into its net is a DDP hazard by default. The
+static test now enforces the rule rather than relying on it being remembered.

@@ -18,6 +18,31 @@ from torch_geometric.utils import scatter, to_dense_batch
 
 from experiments.logger import LOGGER
 from experiments.misc import get_attention_mask
+
+
+def inner_net(net):
+    """The underlying module, looking through DistributedDataParallel.
+
+    MUST be used by any wrapper that reaches INTO its net during ``forward`` (calling a
+    helper method, touching a submodule). ``base_experiment._init_model`` REPLACES
+    ``self.model.net`` with ``DistributedDataParallel(net)`` whenever ``world_size > 1``,
+    and ``run.py`` sets ``world_size = torch.cuda.device_count()``, so this is the DEFAULT
+    on any multi-GPU node -- while every gate in this repo runs single-process on CPU and
+    is structurally blind to it.
+
+    DDP does not proxy attribute access: it registers the wrapped model as the submodule
+    ``module``, so ``ddp.build_edges`` raises AttributeError and ``hasattr(ddp, "trimmer")``
+    is False. That asymmetry is what makes this dangerous -- an unguarded access CRASHES
+    (loud, survivable) but a ``hasattr``-guarded one SILENTLY NO-OPS (quiet, corrupting).
+    Both shapes existed here and both are routed through this helper now.
+
+    ``_orig_mod`` is handled too, for the ``torch.compile(module)`` wrapper form. The
+    repo's own knob uses in-place ``nn.Module.compile()``, which creates no wrapper, but
+    the surrounding code already anticipates the other form.
+    """
+    if isinstance(net, torch.nn.parallel.DistributedDataParallel):
+        net = net.module
+    return getattr(net, "_orig_mod", net)
 from experiments.tagging.embedding import get_tagging_features
 
 # every to_dense_batch below is deliberate: this repo uses zero padding over sparse jet
@@ -670,8 +695,9 @@ class ParTWrapper(TaggerWrapper):
         mask = mask.unsqueeze(1).float()
 
         # network
-        if hasattr(self.net, "trimmer"):
-            self.net.trimmer.tick()  # warmup bookkeeping, eager by design (see trimmer)
+        _net = inner_net(self.net)  # DDP replaces self.net; see inner_net
+        if hasattr(_net, "trimmer"):
+            _net.trimmer.tick()  # warmup bookkeeping, eager by design (see trimmer)
         if getattr(self, "_compiled", False) or hasattr(self.net, "_orig_mod"):
             # dynamic=True alone never promotes the padded seq dim here: each new batch
             # max-length compiles one more static graph (RECOMP gate found [1,2,3]).
@@ -1064,7 +1090,7 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         points, _ = to_dense_batch(points, batch)
         # hoist the static kNN edges out of the (possibly compiled) net: identical values
         # in identical order eager -- the edges depend only on these inputs
-        edges = self.net.build_edges(fourmomenta, mask, points)
+        edges = inner_net(self.net).build_edges(fourmomenta, mask, points)  # DDP-safe
         output = self.net(
             scalars,
             fourmomenta,
@@ -1115,7 +1141,7 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
         points, _ = to_dense_batch(points, batch)
         # hoist the static kNN edges out of the (possibly compiled) net: identical values
         # in identical order eager -- the edges depend only on these inputs
-        edges = self.net.build_edges(fourmomenta, mask, points)
+        edges = inner_net(self.net).build_edges(fourmomenta, mask, points)  # DDP-safe
         output = self.net(
             scalars,
             fourmomenta,
