@@ -326,6 +326,28 @@ def main():
               f"{pinned} will crash IN THE FORWARD, not at init. Rebuild xformers against "
               "this torch, or override the backend to native|flex.")
 
+    # ---- 4c. Triton can find libcuda -> torch.compile can build CUDA kernels --------
+    # 16 of 18 model configs ship `compile: true`, and inductor lowers through Triton,
+    # which locates libcuda.so by parsing `ldconfig -p`. Inside the NGC container that
+    # finds nothing (the stub is at /usr/local/cuda/compat/lib), so the first compile of a
+    # job dies with "InductorError: AssertionError: libcuda.so cannot found!" -- after the
+    # data load, minutes in, on every compiled row. Checked here so it costs a second on a
+    # login node instead of a GPU allocation.
+    if args.gpu:
+        try:
+            import torch.utils._triton as _tr
+            _tr.triton_backend()
+            check("triton can resolve libcuda (torch.compile can build CUDA kernels)", True)
+        except Exception as e:  # noqa: BLE001
+            env = os.environ.get("TRITON_LIBCUDA_PATH", "")
+            check("triton can resolve libcuda (torch.compile can build CUDA kernels)", False,
+                  f"{type(e).__name__}: {str(e)[:120]}"
+                  + (f" [TRITON_LIBCUDA_PATH={env}]" if env else " [TRITON_LIBCUDA_PATH unset]"),
+                  "export TRITON_LIBCUDA_PATH=/usr/local/cuda/compat/lib (the NGC container "
+                  "keeps the driver stub there and ldconfig does not list it). Without this "
+                  "EVERY compiled model fails at its first torch.compile; docs/oscar-train.sbatch "
+                  "sets it for campaign jobs.")
+
     # ---- 5. flash-attn (informational; PT-flash floor exists regardless) ----------
     try:
         import flash_attn
