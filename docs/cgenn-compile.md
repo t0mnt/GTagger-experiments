@@ -827,6 +827,43 @@ the cap necessary-but-not-sufficient in the first place. `tag_LorentzNetLGATrSli
 keeps `compile: false`: that file contains no k-cap at all and its `1 < s53` comes from the
 M8 channel-last transpose, so this fix does not transfer.
 
+**Round 7d: LNetSlimGraphGPS FIXED — `recompute_views`, a supported config, no
+monkeypatch.** Round 7c proved the blocker was inductor never being handed the ShapeEnv,
+and concluded the fix had to be upstream. That was too narrow a reading. The failing
+branch fires only for a graph output **that is a view**, and *which* tensors become graph
+outputs is AOT's decision, not inductor's:
+
+    torch._functorch.config.recompute_views = False   # default: SAVE views across fwd/bwd
+
+AOT saves views because they are cheap to save. Here the saved view is the GPS layer's
+channel-first ↔ channel-last multivector transpose. Setting `recompute_views=True` makes
+the backward **recompute** it instead, so it stops being a graph output and inductor never
+reaches the stride-ordering path at all. Numerics-preserving by construction — a
+recomputed permute is the same permute — and measured so.
+
+Applied as a **scoped** `torch._functorch.config.patch(...)` around the net call in
+`LorentzNetLGATrSlimGraphGPSWrapper.forward`, not set globally, because the training smoke
+and the FLOPs harness build many models per process.
+
+| gate (caches force-disabled) | result |
+|---|---|
+| compiled-vs-eager, EVAL | **0.000e+00** |
+| compiled-vs-eager, TRAIN | **0.000e+00** |
+| TOL / BREAKS / RECOMP | 0.000e+00 / **0** / [1, 1, 1] |
+| 3 optimizer steps | 65/65 gradients, zero non-finite |
+
+So the model ships `compile: true`, joins `BACKWARD_VERIFIED`, and **`bperf.NO_APPLY` is
+now empty** — every knob-bearing model compiles and survives a real backward.
+
+**Methodology warning, learned the hard way.** Mid-investigation a baseline run reported
+"no crash" and briefly looked like the bug had evaporated. It had not: inductor's on-disk
+FX-graph cache (1.2 GB in `/tmp/torchinductor_root`) was serving an artifact compiled
+earlier under a monkeypatched inductor. **Any compile experiment in this repo must set
+`TORCHINDUCTOR_FORCE_DISABLE_CACHES=1`**, or a previously-successful compile of the same
+graph will mask a genuine failure. Every number in this entry was measured with caches
+disabled, and the `tag_PlainGraphTrans` fix from round 7 was re-verified the same way
+(71/71 grads) once the confound was found.
+
 **Round 7c: LNetSlimGraphGPS root-caused to an UPSTREAM TORCH BUG, and proven.** The
 blocker is not in this repo and is not fixable from model code.
 

@@ -228,6 +228,10 @@ BACKWARD_VERIFIED = {
     # added once the static-k kNN twin removed the InductorError that used to kill this
     # model at its first loss.backward(): 71/71 nonzero finite grads under compile
     "tag_PlainGraphTrans",
+    # added once scoped recompute_views stopped AOT saving the per-layer channel-first <->
+    # channel-last view that inductor could not stride-order: 65/65 finite grads, and
+    # compiled-vs-eager is 0.000e+00 in BOTH eval and train
+    "tag_LorentzNetLGATrSlimGraphGPS",
 }
 
 

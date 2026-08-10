@@ -1,53 +1,34 @@
 _target_: experiments.tagging.wrappers.LorentzNetLGATrSlimGraphGPSWrapper
 out_channels: null              # init_physics -> num_outputs
-compile: false                  # UPSTREAM TORCH BUG, root-caused 2026-08-10 -- not a defect in this
-                                # model and NOT fixable from model code. Eager ships and is correct.
+compile: true                   # torch.compile(net, dynamic=True), enabled by a SCOPED
+                                # torch._functorch.config.patch(recompute_views=True) around the net
+                                # call (LorentzNetLGATrSlimGraphGPSWrapper.forward).
                                 #
-                                # WHAT HAPPENS: inductor lowers the joint forward+backward graph and
-                                # must pick a memory layout for the (B, P, 4, V) multivector stream,
-                                # whose strides are (16*P, 16, 1, 4). Ordering them means asking
-                                # "is 16*P bigger than 16?", i.e. "is P > 1?". P is the padded particle
-                                # count -- a symbol, not a number -- so it raises
-                                #   InductorError: cannot determine truth value of Relational: 1 < s53
+                                # Why it was needed: a GPS layer fuses its local and global branches on
+                                # ONE stream, so it crosses between channel-first LorentzNet and
+                                # channel-last v2 slim (M8) twice per layer. AOT's partitioner saves that
+                                # transpose across the fwd/bwd boundary because views are cheap to save,
+                                # and inductor's stride-ordering for graph outputs THAT ARE VIEWS then has
+                                # to compare strides (16*P, 16, 1, 4) -- i.e. ask "is P > 1?" -- through a
+                                # code path that is never handed the ShapeEnv. With a symbolic P that
+                                # raises InductorError "cannot determine truth value of Relational: 1 < s53"
+                                # while lowering the JOINT graph. Forward-only compile was always fine,
+                                # which is why every eval/no_grad gate passed it.
+                                # recompute_views=True makes the backward RECOMPUTE the view instead of
+                                # saving it, so it is no longer a graph output and the path is never
+                                # entered. Numerics-preserving by construction, and measured so.
                                 #
-                                # WHY IT IS TORCH'S BUG, not ours. ir.get_fill_order already has a
-                                # symbolic-aware branch:
-                                #     if shape_env is None ...: argsort(seq)          # bare compare
-                                #     else:                     argsort_sym(shape_env, seq)   # handles symbols
-                                # but torch/_inductor/graph.py calls `ir.get_stride_order(strides)` with
-                                # ONE argument, so shape_env is None and it takes the bare-compare branch.
-                                # Nothing ever consults the ShapeEnv, which is why constraining P does
-                                # not help. PROVEN: monkeypatching get_stride_order to pass the live
-                                # V.graph.sizevars.shape_env makes this model compile AND train --
-                                # 3 steps, 65/65 gradients, zero non-finite, losses 0.710076 / 0.712327 /
-                                # 0.709093, bit-matching the dynamic=False run. One-line upstream fix.
+                                # Neither parent needs this and neither does the GraphTrans sibling:
+                                # tag_lorentznet and tag_slim each stay in one convention, and
+                                # tag_LorentzNetLGATrSlimGraphTrans runs the stacks SEQUENTIALLY (zero
+                                # `transpose(-1,-2)` in that file). The cost is the GPS topology itself.
                                 #
-                                # WHY THIS MODEL AND NOT ITS PARENTS OR ITS SIBLING: only GPS converts
-                                # layouts. tag_lorentznet and tag_slim each stay in their own convention;
-                                # so does tag_LorentzNetLGATrSlimGraphTrans, which runs the LorentzNet
-                                # stack and THEN the slim stack (zero `transpose(-1,-2)` in that file).
-                                # A GPS layer fuses local and global branches on ONE stream per layer, so
-                                # it must cross between channel-first LorentzNet and channel-last v2 slim
-                                # (M8) twice per layer -- that 4-D transpose is the node that dies.
-                                #
-                                # ATTEMPTS THAT DO NOT WORK (all model-side, all futile for the reason
-                                # above -- do not repeat):
-                                #   1. the static-k kNN twin that fixed tag_PlainGraphTrans. (NB this
-                                #      module DOES reach a capped knn, imported from
-                                #      lorentznetlgatrslimgraphtrans -- an earlier note here wrongly said
-                                #      it had none -- but making k static changes nothing.)
-                                #   2. .contiguous() on all three M8 transposes.
-                                #   3. flatten(0,1) -> transpose(1,2) -> reshape: the permute then
-                                #      succeeds and the error MOVES to the reshape rebuilding (B,P,4,V).
-                                #   4. torch._check(P > 1), and mark_dynamic(dim, min=2, max=4096) at the
-                                #      wrapper boundary -- the mark applies (the symbol renumbers) and the
-                                #      error is unchanged, exactly as the shape_env analysis predicts.
-                                #
-                                # TO RE-TRY AFTER A TORCH UPGRADE: check whether _inductor/graph.py now
-                                # passes a shape_env into get_stride_order. If it does, flip this to true
-                                # and run the normal gate battery. Do NOT ship the monkeypatch: patching
-                                # torch internals under a physics campaign is not worth a bounded
-                                # walltime gain on a model that is already correct in eager.
+                                # Measured (caches force-disabled, so no stale artifact):
+                                #   compiled-vs-eager  0.000e+00 in EVAL and 0.000e+00 in TRAIN
+                                #   BREAKS 0, RECOMP [1, 1, 1], TOL 0.000e+00
+                                #   3 optimizer steps: 65/65 gradients, zero non-finite
+                                # The patch is scoped to this wrapper's forward, NOT set globally, because
+                                # the training smoke and the FLOPs harness build many models per process.
 
 net:
   _target_: experiments.baselines.lorentznetlgatrslimgraphgps.LorentzNetLGATrSlimGraphGPS

@@ -69,7 +69,12 @@ why below.
 
     # 4. CONFIRM the rest still holds on main (CPU)
     python -m pytest tests/ -q                            # expect 0 failures
-    CGENN_COMPILE_GATES=1 python -m pytest tests/ -q      # + the full gate battery
+    CGENN_COMPILE_GATES=1 TORCHINDUCTOR_FORCE_DISABLE_CACHES=1 \
+        python -m pytest tests/ -q                        # + the full gate battery
+    #    TORCHINDUCTOR_FORCE_DISABLE_CACHES=1 is NOT optional for a compile gate: inductor
+    #    caches compiled graphs on disk (~GB under /tmp/torchinductor_*), and a graph that
+    #    compiled successfully earlier will be served from cache and MASK a real lowering
+    #    failure. This was observed during the round-7d investigation.
 
     # 5. GPU TEST -- the one genuinely new regime. EVERY compile gate in this repo runs on
     #    CPU, so inductor's CUDA backend (Triton kernels) has never been exercised by

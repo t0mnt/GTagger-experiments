@@ -1290,6 +1290,7 @@ class LorentzNetLGATrSlimGraphGPSWrapper(nn.Module):
         if compile:
             # compile the net only (dense top-k kNN inside the net is shape-static and
             # traces clean -- tests/experiments/test_lorentznet_hybrid_compile.py)
+            self._recompute_views = True  # see forward(): AOT view-saving vs inductor
             self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
@@ -1322,12 +1323,30 @@ class LorentzNetLGATrSlimGraphGPSWrapper(nn.Module):
         scalars, _ = to_dense_batch(scalars, batch)  # (B, P, C)
         points, _ = to_dense_batch(points, batch)  # (B, P, 2)
 
-        output = self.net(
+        _args = (
             scalars.transpose(1, 2).contiguous(),  # x: (B, C, P)
             fourmomenta.transpose(1, 2).contiguous(),  # v: (B, 4, P)
             mask.unsqueeze(1),  # (B, 1, P)
             points.transpose(1, 2).contiguous(),  # (B, 2, P)
         )
+        if getattr(self, "_recompute_views", False):
+            # AOT's partitioner saves VIEWS across the fwd/bwd boundary because they are
+            # cheap. Here that saved view is this model's per-layer channel-first <->
+            # channel-last multivector transpose, shape (B, P, 4, V) with strides
+            # (16*P, 16, 1, 4), and inductor's stride-ordering for graph outputs that are
+            # views compares 16*P against 16 -- i.e. asks "is P > 1?" -- via a code path
+            # that is not given the ShapeEnv, so a symbolic P raises
+            # "cannot determine truth value of Relational: 1 < s53" while lowering the
+            # JOINT graph. recompute_views=True makes the backward recompute the view
+            # instead of saving it, so it is no longer a graph output and the path is
+            # never entered. Numerics-preserving by construction (a recomputed permute is
+            # the same permute); measured identical to the eager forward.
+            # Scoped to this call rather than set globally, because the smoke test and the
+            # FLOPs harness build many models in one process.
+            import torch._functorch.config as _fc
+            with _fc.patch(recompute_views=True):
+                return self.net(*_args), {}, None
+        output = self.net(*_args)
         return output, {}, None
 
 
