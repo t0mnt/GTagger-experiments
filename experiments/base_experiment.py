@@ -24,6 +24,10 @@ from experiments.ranger import Ranger
 # set to 'True' to debug autograd issues (slows down code)
 torch.autograd.set_detect_anomaly(False)
 MIN_STEP_SKIP = 1000
+# Consecutive non-finite gradient norms tolerated before _step gives up. Generous:
+# a transient overflow under AMP is normal and self-corrects within a few steps once
+# the loss scale drops, while a genuinely NaN'd model never recovers.
+MAX_CONSECUTIVE_NONFINITE = 50
 
 
 def _detached_cpu_copy(obj):
@@ -939,6 +943,41 @@ class BaseExperiment:
                 self.model.framesnet.parameters(),
                 self.cfg.training.clip_grad_norm_framesnet,
             ).detach().to(self.device)
+
+        # NON-FINITE GRADIENTS: skip the step rather than write NaN into the weights.
+        #
+        # Nothing else catches this in the shipped configuration. GradScaler is the usual
+        # inf/nan backstop, but it only checks when ENABLED, and all eleven production
+        # model configs ship `use_amp: false`, so `scaler.step()` degenerates to a plain
+        # `optimizer.step()`. `max_grad_norm` is null by default (and gated behind
+        # MIN_STEP_SKIP=1000 even when set), so the branch below never fires. And
+        # `clip_grad_norm_(..., error_if_nonfinite=False)` does not save us either: a NaN
+        # total_norm makes the clip coefficient NaN, which multiplies EVERY gradient to
+        # NaN. One bad step therefore NaNs every weight permanently, and the run keeps
+        # going for days producing garbage that only surfaces in the final table.
+        #
+        # scaler.update() before returning for the same reason the max_grad_norm branch
+        # documents: under AMP the loss scale must be free to DECREASE, and skipping the
+        # update freezes it forever.
+        if not torch.isfinite(grad_norm):
+            self._nonfinite_steps = getattr(self, "_nonfinite_steps", 0) + 1
+            LOGGER.warning(
+                f"Skipping iteration {step}, gradient norm is non-finite ({grad_norm}) "
+                f"[{self._nonfinite_steps} consecutive]"
+            )
+            self.scaler.update()
+            # A model whose PARAMETERS have gone non-finite produces a non-finite loss and
+            # non-finite gradients on every subsequent step, so skipping would silently
+            # no-op for the rest of a multi-day job. Failing loudly is strictly better than
+            # burning the allocation on a run that cannot recover.
+            if self._nonfinite_steps >= MAX_CONSECUTIVE_NONFINITE:
+                raise RuntimeError(
+                    f"{self._nonfinite_steps} consecutive non-finite gradient norms ending "
+                    f"at iteration {step}: the model is not recovering. Check for a "
+                    f"diverged lr (utils/find_lr.py), or a NaN-producing input."
+                )
+            return
+        self._nonfinite_steps = 0
 
         if step > MIN_STEP_SKIP and self.cfg.training.max_grad_norm is not None:
             if grad_norm > self.cfg.training.max_grad_norm:
