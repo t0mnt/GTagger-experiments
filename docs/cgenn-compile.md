@@ -1405,3 +1405,37 @@ Not verified, stated rather than glossed:
   timing evidence, and they cover one kernel, not a step.
 - **The `meta` gate cannot see the silent-cost class**, only the crash class. Stated in the
   test file and repeated here because a green run is easy to over-read.
+
+### β-PERF, GPS/PN rows — the split-graph question, answered (2026-08-11)
+
+`tag_PlainGraphGPS` and `tag_ParticleNetParTGraphGPS` shipped `compile: false` with the
+same closing sentence in both yamls: *"Unmeasured bounded upside vs one-line reversibility
+→ false until β-PERF says otherwise."* The masked BatchNorm over real nodes is
+data-dependent by design and splits the graph (11 and 7 breaks, all one documented class),
+and no reference ships break-laden compile as a default. Correctness was never the blocker
+— both are in `BACKWARD_VERIFIED`, both twins are train-faithful.
+
+β-PERF has now said. Operator run, GPU, paired states:
+
+| row | eager it/s | compiled it/s | speedup | posture |
+|---|---|---|---|---|
+| tag_particlenet | 5.86 | 9.47 | **1.617×** | already `true` (Stage-4 gates) |
+| tag_PlainGraphGPS | 4.82 | 5.86 | **1.216×** | flipped `false → true` |
+| tag_ParticleNetParTGraphGPS | 5.37 | 6.22 | **1.159×** | flipped `false → true` |
+
+The bounded upside is 15.9–21.6%. For scale: our own ParticleNet ran 30 h against the
+published 25 h, a 20% gap from hardware and I/O alone — so these gains are the size of the
+discrepancy that already makes cross-paper walltime incomparable, which is the argument
+the table-wide policy above is built on. "No reference ships this as a default" is an
+argument about defaults for other people's users, not about a measured row on our card.
+
+PNParTGraphGPS at 1.159× is the **lowest margin adopted anywhere in the table**, well
+above the driver's 3% margin but worth naming: β-PERF's pairing does not cancel the
+order effect (states always run false-then-true, so the second starts on a warmer card).
+If a swapped-order rerun lands under 3%, flip it back — one character, and FLOPs carries
+every efficiency claim regardless.
+
+Still open, and the reason `utils/bperf.py` is not deletable yet: the CGENN rows. Their
+last sweep is the one the sparse-GP autograd Function was built to invalidate — sparse was
+sized to 32 where einsum and matmul got 64. `docs/oscar-bperf.sbatch` is the batch runner
+for it; `--find-batchsize` is not optional there, because the sizes are the finding.
