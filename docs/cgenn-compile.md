@@ -1018,7 +1018,7 @@ only in the LINEAR layer (L-GATr_dense faster on GPU, L-GATr_sparse faster on CP
 `gp_impl` knob is the geometric-product half only; we have no sparse-linear variant, and by
 their result we should not want one on GPU.
 
-**Our sparse GP does not reproduce their result, and the reason is memory.** beta-PERF on an
+**Our sparse GP does not reproduce their result, and the reason is memory -- measured.** beta-PERF on an
 H100 sized each row by OOM search: `gp_impl=einsum` and `matmul` both fit batch 128 (peak
 80.2 GB at 128), but `sparse` peaked at 15.2 GB already at batch 16 and OOM'd at 128 -- it was
 sized to 32 where the others got 64. Throughput must therefore be read as jets/s, not it/s:
@@ -1026,8 +1026,54 @@ einsum 2.80 it/s x 64 = 179 jets/s, matmul 2.70 x 64 = 173 jets/s, sparse at hal
 So our sparse GP buys 16x fewer MACs and pays for it in memory, on a device where memory is
 the binding constraint -- the opposite trade to lgatr's. The likely cause is that our
 implementation gathers the Cayley entries into a per-pair intermediate (`gather + 2-op
-einsum`) where lgatr's sparse GP does not materialize one. Treat `gp_impl: sparse` as
-UNCONFIRMED on GPU until it is measured at a common batch size against einsum.
+einsum`) where lgatr's sparse GP does not materialize one.
+
+ROOT-CAUSED 2026-08-11, by instrumenting `saved_tensors_hooks` over one
+`SteerableGeometricProductLayer` at production shapes (B=6400 rows, 8 x-features, 16 blades):
+
+| gp_impl | saved for backward | (B, F, 16, 16) tensors retained |
+|---|---|---|
+| einsum  |  81.9 MB | **one** (52.4 MB) |
+| matmul  |  81.9 MB | **one** (52.4 MB) |
+| sparse  | **130.9 MB** | **two** (52.4 MB each) |
+
+Ratio 1.60x, against the 1.50x peak-memory ratio the GPU OOM search measured independently
+(15.2 vs 10.1 GB at batch 16). Same effect.
+
+The two come from naming both halves:
+
+    pair = input.unsqueeze(-1) * input_right[..., gp_k_idx]   # gather -> (B,F,16,16), SAVED
+                                                              # (needed for d/d input)
+    product = einsum("bnij,nij->bnj", pair, w)                # pair    -> (B,F,16,16), SAVED
+                                                              # (needed for d/d w)
+
+einsum/matmul name only one such tensor, so they save one. There is no cheap eager fix: any
+formulation that computes `x_i * y_k(i,j)` and then contracts against a weight must keep one
+of the two for the backward unless the backward RECOMPUTES the gather.
+
+Which is exactly what lgatr does, and it is not a contraction trick -- it is a custom
+`torch.autograd.Function` (`_GeometricProductSparse`) whose `setup_context` saves only the two
+INPUTS and whose hand-written backward re-derives the sparse contraction. Their comment says
+so: "Bilinear, so the gradients are the same sparse contraction; saving only (x, y) keeps this
+lighter than dense." That is 6.6 MB where ours is 130.9 MB. Their forward is also a single
+fused expression `(signs * y[..., indices] * x.unsqueeze(-2)).sum(-1)` so inductor emits one
+kernel with no 16x16 buffer.
+
+CONCLUSION: the paper's sparse-GP result does NOT transfer to this repo, because our sparse is
+not their sparse. Ours is the same contraction with none of the memory engineering, and on a
+memory-bound H100 the halved batch size costs more than the 16x MAC saving buys.
+
+Two ways forward, in order of risk:
+  1. **Ship einsum (or matmul) for the campaign.** On the measured numbers einsum leads at
+     179 jets/s vs matmul 173, and both run at twice sparse's batch size. Costs nothing.
+  2. **Port lgatr's approach**: single fused expression plus a custom autograd Function saving
+     only (x, y, w). Our GP has learnable per-path weights where lgatr's has none, so the
+     backward needs a third gradient -- d/dw is a straightforward contraction, but d/dy is a
+     scatter-add over the (i,j) pairs mapping to each output blade, which is the fiddly part.
+     Verifiable by `torch.autograd.gradcheck` in float64 plus a direct gradient comparison
+     against the einsum reference. NOT attempted here: it is a hand-written backward on the
+     physics path, the BIT fixtures that would have pinned it are deleted, and it would need
+     fresh ones recorded first.
 
 *Mixed precision, where we differ from upstream by omission.* The paper: "the baseline
 transformer and ParT can be used with mixed precision without performance drop", while "For
