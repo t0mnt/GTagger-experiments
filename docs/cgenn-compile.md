@@ -1097,8 +1097,16 @@ Two ways forward, in order of risk:
 >   84.8 MB whole-model EAGER (3.46x), where sparse now retains **less** than einsum rather
 >   than more. Compiled, the partitioner equalizes all four impls and there is no retention
 >   difference at all -- see the correction further down; the Function is eager-only for
->   that reason. The campaign posture stays `sparse` on the compiled timing (0.910x einsum),
->   not on a memory argument.
+>   that reason.
+>
+>   **Which leaves the campaign posture UNRESOLVED, and leaning the other way.** Because
+>   the Function is eager-only, the compiled sparse path today is byte-for-byte the code
+>   the H100 OOM search measured -- so that finding is untouched: sparse peaked at 15.2 GB
+>   by batch 16 and was sized to 32 where einsum and matmul got 64, i.e. half the jets/s.
+>   `gp_impl: sparse` therefore now rests on lgatr's default plus a CPU timing inside a 9%
+>   noise floor, against a direct measurement of OUR code on the target hardware saying the
+>   opposite. That is the wrong way round for this repo. Either rerun beta-PERF for the
+>   CGENN rows (with `--bs-safety 1.0`, since the sizes are the finding) or ship `einsum`.
 > - *"NOT attempted here"* — it was attempted and shipped. The d/dy scatter that this
 >   paragraph calls the fiddly part is not a scatter at all in the end: for a fixed left
 >   blade the map j -> k(i, j) is a bijection, so it inverts into a gather, which is also
@@ -1243,6 +1251,18 @@ At one GP layer alone, at (B=32768, 16 features, fp32), it is 1056 MB → 64 MB,
 > other, which is the same job the Function was written to do by hand. So compiled, the
 > Function keeps only its cost -- 1.84x against the expression it replaced -- and CGENN ships
 > `compile: true`, which made that the row the campaign would have run.
+>
+> MECHANISM, established afterwards rather than assumed: with the Function forced onto the
+> compiled path, its python `forward` AND `backward` are both called on EVERY step (counts
+> grow 2,3,4,5,6,7 and 1,2,3,4,5,6 over six steps). Dynamo never inlines it -- the Function
+> executes as a black box and its hand-written backward is interpreted op by op inside what
+> is nominally a compiled step. That is the whole 1.84x.
+>
+> Note what this says about GATE-BREAKS = 0: that gate runs through `_forward`, which is
+> `no_grad`-wrapped, so it describes the INFERENCE graph. It was green the entire time the
+> training path was breaking around every GP layer. Same blind spot that hid the
+> recompile-per-shape bug, and the third time in this document that a `no_grad` gate has
+> been mistaken for a statement about training.
 >
 > Fixed by making the Function eager-only: `sparse_geometric_product` branches on
 > `torch.compiler.is_compiling()`, so the compiled graph contains the plain expression

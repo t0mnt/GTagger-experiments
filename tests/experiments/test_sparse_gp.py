@@ -110,10 +110,14 @@ def test_retains_less_than_the_expression_it_replaced(fc):
     """SAVED: the reason the Function exists, as a gate.
 
     The eager form saves TWO (B, N, 16, 16) tensors for backward -- `y[..., gp_k_idx]`,
-    which the mul needs, and `pair`, which the einsum needs. That is why the sparse path
-    did 16x fewer MACs than the dense forms and still measured a 1.50x HIGHER GPU peak: a
-    memory regression no flops-shaped gate can see, which is how it reached the campaign
-    posture. The Function saves only its inputs, two (B, N, 16) tensors.
+    which the mul needs, and `pair`, which the einsum needs. The Function saves only its
+    inputs, two (B, N, 16) tensors.
+
+    EAGER ONLY, and the distinction matters: under torch.compile AOTAutograd's partitioner
+    reaches this retention on its own, so this ratio does not describe the compiled path
+    and does NOT explain the 1.50x H100 peak (which was measured compiled, and stands
+    unexplained -- see docs/cgenn-compile.md). The Function is routed off the compiled
+    path entirely; test_compiled_path_bypasses_the_function is what keeps it there.
 
     Bar is 1/8 against a measured ~1/16 -- tight enough that reinstating even ONE of the
     two retained intermediates fails, loose enough not to trip on bookkeeping.

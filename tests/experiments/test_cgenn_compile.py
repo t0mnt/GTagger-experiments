@@ -252,11 +252,14 @@ def _saved_bytes(exp, data):
 def test_sparse_retains_less_than_dense():
     """The claim the Function exists to make, as a gate.
 
-    sparse does 16x fewer MACs than the dense forms and still measured a HIGHER GPU peak,
-    because the eager three-liner retained TWO (B, N, 16, 16) tensors per layer where
-    einsum/matmul retain one. That is a memory regression a flops-shaped gate cannot see,
-    which is why it survived to the campaign posture. Measured here: 84.8 MB vs 293.4 MB,
-    a 3.46x reduction; the bar is 0.5, so a regression that merely reinstates parity fails.
+    The eager three-liner retained TWO (B, N, 16, 16) tensors per layer where einsum/matmul
+    retain one; the custom Function saves only its inputs. Measured here: 84.8 MB vs
+    293.4 MB, a 3.46x reduction; the bar is 0.5, so a regression that merely reinstates
+    parity fails.
+
+    This gate is EAGER -- `_build` does not compile. Under torch.compile the partitioner
+    equalizes all three impls to within 1 MB, so this ratio says nothing about the campaign
+    posture, and the 1.50x H100 peak it was once thought to explain remains unexplained.
     """
     path = FIX / "fp64.pt"
     if not path.exists():
