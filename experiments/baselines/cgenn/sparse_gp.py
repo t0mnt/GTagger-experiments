@@ -61,6 +61,36 @@ docs entry in docs/cgenn-compile.md.
 import torch
 
 
+def sparse_gp_expression(x, y, weight, kidx, spath, spval):
+    """The eager three-liner, as a function. Used verbatim in two places: inside
+    `SparseGeometricProduct.forward` (where grad mode is off, so its intermediates are
+    transient), and DIRECTLY on the compiled path, where the Function must not be used.
+
+    EAGER-ONLY, and that is measured, not assumed. Under `torch.compile` AOTAutograd's
+    partitioner already decides what to save across the fwd/bwd boundary, and it reaches
+    the same retention this Function was written to force -- so the Function's whole
+    benefit evaporates while its recompute cost stays. Model level, tag_cgenn, fp64, five
+    warm-up steps then ten timed:
+
+        posture   | expression            | Function              | ratio
+        eager     | 2536 ms /  487.5 MB   | 2230 ms /  84.8 MB    | 0.88x time, 0.17x mem
+        compiled  |  572 ms /  252.8 MB   | 1054 ms / 252.9 MB    | 1.84x time, 1.00x mem
+
+    So: a clear win eager, a pure 1.84x loss compiled. `tag_cgenn.yaml` ships
+    `compile: true`, which makes the compiled row the one the campaign runs -- hence the
+    `torch.compiler.is_compiling()` split at the two call sites, the same compile-twin
+    pattern this repo already uses for ParT's dense pair path and the static-k kNN.
+
+    Whether the 1.84x is inherent to a custom Function under inductor or specific to this
+    one is NOT established -- it was measured on CPU inductor, and CPU emits C++ where GPU
+    emits Triton. The split does not depend on the answer: the expression is at least as
+    fast in both postures once AOT is in charge.
+    """
+    pair = x.unsqueeze(-1) * y[..., kidx]
+    w = weight[..., spath] * spval
+    return torch.einsum(_SPECS[weight.dim()][0], pair, w)
+
+
 # (forward, t-builder, dL/dweight) contraction specs, keyed by weight.dim(). The
 # fully-connected layer sums over the input-feature axis `n` into an output-feature axis
 # `m`; the plain layer keeps `n` as a batch axis. Same math otherwise -- the fc spec is the
@@ -116,11 +146,9 @@ class SparseGeometricProduct(torch.autograd.Function):
 
     @staticmethod
     def forward(x, y, weight, kidx, jinv, spath, spval, sel):
-        # unchanged from the eager three-liner it replaces -- bit-identity is the point.
-        # Grad mode is off in here, so `pair` and the gathered `y` are transient.
-        pair = x.unsqueeze(-1) * y[..., kidx]
-        w = weight[..., spath] * spval
-        return torch.einsum(_SPECS[weight.dim()][0], pair, w)
+        # literally the expression it replaces -- bit-identity is the point. Grad mode is
+        # off in here, so `pair` and the gathered `y` are transient rather than retained.
+        return sparse_gp_expression(x, y, weight, kidx, spath, spval)
 
     @staticmethod
     def setup_context(ctx, inputs, output):
@@ -179,7 +207,16 @@ class SparseGeometricProduct(torch.autograd.Function):
 
 
 def sparse_geometric_product(x, y, weight, algebra, spath, spval, sel):
-    """Thin call-site wrapper: one definition of the argument order, two layers."""
+    """Thin call-site wrapper: one definition of the argument order, two layers.
+
+    Routes around the Function while compiling -- see `sparse_gp_expression` for the
+    measurement. `torch.compiler.is_compiling()` is constant-folded by dynamo at trace
+    time, so the compiled graph contains only the expression and this costs no break
+    (GATE-BREAKS = 0). Both branches are the same arithmetic in the same order, so the
+    forward is bit-identical either way and the BIT gate covers both.
+    """
+    if torch.compiler.is_compiling():
+        return sparse_gp_expression(x, y, weight, algebra.gp_k_idx, spath, spval)
     return SparseGeometricProduct.apply(
         x, y, weight, algebra.gp_k_idx, algebra.gp_j_idx, spath, spval, sel
     )

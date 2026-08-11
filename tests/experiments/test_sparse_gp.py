@@ -235,3 +235,51 @@ def test_compiled_training_step_does_not_respecialize(fc):
         f"{NAMES[fc]}: {seen} -- the compiled training step re-specializes per batch shape. "
         f"Check for an einsum with THREE OR MORE operands in sparse_gp.py: opt_einsum's path "
         f"search reads concrete sizes and pins the graph to them.")
+
+
+@pytest.mark.parametrize("fc", [False, True], ids=["gp", "fcgp"])
+def test_compiled_path_bypasses_the_function(fc):
+    """The Function is EAGER-ONLY, and this is what keeps it that way.
+
+    Measured at model level (tag_cgenn, fp64, 5 warm-up + 10 timed): eager, the Function is
+    0.88x the time and 0.17x the retained memory of the expression -- a clear win. Compiled,
+    it is 1.84x the time and 1.00x the memory -- a pure loss, because AOTAutograd's
+    partitioner already reaches that retention on its own and the Function only adds its
+    recompute on top. `tag_cgenn.yaml` ships `compile: true`, so the compiled row is the one
+    the campaign runs; `sparse_geometric_product` therefore branches on
+    `torch.compiler.is_compiling()`.
+
+    That branch is one line and deleting it looks like a simplification. It is worth 1.84x
+    on the shipped posture, and NO other gate here can see it: every one of them either runs
+    eager, or checks a property (gradients, retention, graph count) that both paths satisfy.
+    """
+    import torch._dynamo as dynamo
+
+    fn, eager, args = _case(fc, B=6, N=8, M=6, dtype=torch.float32)
+    from experiments.baselines.cgenn import sparse_gp
+
+    calls = []
+    real = sparse_gp.SparseGeometricProduct.forward
+
+    def counting(*a):
+        calls.append(1)
+        return real(*a)
+
+    sparse_gp.SparseGeometricProduct.forward = staticmethod(counting)
+    try:
+        fn(*args)
+        assert calls, "eager call did NOT enter the Function -- the branch is inverted"
+        eager_calls = len(calls)
+        dynamo.reset()
+        compiled = torch.compile(fn, dynamic=True)
+        out_c = compiled(*args)
+        assert len(calls) == eager_calls, (
+            f"{NAMES[fc]}: the COMPILED path entered SparseGeometricProduct "
+            f"({len(calls) - eager_calls} calls). It must not -- the Function is 1.84x "
+            f"slower than the plain expression once AOT partitions the joint graph.")
+    finally:
+        sparse_gp.SparseGeometricProduct.forward = staticmethod(real)
+        dynamo.reset()
+    assert torch.equal(out_c, eager(*args)), (
+        f"{NAMES[fc]}: compiled output differs from the eager expression")
+    print(f"GATE-EAGERONLY[{NAMES[fc]}] compiled path skips the Function, output bit-equal")

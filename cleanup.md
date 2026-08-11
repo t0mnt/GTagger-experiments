@@ -251,9 +251,13 @@ import from…"), and that stays true after the target is gone.
 from `test_cgenn_compile.py` and `test_nonequi_compile.py`, both of which the wipe deletes
 — so step 7 would have turned the one surviving device test into a collection ERROR. Those
 three helpers are now inlined there, and the wipe was rehearsed: with all five gate files
-and every fixture pack removed, `pytest tests/ --collect-only` reports **706 tests
-collected**, no errors. If you add a new keep-file, check it the same way before trusting
-the wipe.
+and every fixture pack removed, `pytest tests/ --collect-only` reports **741 tests
+collected**, no errors, and the three KEEP files (`test_sparse_gp.py`,
+`test_device_hygiene.py`, `test_compile_posture.py`) still PASS afterwards, 23 passed / 28
+skipped — collection is necessary but not sufficient, since a KEEP file can import cleanly
+and still depend on a deleted fixture at run time. Re-rehearsed 2026-08-11 when
+`test_sparse_gp.py` was added (the count was 706 before it). If you add a new keep-file,
+check it the same way — both steps — before trusting the wipe.
 
 ## KEEP permanently (earns its place)
 

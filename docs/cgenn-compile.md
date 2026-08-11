@@ -1087,6 +1087,32 @@ Two ways forward, in order of risk:
      physics path, the BIT fixtures that would have pinned it are deleted, and it would need
      fresh ones recorded first.
 
+> **SUPERSEDED 2026-08-11 — option 2 was taken.** Everything above this line is the record
+> of the diagnosis and stays as written; the conclusions it draws are no longer current, and
+> a reader deciding `gp_impl` from this section alone would get three things wrong.
+>
+> - *"Ship einsum for the campaign"* — the recommendation was conditional on sparse's memory
+>   penalty. That penalty is gone: the custom Function
+>   (`experiments/baselines/cgenn/sparse_gp.py`) cut retained activations from 293.4 MB to
+>   84.8 MB whole-model EAGER (3.46x), where sparse now retains **less** than einsum rather
+>   than more. Compiled, the partitioner equalizes all four impls and there is no retention
+>   difference at all -- see the correction further down; the Function is eager-only for
+>   that reason. The campaign posture stays `sparse` on the compiled timing (0.910x einsum),
+>   not on a memory argument.
+> - *"NOT attempted here"* — it was attempted and shipped. The d/dy scatter that this
+>   paragraph calls the fiddly part is not a scatter at all in the end: for a fixed left
+>   blade the map j -> k(i, j) is a bijection, so it inverts into a gather, which is also
+>   what makes the backward deterministic on CUDA where plain autograd is not.
+> - *"the BIT fixtures that would have pinned it are deleted"* — they were restored from
+>   `da497a9^`, and the Function has its own fixture-free gates in
+>   `tests/experiments/test_sparse_gp.py` (gradcheck, gradgradcheck, forward bit-identity,
+>   gradient agreement, retention, the masked-path branch, and a compiled-training-step
+>   recompile sweep).
+>
+> The current state is the "L-GATr 2.0 trick census" section at the end of this document.
+> **The one number that has NOT been re-measured is the H100 peak** that motivated all of
+> this — no GPU here — so the OOM search is the first thing the next β-PERF run should redo.
+
 *Mixed precision, where we differ from upstream by omission.* The paper: "the baseline
 transformer and ParT can be used with mixed precision without performance drop", while "For
 the Lorentz-equivariant LLoCa-Transformer, L-GATr-slim, and L-GATr, training with AMP reduces
@@ -1192,21 +1218,59 @@ output bits, no tensors held. Measured:
 | einsum (BIT reference) | 293.4 MB | 1.00× |
 | matmul | 293.4 MB | 1.00× |
 | sparse, before | 293.4 MB + the extra pair | >1× (1.50× GPU peak) |
-| **sparse, now** | **84.8 MB** | **0.29×** |
+| **sparse, now (eager)** | **84.8 MB** | **0.29×** |
+
+Eager only — under `torch.compile` all four land within 1 MB of each other; see the
+correction below.
 
 (whole `tag_cgenn` model, fp64, the fixture batch; `GATE-SAVED` in `test_cgenn_compile.py`.
 At one GP layer alone, at (B=32768, 16 features, fp32), it is 1056 MB → 64 MB, 16.5×.)
 
-**What is measured and what is not.** Every number above is `saved_tensors_hooks` accounting
-on CPU: bytes autograd *retains* across the forward/backward boundary. The 1.50× figure it
-explains came from a real β-PERF OOM search on an H100 (sparse 15.2 GB vs einsum 10.1 GB at
-batch 16, sparse OOM'ing at 128 where the others fit). **The GPU peak has not been re-measured
-since this change** — retained activations dominate peak for a 4-layer net, so the ranking
-should now invert, but that is a prediction. Re-running the OOM search is the first thing the
-β-PERF GPU matrix should do with `gp_impl`, and it is the number that decides whether sparse
-takes the campaign posture on merit rather than on lgatr's authority. Note also that the
-backward's transient peak is unchanged (two (B, N, 16, 16) temporaries live at once), so the
-win is entirely in retention — which is the term that scales with depth.
+> **CORRECTION, same day, from the closing audit.** The paragraph that stood here claimed a
+> 5.6x compiled memory win. It was wrong, and the error was in the measurement: the compiled
+> figures came from `saved_tensors_hooks` on the FIRST call, i.e. during compilation, before
+> any warm-up. Re-measured with five warm-up steps then ten timed, at model level, fp64:
+>
+> | gp_impl | | time | retained | vs einsum |
+> |---|---|---|---|---|
+> | einsum | — | 628.9 ms | 253.6 MB | 1.000x |
+> | matmul | — | 603.5 ms | 253.6 MB | 0.960x |
+> | sparse | eager expression | 572.4 ms | 252.8 MB | **0.910x** |
+> | sparse | the Function | 1054.5 ms | 252.9 MB | **1.677x** |
+>
+> **Under `torch.compile` the retention difference does not exist.** AOTAutograd's partitioner
+> decides what crosses the fwd/bwd boundary and lands all four impls within 1 MB of each
+> other, which is the same job the Function was written to do by hand. So compiled, the
+> Function keeps only its cost -- 1.84x against the expression it replaced -- and CGENN ships
+> `compile: true`, which made that the row the campaign would have run.
+>
+> Fixed by making the Function eager-only: `sparse_geometric_product` branches on
+> `torch.compiler.is_compiling()`, so the compiled graph contains the plain expression
+> (0.910x, the fastest impl measured) and eager keeps the Function (0.88x time and 0.17x
+> retained memory against the same expression -- that win is real and survives). Gated by
+> `test_sparse_gp.test_compiled_path_bypasses_the_function`, which exists because no other
+> gate here can see it: they all either run eager, or check a property both paths satisfy.
+>
+> Confirmed after the fix, same harness: sparse is back to **562.7 ms, 0.901x einsum**,
+> against the 1054.5 ms it read while the Function was on the compiled path.
+>
+> NOISE FLOOR, so nobody over-reads the table: with the fix in, both "sparse" rows execute
+> the same compiled code and still differ by 9% (615.4 vs 562.7 ms) run to run on this
+> box. So the 1.84x regression was far outside noise and is real, but the einsum / matmul /
+> sparse ordering here is NOT resolvable — that is β-PERF's job, on a GPU, paired.
+>
+> What the eager numbers below still say correctly: the retention accounting, the gradient
+> agreement, and the determinism argument. What they do NOT say is anything about the
+> compiled posture, which is the one that matters.
+
+**What is measured and what is not.** Every number in this subsection is `saved_tensors_hooks`
+accounting on CPU, EAGER: bytes autograd *retains* across the forward/backward boundary with
+no partitioner involved. See the correction above for what compilation does to it. The 1.50x
+figure it explains came from a real β-PERF OOM search on an H100 (sparse 15.2 GB vs einsum
+10.1 GB at batch 16, sparse OOM'ing at 128 where the others fit) — measured with
+`compile: true`, so the correction above applies to it too and the OOM search must simply be
+re-run. Note also that the backward's transient peak is unchanged (two (B, N, 16, 16)
+temporaries live at once), so the eager win is entirely in retention.
 
 **Determinism, where we deliberately diverge from lgatr.** Plain autograd differentiates both
 gathers with `index_add_`, which is nondeterministic on CUDA — so the sparse path never was
@@ -1270,7 +1334,14 @@ It is an OOM escape hatch: it buys peak activation memory with backward recomput
 would otherwise relieve, and it costs no recomputation.
 
 Verified live rather than assumed — a knob that changes nothing measurable should not ship.
-Retained across the fwd/bwd boundary of the **compiled** `tag_cgenn`, fp64, fixture batch:
+Retained across the fwd/bwd boundary of the **compiled** `tag_cgenn`, fp64, fixture batch.
+
+**Caveat, from the closing audit:** these were taken on the FIRST call, before warm-up — the
+same mistake the correction below documents, so read the ABSOLUTE numbers as unreliable. The
+CONTROL survives it and is what this table is for: `null` and `1.0` agree exactly (1.0 is
+torch's default) while `0.5` and `0.2` differ, which is the proof the scoped patch reaches
+AOT's partitioner through hydra → wrapper → call. The knob is live; its magnitude is not
+established here.
 
 | budget | `gp_impl: einsum` | `gp_impl: sparse` |
 |---|---|---|
@@ -1280,11 +1351,9 @@ Retained across the fwd/bwd boundary of the **compiled** `tag_cgenn`, fp64, fixt
 | `0.2` | 41.2 MB | 12.8 MB |
 
 `null` and `1.0` agreeing is the control (1.0 *is* torch's default); `0.5` and `0.2` differing
-is the proof the scoped patch reaches AOT's partitioner through hydra → wrapper → call. Note
-the einsum column floors at 0.5 — the partitioner has nothing further it is willing to
-recompute — while sparse keeps going, and that compiled sparse at the default (45.0 MB) sits
-**5.6×** below compiled einsum at the default, a wider margin than the 3.46× eager figure.
-The knob's remaining headroom on top of that is another 3.5×.
+is the proof the scoped patch reaches AOT's partitioner through hydra → wrapper → call. The
+per-impl comparison that used to be drawn from this table has been withdrawn: warmed up, the
+impls do not differ in retention under compile.
 
 ### Item 3 — `warmup_caches` has no CGENN equivalent to write, and here is the proof
 
