@@ -935,8 +935,27 @@ class BaseExperiment:
                 .detach()
                 .to(self.device)
             )
-        else:
+        elif self.cfg.training.log_grad_norm:
             grad_norm = grad_norm_frames + grad_norm_net
+        else:
+            # With clipping off AND logging off, grad_norm_{frames,net} are the LITERAL
+            # torch.tensor(0.0) set above, so `isfinite(grad_norm)` below would read
+            # isfinite(0.0) and pass on every step. The guard would be silently disabled
+            # in the one configuration where, by its own comment, nothing else is watching
+            # -- and it would be disabled as a SIDE EFFECT of turning off grad-norm
+            # LOGGING, which reads like a pure-observability change. Measure it here
+            # instead: an inf-norm pass is a no-op clip (clip_coef = inf/x > 1, clamped to
+            # 1), paid only in the configuration that would otherwise be unprotected.
+            # Shipped configs never reach this branch (clip_grad_norm is 1 or 5).
+            grad_norm = (
+                torch.nn.utils.clip_grad_norm_(
+                    self.model.parameters(),
+                    float("inf"),
+                    error_if_nonfinite=False,
+                )
+                .detach()
+                .to(self.device)
+            )
         # rescale gradients of the framesnet only
         if self.cfg.training.clip_grad_norm_framesnet is not None:
             torch.nn.utils.clip_grad_norm_(

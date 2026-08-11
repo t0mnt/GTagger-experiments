@@ -196,23 +196,30 @@ class CliffordAlgebra(nn.Module):
             grade_to_slice.append(slice(index_start, index_end))
         return grade_to_slice
 
+    # The three involutions were `signs * mv.clone()` upstream. The clone is dead: the mul
+    # is out-of-place, so it allocates its own output and never touches `mv` -- nothing in
+    # this file mutates an involution result or its argument in place (`embed`/`embed_grade`
+    # index-assign into a tensor they just created). Removed: bit-identical, and these sit
+    # on the live forward path via mvlayernorm -> norm -> q -> b -> beta, feeding the
+    # "copy_ = 38% of runtime" finding. 0.024 ms -> 0.015 ms at (4096, 16). lgatr writes
+    # its equivalent as `involution * x` with no clone.
     def alpha(self, mv, blades=None):
         signs = self._alpha_signs
         if blades is not None:
             signs = signs[blades]
-        return signs * mv.clone()
+        return signs * mv
 
     def beta(self, mv, blades=None):
         signs = self._beta_signs
         if blades is not None:
             signs = signs[blades]
-        return signs * mv.clone()
+        return signs * mv
 
     def gamma(self, mv, blades=None):
         signs = self._gamma_signs
         if blades is not None:
             signs = signs[blades]
-        return signs * mv.clone()
+        return signs * mv
 
     def zeta(self, mv):
         return mv[..., :1]
