@@ -313,8 +313,18 @@ failure (the FLOPs suite passes 64/0/36), but it makes process-order a hidden va
 with ~240 inductor kernels loaded — i.e. while executing AOT's compiled backward.
 
 **Not caused by the sparse-GP work.** Reproduced identically at `3fe5197`, the commit
-before any of it, in a clean worktree. Recorded here rather than fixed because the cause is
-not established and it is not ours to guess at.
+before any of it, in a clean worktree.
+
+**Cause: CPU-inductor OpenMP threading, not the model.** `OMP_NUM_THREADS=1` makes the same
+command PASS — 3 passed in 21m56s (tag_cgenn plus both CGENN hybrids) where the default
+thread count aborts in seconds. So the arithmetic, the graph and the gradients are fine; the
+generated C++ kernels are what fall over, and only when they are threaded.
+
+That is CPU-specific by construction: the campaign's GPU inductor emits Triton kernels and
+does not use OpenMP for them, so this particular abort cannot occur there. It is still worth
+knowing, because it means the compiled CGENN smoke is only runnable on this box with
+`OMP_NUM_THREADS=1`, and anyone who runs it without that will read a hard crash as a model
+defect.
 
 Scope, measured, so nobody over- or under-reads it:
 
@@ -334,8 +344,15 @@ CGENN's compiled MULTI-STEP training has never been exercised anywhere — the c
 are single-step or `no_grad`, and this is the fourth time in this program that a `no_grad`
 or single-shot gate has been mistaken for a statement about training.
 
-**Before committing days to a compiled CGENN run**, do the §3-style short real run on the
-GPU that the runbook already recommends for `tag_slim`, and watch it past the first
-validation. If it dies, `model.compile=false` on the launch line is the one-character
-fallback and costs only the compile speedup — CGENN's compiled gain has never been measured
-on GPU anyway.
+**Before committing days to a compiled CGENN run**, still do the §3-style short real run on
+the GPU that the runbook already recommends for `tag_slim`, and watch it past the first
+validation — not because of this abort, which is CPU-only, but because compiled CGENN
+multi-step training has no gate anywhere and the GPU path is where it would first be
+exercised for real. If it dies, `model.compile=false` on the launch line is the
+one-character fallback and costs only the compile speedup, which has never been measured on
+GPU anyway.
+
+To run the compiled CGENN smoke on a CPU box:
+
+    OMP_NUM_THREADS=1 CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 \
+        pytest tests/experiments/test_training_smoke.py -k tag_cgenn    # ~22 min
