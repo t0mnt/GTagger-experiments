@@ -948,6 +948,45 @@ not a new failure; gradients come out finite.
 
 ---
 
+**GPU compile census (2026-08-10, H100 NVL / NGC 25.08 / torch 2.8.0a0+nv25.08).** The
+first time any model in this repo was compiled on a GPU. Every compile gate here runs on
+CPU, where inductor emits C++; on CUDA it emits Triton, a different backend with different
+codegen -- so the shipped `compile: true` posture had never been exercised on the hardware
+the campaign runs on. beta-PERF found that out the expensive way, failing on its first row.
+
+Two GPU-only defects, both invisible to every CPU gate by construction:
+
+  * `CliffordAlgebra`'s `_alpha/_beta/_gamma_signs` were `functools.cached_property`, which
+    writes to `instance.__dict__` and so is NOT a buffer `.to(device)` can move. `__init__`
+    materialized them, so every instance carried CPU sign vectors unconditionally and
+    `signs * mv` in `beta()` raised a device mismatch on the live forward path. Pre-existing
+    on `main`, in both pre-dedup copies. Fixed: non-persistent buffers, values bit-identical,
+    `state_dict` unchanged.
+  * `embed()`'s `torch.zeros(..., 2**self.dim, ...)` reached the graph as a symbolic
+    expression rather than the constant 16, so inductor lowered the stride as
+    `libdevice.pow(2.0, ks0)` -- a float -- and Triton refused
+    `pointer<fp32> + float32` while compiling `triton_poi_fused_index_put_zeros_6`.
+    Fixed by using the precomputed `self.n_blades` (identical by construction).
+
+Census after both fixes -- 8 optimizer steps per model, production configs, mini data,
+each model in its own process, `TORCHINDUCTOR_FORCE_DISABLE_CACHES=1`:
+
+**13 / 13 COMPILE** -- tag_cgenn, tag_lorentznet, both CGENN hybrids, both LorentzNet-slim
+hybrids, tag_lgatr, tag_slim, tag_ParT, tag_particlenet, tag_transformer,
+tag_PlainGraphTrans, tag_ParticleNetParTGraphTrans.
+
+Scope of that claim, stated precisely: it covers each model's SHIPPED config, so
+`tag_cgenn` was exercised at its default `gp_impl: sparse`. The row that originally failed
+was `tag_cgenn/einsum`; `embed()` sits in `MVLinear` and is independent of `gp_impl`, so the
+fix applies to all three impls, but einsum and matmul are confirmed by beta-PERF rather than
+by this census. `tag_MIParT` has no compile knob; the three pelicans ship `net.compile: true`
+but are not in the smoke matrix and remain GPU-unverified.
+
+Environment prerequisite, or none of this runs: `TRITON_LIBCUDA_PATH=/usr/local/cuda/compat/lib`.
+Triton finds libcuda.so by parsing `ldconfig -p`, which comes up empty inside the NGC image,
+so without it every compiled model dies at its first `torch.compile`. Set in
+`venv/bin/activate` per docs/OSCAR.md §2; `utils/env_check.py --gpu` now checks it.
+
 ## Table-wide compile policy
 
 `torch.compile` changes neither accuracy (numerics-preserving up to fusion order) nor
