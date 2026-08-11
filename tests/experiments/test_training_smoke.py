@@ -35,6 +35,15 @@ import os
 import pytest
 import torch
 
+# Same one-liner test_cgenn_compile.py and test_lgatr_migration_parity.py already carry, and
+# here it is load-bearing rather than hygienic: with CGENN_SMOKE_COMPILE=1, tag_cgenn dies
+# with `Fatal Python error: Aborted` inside AOT's compiled backward at the default thread
+# count, and PASSES with this line (measured both ways, and reproduced at 3fe5197 so it
+# predates the sparse-GP work -- docs/audit-ledger.md). CPU inductor's threaded C++ kernels
+# are what fall over; the arithmetic and gradients are fine, and the campaign's GPU inductor
+# emits Triton, which does not take this path.
+torch.set_num_threads(1)
+
 MODELS = [
     "tag_ParT", "tag_particlenet", "tag_transformer", "tag_MIParT",
     "tag_PlainGraphTrans", "tag_PlainGraphGPS",

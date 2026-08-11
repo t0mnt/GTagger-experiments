@@ -1258,6 +1258,17 @@ At one GP layer alone, at (B=32768, 16 features, fp32), it is 1056 MB → 64 MB,
 > executes as a black box and its hand-written backward is interpreted op by op inside what
 > is nominally a compiled step. That is the whole 1.84x.
 >
+> AND IT IS NOT ABOUT OUR WEIGHTS. The obvious story -- "lgatr's GP is weightless, ours
+> carries a learnable per-path weight, so their Function transfers and ours does not" -- was
+> tested and is FALSE. Running lgatr's own `_GeometricProductSparse` under `torch.compile`
+> and counting python entries gives the identical pattern: (2,1) (3,2) (4,3) (5,4) (6,5).
+> **Dynamo does not inline ANY `torch.autograd.Function`, theirs included.** So the cost is
+> a fixed python-dispatch overhead per call, for everyone, and whether it is worth paying
+> depends only on how much work each call does relative to that overhead -- large GPU
+> batches amortize it, our CPU model-level steps do not. The weight difference explains
+> something narrower: our interpreted backward computes three gradients with einsums where
+> theirs computes two with elementwise ops, so we pay more of the same overhead.
+>
 > Note what this says about GATE-BREAKS = 0: that gate runs through `_forward`, which is
 > `no_grad`-wrapped, so it describes the INFERENCE graph. It was green the entire time the
 > training path was breaking around every GP layer. Same blind spot that hid the

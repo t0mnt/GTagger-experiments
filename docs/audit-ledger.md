@@ -352,7 +352,13 @@ exercised for real. If it dies, `model.compile=false` on the launch line is the
 one-character fallback and costs only the compile speedup, which has never been measured on
 GPU anyway.
 
-To run the compiled CGENN smoke on a CPU box:
+FIXED in the test, 2026-08-11: `torch.set_num_threads(1)` at the top of
+`test_training_smoke.py` is sufficient on its own -- no `OMP_NUM_THREADS` needed (measured:
+3 passed in 18m28s with the torch call alone, 21m56s with the env var, abort in seconds
+with neither). That is the same line the other two gate files already carry, so the
+compiled smoke now just runs:
 
-    OMP_NUM_THREADS=1 CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 \
-        pytest tests/experiments/test_training_smoke.py -k tag_cgenn    # ~22 min
+    CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 \
+        pytest tests/experiments/test_training_smoke.py -k tag_cgenn    # ~18 min
+
+The underlying inductor behaviour is untouched and remains a torch-side issue, not ours.
