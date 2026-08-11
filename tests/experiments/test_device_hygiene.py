@@ -237,6 +237,28 @@ _UNMOVABLE_OK = {
 }
 
 
+# nn.Module's own bookkeeping lives in __dict__ too (_parameters, _buffers, _modules, ...).
+# Those hold the REGISTERED tensors -- the ones `.to()` does move -- so scanning them would
+# flag every model. Derived from a bare Module so it tracks torch rather than a hardcoded list.
+_MODULE_INTERNALS = set(vars(torch.nn.Module()))
+
+
+def _tensors_in(val, _depth=0):
+    """Tensors reachable from a plain attribute -- directly, or inside a list/tuple/dict.
+
+    Depth-limited: these are config-ish containers, not arbitrary object graphs.
+    """
+    if isinstance(val, torch.Tensor):
+        return [val]
+    if _depth >= 3:
+        return []
+    if isinstance(val, (list, tuple, set)):
+        return [t for v in val for t in _tensors_in(v, _depth + 1)]
+    if isinstance(val, dict):
+        return [t for v in val.values() for t in _tensors_in(v, _depth + 1)]
+    return []
+
+
 @pytest.mark.skipif(not RUN_SLOW, reason="device hygiene sweep: set CGENN_COMPILE_GATES=1")
 @pytest.mark.parametrize("model", MODELS)
 def test_no_unmovable_tensor_attributes(model):
@@ -267,11 +289,19 @@ def test_no_unmovable_tensor_attributes(model):
         held = {n for n, _ in mod.named_buffers(recurse=False)}
         held |= {n for n, _ in mod.named_parameters(recurse=False)}
         for name, val in vars(mod).items():
-            if not isinstance(val, torch.Tensor) or name in held:
+            if (name in held or name in _MODULE_INTERNALS
+                    or (type(mod).__name__, name) in _UNMOVABLE_OK):
                 continue
-            if (type(mod).__name__, name) in _UNMOVABLE_OK:
-                continue
-            offenders.append(f"{type(mod).__name__}.{name} {tuple(val.shape)}")
+            # CONTAINERS TOO, not just bare tensors. CliffordAlgebra.grade_to_index was a
+            # LIST of index tensors -- `.to(device)` cannot move it, and `norms()` (live via
+            # MVSiLU and the normalization layer) used it to index CUDA sign buffers, so every
+            # forward copied the index host->device. A bare-tensor scan walked straight past
+            # it, which is exactly how it survived the first version of this test.
+            found = _tensors_in(val)
+            if found:
+                shapes = ", ".join(str(tuple(s.shape)) for s in found[:4])
+                offenders.append(f"{type(mod).__name__}.{name} "
+                                 f"[{type(val).__name__}: {shapes}]")
 
     print(f"GATE-UNMOVABLE[{model}] unregistered tensor attributes = {len(offenders)}")
     assert not offenders, (

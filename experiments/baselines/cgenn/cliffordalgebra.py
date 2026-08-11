@@ -49,7 +49,19 @@ class CliffordAlgebra(nn.Module):
         )
         self.n_subspaces = len(self.grades)
         self.grade_to_slice = self._grade_to_slice(self.subspaces)
-        self.grade_to_index = [torch.tensor(range(*s.indices(s.stop))) for s in self.grade_to_slice]
+        # BUFFERS, not a plain list of tensors. `norms()`/`mag2s()` pass these as `blades`
+        # into beta/gamma, where they index the sign BUFFERS -- and `MVSiLU.forward` and
+        # `normalization.forward` both call `norms()`, so this is the live forward path.
+        # A python list is invisible to `.to(device)`, so on GPU every one of those calls
+        # indexed a CUDA tensor with a CPU index. Advanced indexing `gpu[cpu_idx]` is legal
+        # in torch and raises nowhere -- it just copies the index host->device on every
+        # forward, which is the same silent-cost class as the CliffordAlgebra.b() finding
+        # (see tests/experiments/test_device_hygiene.py). Registered individually because
+        # the five grades have different widths (1, 4, 6, 4, 1); non-persistent because they
+        # are derived constants (aranges over the grade slices), so state_dict is unchanged.
+        for _g, _s in enumerate(self.grade_to_slice):
+            self.register_buffer(f"_grade_to_index_{_g}",
+                                 torch.tensor(range(*_s.indices(_s.stop))), persistent=False)
 
         self.register_buffer("bbo_grades", self.bbo.grades.to(torch.get_default_dtype()))
         self.register_buffer("even_grades", self.bbo_grades % 2 == 0)
@@ -111,6 +123,11 @@ class CliffordAlgebra(nn.Module):
             for name, member in vars(klass).items():
                 if isinstance(member, functools.cached_property):
                     getattr(self, name)
+
+    @property
+    def grade_to_index(self):
+        """Per-grade blade indices, read from the registered buffers so they follow `.to()`."""
+        return [getattr(self, f"_grade_to_index_{g}") for g in range(len(self.grade_to_slice))]
 
     def geometric_product(self, a, b, blades=None):
         cayley = self.cayley
