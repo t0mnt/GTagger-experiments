@@ -690,6 +690,15 @@ def test_config_snapshot_diff(name):
         f"{name}: hybrid compile knob must default false pending beta-PERF:\n"
         + "\n".join(comp_added))
     added = [l for l in added if key_of(l) != "compile"]
+    # lgatr 2.0 trick census (docs/cgenn-compile.md, item 1): the CGENN wrappers grew an
+    # `activation_memory_budget` escape hatch, shipped OFF. Pinned to null for the same
+    # reason as the two above -- setting it changes what the partitioner recomputes in the
+    # backward, i.e. it is a posture change, and it must come back through this gate.
+    amb_added = [l for l in added if key_of(l) == "activation_memory_budget"]
+    assert all(val_of(l).split("#")[0].strip() == "null" for l in amb_added), (
+        f"{name}: activation_memory_budget must ship null (torch default untouched); "
+        f"setting it trades backward FLOPs for memory:\n" + "\n".join(amb_added))
+    added = [l for l in added if key_of(l) != "activation_memory_budget"]
     bad_removed = [l for l in removed
                    if key_of(l) not in {"increase_hidden_channels", "activation", "_target_"}]
     bad_added = [l for l in added

@@ -7,6 +7,7 @@ from torch import nn
 from experiments.baselines.cgenn.cliffordalgebra import sparse_gp_tables
 from experiments.baselines.cgenn.linear import MVLinear
 from experiments.baselines.cgenn.normalization import NormalizationLayer
+from experiments.baselines.cgenn.sparse_gp import sparse_geometric_product
 
 
 class SteerableGeometricProductLayer(nn.Module):
@@ -29,9 +30,10 @@ class SteerableGeometricProductLayer(nn.Module):
         self.register_buffer("_path_idx", self.product_paths.nonzero().T.contiguous(),
                              persistent=False)
         self.gp_impl = getattr(algebra, "gp_impl", "einsum")
-        sp_path, sp_val = sparse_gp_tables(algebra, self._path_idx)
+        sp_path, sp_val, sp_sel = sparse_gp_tables(algebra, self._path_idx)
         self.register_buffer("_sp_path", sp_path, persistent=False)
         self.register_buffer("_sp_val", sp_val, persistent=False)
+        self.register_buffer("_sp_sel", sp_sel, persistent=False)
         self.weight = nn.Parameter(torch.empty(features, self.product_paths.sum()))
 
         self.reset_parameters()
@@ -59,9 +61,9 @@ class SteerableGeometricProductLayer(nn.Module):
 
         if self.gp_impl == "sparse":
             # quasigroup gather (lgatr 2.0 sparse_gp) -- see fcgp.forward
-            pair = input.unsqueeze(-1) * input_right[..., self.algebra.gp_k_idx]
-            w = self.weight[:, self._sp_path] * self._sp_val
-            product = torch.einsum("bnij,nij->bnj", pair, w)
+            product = sparse_geometric_product(
+                input, input_right, self.weight,
+                self.algebra, self._sp_path, self._sp_val, self._sp_sel)
         elif self.gp_impl == "matmul":
             # dense outer product + per-feature bmm (lgatr 2.0 dense form)
             weight = self._get_weight()

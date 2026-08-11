@@ -13,16 +13,28 @@ from experiments.baselines.cgenn.metric import (
 
 
 def sparse_gp_tables(algebra, path_idx):
-    """(_sp_path, _sp_val) for the sparse gp_impl: for each (left blade i, output blade j)
-    the unique right blade is algebra.gp_k_idx[i, j]; the weight that entry sees is the
-    compact path weight of the grade triple (g_i, g_j, g_k), or zero where product_paths
+    """(_sp_path, _sp_val, _sp_sel) for the sparse gp_impl: for each (left blade i, output
+    blade j) the unique right blade is algebra.gp_k_idx[i, j]; the weight that entry sees is
+    the compact path weight of the grade triple (g_i, g_j, g_k), or zero where product_paths
     masks the triple. One definition per self-contained file (review finding: this was
-    copy-pasted at every layer)."""
+    copy-pasted at every layer).
+
+    _sp_sel is the transpose of that map, (n_paths, n_blades**2), scaled by the same +-1
+    cayley value: `dL/dweight = einsum(...).flatten(-2) @ _sp_sel.T` is the segment-sum
+    that gathers each compact path's (i, j) entries back together. Autograd would spell
+    that as an index_add_, which is nondeterministic on CUDA; the GEMM is not, and at 35 x
+    256 it is free. Used by sparse_gp.SparseGeometricProduct.backward.
+    """
     g = algebra.bbo_grades.long()
     lookup = torch.full((algebra.n_subspaces,) * 3, -1, dtype=torch.long)
     lookup[path_idx[0], path_idx[1], path_idx[2]] = torch.arange(path_idx.shape[1])
     p = lookup[g[:, None], g[None, :], g[algebra.gp_k_idx]]
-    return p.clamp(min=0), algebra.gp_val * (p >= 0)
+    sp_path, sp_val = p.clamp(min=0), algebra.gp_val * (p >= 0)
+    sel = torch.zeros(path_idx.shape[1], sp_path.numel(), dtype=sp_val.dtype)
+    # columns are unique by construction, so masked triples write their own zero and
+    # cannot clobber a live entry that happens to share the clamped path index 0
+    sel[sp_path.reshape(-1), torch.arange(sp_path.numel())] = sp_val.reshape(-1)
+    return sp_path, sp_val, sel
 
 
 class CliffordAlgebra(nn.Module):
@@ -114,6 +126,23 @@ class CliffordAlgebra(nn.Module):
             torch.gather(cayley, -1, gp_k_idx.unsqueeze(-1)).squeeze(-1),
             persistent=False,
         )
+        # Stronger than the assert above: for a FIXED left blade i, j -> k(i, j) is a
+        # BIJECTION (left multiplication by an invertible basis blade permutes the basis).
+        # That is what lets the sparse backward invert its dL/dy scatter into a gather --
+        # gp_j_idx[i, k] is the j that sends (i, j) to k. Asserted rather than assumed: a
+        # metric with a degenerate direction would break it, and the failure mode of a
+        # silently-wrong inverse is wrong gradients, not a crash.
+        _ar = torch.arange(self.n_blades).expand(self.n_blades, self.n_blades)
+        assert (gp_k_idx.sort(-1).values == _ar).all(), (
+            "gp_k_idx rows are not permutations: the blade basis is not quasigroup-like "
+            "under this metric, so the sparse gp_impl's backward is invalid")
+        # full_like(-1), not empty_like: the scatter covers every entry only BECAUSE the
+        # assert above holds, and `python -O` strips asserts. Then an uncovered entry would
+        # be uninitialized memory used as a gather index -- silently wrong gradients. -1
+        # makes the same case an out-of-range gather, which is loud.
+        self.register_buffer(
+            "gp_j_idx", torch.full_like(gp_k_idx, -1).scatter_(1, gp_k_idx, _ar),
+            persistent=False)
         # functools.cached_property materializes through an RLock (functools.__get__); a
         # lock context manager inside the traced region is a dynamo graph break -- and one
         # dynamo.explain cannot see, because any eager warm-up forward fills the caches

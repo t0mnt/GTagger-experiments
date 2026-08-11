@@ -7,7 +7,7 @@ GPU-resident buffer. Bit-identical and free on a CPU runner, a per-forward host-
 transfer on a GPU. Every gate in the repo runs on CPU, so nothing could see it, and the
 fix reached only one of two duplicated copies of the class.
 
-Two complementary nets, neither of which needs a GPU:
+Three complementary nets, none of which needs a GPU:
 
 1. ``test_no_device_implicit_tensor_in_forward`` (dynamic) intercepts torch's tensor
    factories during a REAL forward and fails on any call that omits ``device=``,
@@ -19,13 +19,21 @@ Both are proven non-vacuous: reverting the ``b()`` fix makes each of them fail o
 exactly that line, which also demonstrates that ``b()`` really is on the live forward
 path (via ``MVLayerNorm -> norm()``).
 
+3. ``test_meta_device_forward`` runs the real nets on the ``meta`` device, which moves
+   exactly what ``.to("cuda")`` moves and leaves exactly what it leaves. It is the only
+   one of the three that runs the model's arithmetic somewhere other than CPU, and it
+   costs nothing (meta tensors carry no storage). Scoped to the CGENN family, where all
+   three unmovable-tensor bugs lived.
+
 A fake-CUDA forward under ``FakeTensorMode`` was tried FIRST and abandoned, recorded
 here so nobody retries it: fake tensors do enforce device agreement (verified: binary
 ops, matmul and index_select all raise ``FakeTensorDeviceMismatchError``), but they
 cannot traverse these models at all -- ``to_dense_batch`` needs real counts and raises
-``GuardOnDataDependentSymNode`` even with a ``ShapeEnv``. Note also that advanced
-indexing (``gpu[cpu_idx]``) is legal in torch and raises nowhere, which is precisely
-why the b() bug degraded performance rather than crashing.
+``GuardOnDataDependentSymNode`` even with a ``ShapeEnv``. Net 3 gets around exactly that
+by running the WRAPPER for real on CPU and handing the net its captured arguments.
+Note also that advanced indexing (``gpu[cpu_idx]``) is legal in torch and raises nowhere,
+which is precisely why the b() bug degraded performance rather than crashing -- and
+equally why net 3 cannot see that class, only the crash class.
 """
 
 import ast
@@ -166,6 +174,7 @@ _NON_FORWARD_FNS = {
 _SCANNED = [
     "experiments/baselines/CGENNLGATrGraphTransHybrid.py",
     "experiments/baselines/cgenn/cliffordalgebra.py",
+    "experiments/baselines/cgenn/sparse_gp.py",
     "experiments/baselines/cgennlgatrgraphgps.py",
     "experiments/baselines/particletransformer.py",
     "experiments/baselines/particlenettransformer.py",
@@ -310,3 +319,116 @@ def test_no_unmovable_tensor_attributes(model):
         + "\n\nRegister them with `register_buffer(..., persistent=False)` if they are "
           "derived constants, or add them to _UNMOVABLE_OK with the call-site reason they "
           "can never be a tensor operand in a forward.")
+
+
+# ---------------------------------------------------------------- meta-device forward
+# The third net, and the only one that runs the model's real arithmetic on a device that
+# is not CPU. `.to("meta")` moves EXACTLY what `.to("cuda")` moves -- parameters and
+# buffers -- and leaves behind EXACTLY what `.to("cuda")` leaves behind: plain __dict__
+# tensors, cached_property values, tensors inside lists and inside plain (non-Module)
+# objects. Mixing the two then raises "Tensor on device cpu is not on the expected device
+# meta!", which is the same failure the GPU gives, on a CPU-only runner and with no data
+# movement at all (meta tensors carry no storage, so the forward is ~free).
+#
+# This is what the file's header records FakeTensorMode failing to do. It works here for
+# one reason: it is applied to the NET, with the wrapper's data-dependent preprocessing
+# (`pair.nonzero`, `to_dense_batch`) already executed for real on CPU and its outputs
+# handed in. Same trick the BREAKS gate uses to get a cold model its own arguments.
+#
+# Scope is the CGENN family: all three unmovable-tensor bugs lived in CliffordAlgebra, it
+# is shared by all three, and this is where a fourth would land. Extending it needs only
+# a model whose net can be called with captured tensor arguments.
+#
+# Known blind spot, stated so nobody over-trusts a green run: `matmul` does NOT raise on a
+# meta/cpu mix (measured -- it promotes silently), and advanced indexing `meta[cpu_idx]`
+# does not raise either, exactly as `cuda[cpu_idx]` does not. So this catches the CRASH
+# class (pointwise ops against an unmoved constant -- all three bugs found here) and not
+# the SILENT-COST class, which is what the other two nets in this file are for.
+META_MODELS = ["tag_cgenn", "tag_CGENNLGATrGraphTrans", "tag_CGENNLGATrGraphGPS"]
+
+
+def _to_meta(v):
+    if torch.is_tensor(v):
+        return v.to("meta")
+    if isinstance(v, (list, tuple)):
+        return type(v)(_to_meta(x) for x in v)
+    if isinstance(v, dict):
+        return {k: _to_meta(x) for k, x in v.items()}
+    return v
+
+
+def _capture_net_args(exp):
+    """Run one real CPU forward and keep the arguments the wrapper passed to the net."""
+    captured = {}
+    orig = exp.model.net.forward
+
+    def spy(*a, **k):
+        captured["a"], captured["k"] = a, k
+        return orig(*a, **k)
+
+    exp.model.net.forward = spy
+    try:
+        with torch.no_grad():
+            exp._get_ypred_and_label(_fixed_batch(exp))
+    finally:
+        exp.model.net.forward = orig
+    return captured["a"], captured["k"]
+
+
+@pytest.mark.parametrize("model", META_MODELS)
+def test_meta_device_forward(model):
+    """A forward on a non-CPU device completes -- i.e. nothing the model uses stayed behind.
+
+    Non-vacuity is asserted, not assumed. Every CliffordAlgebra buffer is unregistered in
+    turn -- moved out of `_buffers` into `__dict__` as a CPU tensor, which is exactly the
+    state `functools.cached_property` leaves you in -- and the forward re-run. At least one
+    must fail, or this gate is watching nothing. A gate for a bug class that only appears
+    on hardware the CI does not have is worth exactly what its proof of failure is worth.
+
+    The list it prints is the useful by-product: those are the algebra tables that reach a
+    device-checked op on the live forward path. Two things it taught, both of which the
+    first version of this test got wrong by hardcoding one buffer on one algebra:
+
+      * `_alpha_signs` is NOT among them -- `alpha()` is not reached from this forward, so
+        pinning the self-check to it passed vacuously.
+      * `tag_CGENNLGATrGraphTrans` holds TWO CliffordAlgebra instances (`net.algebra`,
+        serving `mv_bridge`, and `net.cgenn.algebra`, serving the CGENN block). Only the
+        second one's buffers are device-checked operands; `mv_bridge` reaches its algebra
+        through embed/get_grade, which are index and slice ops. So every instance is swept,
+        and the assertion is over the model, not over one of them.
+
+    That second point is the documented blind spot in the flesh: an unmovable tensor on
+    `net.algebra` would be a silent per-forward host-to-device copy that this gate cannot
+    see. `test_no_unmovable_tensor_attributes` is structural and covers both instances.
+    """
+    exp = _build(model, float64=False)
+    args, kwargs = _capture_net_args(exp)
+    net = exp.model.net.to("meta")
+    with torch.no_grad():
+        out = net(*_to_meta(args), **_to_meta(kwargs))
+    assert out.device.type == "meta"
+    print(f"GATE-META[{model}] forward completed on a non-CPU device")
+
+    algebras = [(n, m) for n, m in net.named_modules()
+                if type(m).__name__ == "CliffordAlgebra"]
+    assert algebras, f"{model}: no CliffordAlgebra to mutate -- self-check void"
+    live = []
+    for path, algebra in algebras:
+        for name in [n for n, _ in algebra.named_buffers(recurse=False)]:
+            stashed = algebra._buffers.pop(name)
+            # built fresh, not copied: `.to("cpu")` on a meta tensor raises (no storage)
+            algebra.__dict__[name] = torch.ones(stashed.shape, dtype=stashed.dtype,
+                                                device="cpu")
+            try:
+                with torch.no_grad():
+                    net(*_to_meta(args), **_to_meta(kwargs))
+            except RuntimeError as e:
+                if "device" in str(e):
+                    live.append(f"{path}.{name}" if path else name)
+            finally:
+                del algebra.__dict__[name]
+                algebra._buffers[name] = stashed
+    print(f"GATE-META[{model}] self-check: unregistering any of {live} fails the forward")
+    assert live, (
+        f"{model}: no CliffordAlgebra buffer, left on CPU, breaks the meta forward -- so "
+        f"this gate would pass with every one of them unmovable. Watching nothing.")

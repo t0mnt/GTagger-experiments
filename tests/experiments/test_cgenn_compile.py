@@ -178,6 +178,123 @@ def test_impl_tol_vs_reference(impl, prec):
     assert rel < bar, f"TOL-IMPL {impl}/{prec}: {rel:.3e} >= {bar}"
 
 
+# ------------------------------------------------------------------ backward gates
+# Every gate above runs under torch.no_grad() (`_forward`). That was sufficient while all
+# three gp_impls were plain autograd-composed arithmetic -- pinning the forward pinned the
+# backward with it. It stopped being sufficient the moment gp_impl=sparse started routing
+# through a hand-written torch.autograd.Function (experiments/baselines/cgenn/sparse_gp.py):
+# its backward is CODE, not a derivative of the gated forward, and every gate in this file
+# would stay green with the gradients completely wrong.
+#
+# The Function's OWN gates -- gradcheck, bit-identity and retention against the exact
+# expression it replaced -- are in tests/experiments/test_sparse_gp.py, which is KEEP and
+# fixture-free. Only the integration-scale ones live here, because they need this file's
+# fixtures and hydra build, and this file is a port instrument the cleanup.md wipe deletes.
+
+
+def _grads(exp, data):
+    """name -> parameter gradient of a fixed, seedless scalar functional of the output."""
+    exp.model.zero_grad(set_to_none=True)
+    y = exp._get_ypred_and_label(data.clone())[0]
+    # distinct weight per output element: no gradient component can cancel out of the
+    # comparison the way a plain .sum() lets equal-and-opposite rows do
+    w = torch.linspace(-1, 1, y.numel(), dtype=y.dtype).reshape(y.shape)
+    (y * w).sum().backward()
+    return {n: p.grad.detach().clone() for n, p in exp.model.named_parameters()
+            if p.grad is not None}
+
+
+@pytest.mark.parametrize("impl", GP_IMPLS)
+def test_backward_tol_vs_reference(impl):
+    """BACKWARD-TOL: whole-model parameter gradients vs the einsum reference, fp64.
+
+    Bar is 1e-8, two orders looser than the forward's 1e-10, and deliberately so: the
+    measured worst case sits at ~2.6e-10 for BOTH matmul and sparse, on the same parameter
+    (net.CGLs.0.phi_x.0.linear_left.weight). matmul is untouched by the sparse work, so
+    that agreement is the signal -- the ~6 digits are the model's own backward
+    conditioning, not anything this file's subject introduced. fp32 is not gated: it reads
+    ~2.5e-3 for both impls, which is too loose to catch anything.
+    """
+    path = FIX / "fp64.pt"
+    if not path.exists():
+        pytest.skip("no cgenn_compile fixtures recorded")
+    ref = torch.load(path, weights_only=False)
+
+    def built(ov):
+        e = _build(float64=True, extra_overrides=ov)
+        e.model.load_state_dict(ref["sd"], strict=True)
+        return e
+
+    g_ref = _grads(built(REF_IMPL), _rebuild(ref["batch"]))
+    g = _grads(built([f"model.net.gp_impl={impl}"]), _rebuild(ref["batch"]))
+    assert set(g) == set(g_ref), f"BACKWARD-TOL[{impl}]: different parameters got gradients"
+    worst, where = 0.0, ""
+    for n in g_ref:
+        rel = float((g[n] - g_ref[n]).abs().max() / (1 + g_ref[n].abs().max()))
+        if rel > worst:
+            worst, where = rel, n
+    print(f"GATE-BACKWARD-TOL[{impl}] worst rel={worst:.3e} at {where}")
+    assert worst < 1e-8, f"BACKWARD-TOL[{impl}]: {worst:.3e} >= 1e-8 at {where}"
+
+
+def _saved_bytes(exp, data):
+    held = {}
+
+    def pack(t):
+        held[id(t)] = t.numel() * t.element_size()
+        return t
+
+    with torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
+        exp._get_ypred_and_label(data.clone())
+    return sum(held.values())
+
+
+def test_sparse_retains_less_than_dense():
+    """The claim the Function exists to make, as a gate.
+
+    sparse does 16x fewer MACs than the dense forms and still measured a HIGHER GPU peak,
+    because the eager three-liner retained TWO (B, N, 16, 16) tensors per layer where
+    einsum/matmul retain one. That is a memory regression a flops-shaped gate cannot see,
+    which is why it survived to the campaign posture. Measured here: 84.8 MB vs 293.4 MB,
+    a 3.46x reduction; the bar is 0.5, so a regression that merely reinstates parity fails.
+    """
+    path = FIX / "fp64.pt"
+    if not path.exists():
+        pytest.skip("no cgenn_compile fixtures recorded")
+    ref = torch.load(path, weights_only=False)
+    got = {}
+    for impl in ["einsum", *GP_IMPLS]:
+        exp = _build(float64=True, extra_overrides=[f"model.net.gp_impl={impl}"])
+        exp.model.load_state_dict(ref["sd"], strict=True)
+        got[impl] = _saved_bytes(exp, _rebuild(ref["batch"]))
+        print(f"GATE-SAVED[{impl}] {got[impl] / 2**20:.3f} MB retained for backward")
+    ratio = got["sparse"] / got["einsum"]
+    print(f"GATE-SAVED sparse/einsum = {ratio:.3f}")
+    assert ratio < 0.5, (
+        f"sparse retains {ratio:.2f}x the einsum path -- the autograd Function in "
+        f"experiments/baselines/cgenn/sparse_gp.py is no longer doing its job")
+
+
+@pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile smoke gates: set CGENN_COMPILE_GATES=1")
+@pytest.mark.parametrize("impl", ["einsum", *GP_IMPLS])
+def test_compiled_backward(impl):
+    """BACKWARD: a compiled net must survive a real training step, not just a forward.
+
+    Separate from the gate above because it exercises a different thing: dynamo/AOT
+    tracing THROUGH the custom Function into a joint forward+backward graph. A Function
+    that traces fine under no_grad can still graph-break (or silently fall back) once
+    autograd is live, and the compiled backward is what the campaign actually runs.
+    """
+    exp = _build(float64=True, extra_overrides=[f"model.net.gp_impl={impl}"])
+    exp.model.net = torch.compile(exp.model.net, dynamic=True)
+    exp.model.train()
+    grads = _grads(exp, _fixed_batch(exp))
+    assert grads, f"BACKWARD[{impl}]: compiled step produced no gradients at all"
+    assert all(torch.isfinite(v).all() for v in grads.values()), (
+        f"BACKWARD[{impl}]: non-finite gradients from the compiled step")
+    print(f"GATE-BACKWARD[{impl}] compiled training step OK ({len(grads)} grads, finite)")
+
+
 def _compiled_net(exp):
     return torch.compile(exp.model.net, dynamic=True)
 

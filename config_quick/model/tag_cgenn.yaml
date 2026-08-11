@@ -1,6 +1,11 @@
 _target_: experiments.tagging.wrappers.CGENNWrapper
 out_channels: null
 compile: false  # quick tree stays eager; compile smoke is env-gated (CGENN_COMPILE_GATES=1)
+activation_memory_budget: null  # OOM escape hatch only: fraction in (0,1] handed to
+                                # AOT's partitioner, buying peak activation memory with
+                                # backward recompute (lgatr 2.0's knob). null = torch
+                                # default. Try the sparse gp_impl first -- it already
+                                # cut retained activations 3.5x for free.
 
 net:
  _target_: experiments.baselines.cgenn.cgenn.CGENN

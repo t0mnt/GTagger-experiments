@@ -24,6 +24,56 @@ from experiments.tagging.embedding import get_tagging_features
 # representations, as the MPNN portion of the GNNs is currently not shaped for the latter
 
 
+class _activation_memory_budget:
+    """Scoped `torch._functorch.config.activation_memory_budget` around a compiled call.
+
+    lgatr 2.0 exposes this on every net (`utils/compile.compile_model`) as the escape hatch
+    for activation-memory pressure, so the CGENN wrappers expose it too -- same knob, same
+    semantics, adapted to this repo's "compile the net, keep the wrapper eager" posture.
+
+    A fraction in (0, 1]: AOTAutograd's min-cut partitioner is told to keep saved
+    activations under `budget` x what the default partition would save, buying the
+    difference with recomputation in the backward. 1.0 (torch's default) is "save
+    whatever is cheapest"; lower values trade backward FLOPs for peak memory. `None` --
+    the shipped default -- leaves torch's global setting untouched, so the knob is fully
+    inert until someone sets it.
+
+    Scoped per call rather than set globally, exactly like the `recompute_views` patch in
+    LorentzNetLGATrSlimGraphGPSWrapper: the smoke test and the FLOPs harness build many
+    models in one process, and a global would leak across them. The partitioner reads the
+    config while COMPILING, and compilation happens inside the wrapped call, so a scope
+    around the call covers every (re)compilation of that net.
+
+    Reach for it only on a measured OOM. The sparse-GP autograd Function
+    (experiments/baselines/cgenn/sparse_gp.py) already cut CGENN's retained activations by
+    3.5x, which is the pressure this would otherwise relieve -- and unlike this knob, it
+    costs no recomputation.
+    """
+
+    def __init__(self, budget):
+        self.budget = budget
+        # a STACK, not a slot: one instance is held per wrapper and entered on every
+        # forward, so a single slot would be clobbered by any nesting or concurrency
+        self._active = []
+
+    def __enter__(self):
+        if self.budget is None:
+            return self
+        import torch._functorch.config as _fc
+
+        if not hasattr(_fc, "activation_memory_budget"):
+            raise ValueError("activation_memory_budget requires torch>=2.4")
+        patch = _fc.patch(activation_memory_budget=self.budget)
+        patch.__enter__()
+        self._active.append(patch)
+        return self
+
+    def __exit__(self, *exc):
+        if self._active:
+            self._active.pop().__exit__(*exc)
+        return False
+
+
 class TaggerWrapper(nn.Module):
     def __init__(
         self,
@@ -843,7 +893,8 @@ class PELICANWrapperOfficial(nn.Module):
 
 
 class CGENNWrapper(nn.Module):
-    def __init__(self, net, framesnet, out_channels, compile=False):
+    def __init__(self, net, framesnet, out_channels, compile=False,
+                 activation_memory_budget=None):
         super().__init__()
         self.net = net(n_outputs=out_channels)
         if compile:
@@ -851,6 +902,7 @@ class CGENNWrapper(nn.Module):
             # to_dense_batch are data-dependent by design (docs/cgenn-compile.md section 2).
             # dynamic=True: N = B*P and the fully-connected E vary per batch.
             self.net.compile(dynamic=True)
+        self.budget = _activation_memory_budget(activation_memory_budget)
         self.framesnet = framesnet
         assert isinstance(framesnet, IdentityFrames)
 
@@ -908,16 +960,17 @@ class CGENNWrapper(nn.Module):
         edge_attr_h = None
         node_attr_h = h
 
-        out = self.net(
-            h=h,
-            x=x,
-            edge_attr_x=edge_attr_x,
-            node_attr_x=node_attr_x,
-            edge_attr_h=edge_attr_h,
-            node_attr_h=node_attr_h,
-            edges=edge_index,
-            node_mask=node_mask,
-        )
+        with self.budget:
+            out = self.net(
+                h=h,
+                x=x,
+                edge_attr_x=edge_attr_x,
+                node_attr_x=node_attr_x,
+                edge_attr_h=edge_attr_h,
+                node_attr_h=node_attr_h,
+                edges=edge_index,
+                node_mask=node_mask,
+            )
 
         return out, {}, None
 
@@ -1034,13 +1087,15 @@ class LGATrSlimWrapper(nn.Module):
 
 
 class CGENNLGATrGraphTransWrapper(nn.Module):
-    def __init__(self, net, framesnet, out_channels, compile=False):
+    def __init__(self, net, framesnet, out_channels, compile=False,
+                 activation_memory_budget=None):
         super().__init__()
         self.net = net(num_classes=out_channels)
         if compile:
             # compile the net only; edge building is hoisted in forward (data-dependent
             # nonzero, eager by design -- docs/cgenn-compile.md, Stage 3)
             self.net.compile(dynamic=True)
+        self.budget = _activation_memory_budget(activation_memory_budget)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1065,13 +1120,14 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         # hoist the static kNN edges out of the (possibly compiled) net: identical values
         # in identical order eager -- the edges depend only on these inputs
         edges = self.net.build_edges(fourmomenta, mask, points)
-        output = self.net(
-            scalars,
-            fourmomenta,
-            mask,
-            points,
-            edges=edges,
-        )
+        with self.budget:
+            output = self.net(
+                scalars,
+                fourmomenta,
+                mask,
+                points,
+                edges=edges,
+            )
         return output, {}, None
 
 
@@ -1085,13 +1141,15 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
     the time-first (E, px, py, pz) convention (no reorder).
     """
 
-    def __init__(self, net, framesnet, out_channels, compile=False):
+    def __init__(self, net, framesnet, out_channels, compile=False,
+                 activation_memory_budget=None):
         super().__init__()
         self.net = net(num_classes=out_channels)
         if compile:
             # compile the net only; edge building is hoisted in forward (data-dependent
             # nonzero, eager by design -- docs/cgenn-compile.md, Stage 3)
             self.net.compile(dynamic=True)
+        self.budget = _activation_memory_budget(activation_memory_budget)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
 
@@ -1116,13 +1174,14 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
         # hoist the static kNN edges out of the (possibly compiled) net: identical values
         # in identical order eager -- the edges depend only on these inputs
         edges = self.net.build_edges(fourmomenta, mask, points)
-        output = self.net(
-            scalars,
-            fourmomenta,
-            mask,
-            points,
-            edges=edges,
-        )
+        with self.budget:
+            output = self.net(
+                scalars,
+                fourmomenta,
+                mask,
+                points,
+                edges=edges,
+            )
         return output, {}, None
 
 

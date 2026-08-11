@@ -174,6 +174,14 @@ there is no longer any ordering constraint on the fixture deletion.
   drift protection off the compile TWINS — which are permanent model code, not port
   scaffolding. Verified: with all five gate files and every fixture pack removed,
   `test_compile_posture.py` still passes 8/8.
+  **The same carve-out was done a second time, for `test_cgenn_compile.py`** (2026-08-11):
+  `gp_impl=sparse` now routes through a custom `torch.autograd.Function` with a
+  HAND-WRITTEN backward (`experiments/baselines/cgenn/sparse_gp.py`), whose gradients no
+  gated forward implies. Its gradcheck, bit-identity and retention gates are in
+  `tests/experiments/test_sparse_gp.py` (KEEP, fixture-free, ~2 s). What stays here and
+  dies with the wipe is only the integration-scale set — whole-model BACKWARD-TOL,
+  whole-model GATE-SAVED, and the compiled training step — all of which need this file's
+  fixtures and hydra build.
 - All `tests/fixtures/*_compile/` packs (~43 MB, including the MIParT pins and the two
   large ParT packs).
 - `tests/experiments/test_lgatr_v2_inventory.py` — a v1-vs-v2 API inventory. Its job ends
@@ -257,6 +265,12 @@ the wipe.
   step) and `test_train_mode_differential` (the guard that caught the eval-exact /
   train-wrong pair-BN bug). Deliberately fixture-free, so the fixture wipe cannot
   neuter it.
+- `tests/experiments/test_sparse_gp.py` — the only gates on a hand-written backward in the
+  tree. `experiments/baselines/cgenn/sparse_gp.py` is shipped model code whose gradients
+  are code, not a derivative of a gated forward: gradcheck here is the only thing standing
+  between a refactor and silently wrong gradients on the campaign posture (`gp_impl:
+  sparse`). Fixture-free and ~2 s, so it costs nothing to keep and cannot be neutered by
+  the fixture wipe.
 - `tests/internal/` and every equivariance/invariance/FLOPs test — table-integrity guards
   that predate this branch's concerns.
 - `docs/diffs.md` — the one summary a future reader needs, and the natural home for

@@ -1138,3 +1138,270 @@ ParticleNet next (weaver-core supports both upstream now, so the risk is low); t
 GT hybrids post-campaign, measuring ParticleNetParTGraphTrans/GPS first, since graph
 breaks would come from the wrapper (per-batch kNN rebuild, PyG scatter, LLoCa transport)
 rather than the backbones.
+
+## L-GATr 2.0 trick census → CGENN (2026-08-11)
+
+Prompted by a fair objection: the CGENN compile work above cited lgatr 2.0's *paper* but had
+never read lgatr 2.0's *compile code*. Its source was opened only when a bug forced it. This
+section is the census that should have come first — every compile-facing mechanism in the
+installed `lgatr` package, and what CGENN does about it.
+
+| lgatr mechanism | where | CGENN |
+|---|---|---|
+| `_GeometricProductSparse` custom autograd Function | `primitives/bilinear.py` | **ADOPTED** — `experiments/baselines/cgenn/sparse_gp.py` |
+| `activation_memory_budget` scoped patch | `utils/compile.py` | **ADOPTED** — wrapper knob, default off |
+| `warmup_caches` / `warmup_after_apply` | `primitives/compile.py`, `utils/compile.py` | **N/A by construction** — see below |
+| `minimum_autocast_precision` fp32 islands | `utils/autocast.py` | **N/A** — every model config here ships `use_amp: false` |
+| `generate_vmap_rule = True` on the Function | `primitives/bilinear.py` | adopted with the Function |
+| `checkpoint_blocks` (gradient checkpointing) | `nets/lgatr.py`, `nets/slim.py` | **considered, not adopted** — see below |
+| `compile_kwargs` passthrough (`mode`, `fullgraph`) | `utils/compile.py` | already have `compile(dynamic=True)`; `mode="reduce-overhead"` is the cudagraphs path their warmup exists for, not our posture |
+| dense-vs-sparse chosen per OPERATION | `primitives/config.py` | already encoded as the `gp_impl` knob |
+| `sparse_linear` | `primitives/config.py` | no CGENN equivalent exists, and by their own result we should not want one on GPU (§"Upstream's own numbers", point 1) |
+
+The list is the whole package, not a selection: `lgatr` has 50 modules and this is every
+compile- or memory-facing mechanism in them.
+
+`checkpoint_blocks` is the one deliberate decline. It is the same lever as
+`activation_memory_budget` — recompute in the backward instead of retaining — but coarser
+(whole blocks, chosen by hand) where the partitioner picks by cost, and it exists in lgatr
+because their nets must also work uncompiled. Every CGENN config ships `compile: true`, so
+the finer knob strictly dominates it here. Recorded as a decision rather than left as an
+omission; if the compile posture ever flips off, this is the fallback.
+
+### Item 2 — the sparse GP is now a `torch.autograd.Function`
+
+This is the one that mattered. The measured anomaly it explains was already in this log: the
+sparse contraction does **16× fewer MACs** than the dense forms and still measured a **1.50×
+higher GPU peak**. Cause is retention, not arithmetic. The eager three-liner
+
+    pair = x.unsqueeze(-1) * y[..., kidx]     # (B, N, 16, 16)
+    w    = weight[..., spath] * spval
+    out  = einsum("bnij,nij->bnj", pair, w)
+
+saves **two** (B, N, 16, 16) tensors for backward — `y[..., kidx]`, which the `mul` needs, and
+`pair`, which the `einsum` needs — where einsum/matmul each save exactly one. lgatr hits the
+same wall and solves it the same way: a Function whose `setup_context` saves only inputs, with
+a hand-written backward that recomputes the gathers.
+
+The forward inside the Function is **the same three lines, unchanged**. Grad mode is off inside
+`Function.forward`, so the two intermediates become transient rather than retained: identical
+output bits, no tensors held. Measured:
+
+| | retained for backward | vs einsum |
+|---|---|---|
+| einsum (BIT reference) | 293.4 MB | 1.00× |
+| matmul | 293.4 MB | 1.00× |
+| sparse, before | 293.4 MB + the extra pair | >1× (1.50× GPU peak) |
+| **sparse, now** | **84.8 MB** | **0.29×** |
+
+(whole `tag_cgenn` model, fp64, the fixture batch; `GATE-SAVED` in `test_cgenn_compile.py`.
+At one GP layer alone, at (B=32768, 16 features, fp32), it is 1056 MB → 64 MB, 16.5×.)
+
+**What is measured and what is not.** Every number above is `saved_tensors_hooks` accounting
+on CPU: bytes autograd *retains* across the forward/backward boundary. The 1.50× figure it
+explains came from a real β-PERF OOM search on an H100 (sparse 15.2 GB vs einsum 10.1 GB at
+batch 16, sparse OOM'ing at 128 where the others fit). **The GPU peak has not been re-measured
+since this change** — retained activations dominate peak for a 4-layer net, so the ranking
+should now invert, but that is a prediction. Re-running the OOM search is the first thing the
+β-PERF GPU matrix should do with `gp_impl`, and it is the number that decides whether sparse
+takes the campaign posture on merit rather than on lgatr's authority. Note also that the
+backward's transient peak is unchanged (two (B, N, 16, 16) temporaries live at once), so the
+win is entirely in retention — which is the term that scales with depth.
+
+**Determinism, where we deliberately diverge from lgatr.** Plain autograd differentiates both
+gathers with `index_add_`, which is nondeterministic on CUDA — so the sparse path never was
+reproducible on GPU. The hand-written backward avoids it twice:
+
+- **dL/dy** — for a fixed left blade `i`, `j → k(i, j)` is a *bijection* (left multiplication by
+  a basis blade permutes the basis), so the scatter inverts into a gather through the new
+  `algebra.gp_j_idx`. Asserted at construction, not assumed: a degenerate metric would break it,
+  and a silently-wrong inverse gives wrong gradients rather than a crash.
+- **dL/dweight** — the `(i, j) →` compact-path map is a fixed 0/±1 matrix (35 × 256 here), so the
+  segment-sum is one small GEMM.
+
+lgatr chose the opposite and says so: *"index_add_ is CUDA-nondeterministic, but beats the
+deterministic gather+matmul alternative by ~10% on CPU and ~5% on CUDA."* Their trade differs
+from ours in two ways — their GP carries no weight, so dL/dy **is** their backward, and the
+gather can be placed before or after the feature contraction. Placing it after is what makes it
+cheap. Per dL/dy call, campaign shape, one CPU thread:
+
+| | index_add_ (nondet.) | gather-late (det.) | gather-early (det.) |
+|---|---|---|---|
+| plain layer | 40.8 ms | 47.1 ms | 121.2 ms |
+| fc layer | 70.1 ms | **55.0 ms** | 194.9 ms |
+
+gather-late is bit-identical to `index_add_`, 15% slower on the plain layer (~2% of that
+layer's backward) and 21% *faster* on the fc layer. Which form lgatr benchmarked is not stated,
+so their number is context rather than a contradiction.
+
+**Every einsum in the backward is TWO-OPERAND, and that is load-bearing.** The first version
+used two 3-operand einsums, which is the natural way to write the contractions. `torch.einsum`
+hands three or more operands to opt_einsum, whose path search reads CONCRETE sizes — so under
+`torch.compile(dynamic=True)` the graph pins to them. Measured on a compiled TRAINING step over
+four distinct batch shapes: **1, 2, 3, 4 unique graphs for sparse against 1, 1, 1, 1 for
+einsum** — a recompile per batch shape, and jet multiplicity varies every batch, so that is a
+recompile per step for the whole campaign. Rewritten as binary chains (which also lets dL/dx
+and dL/dy share one intermediate): back to 1, 1, 1, 1.
+
+This repo had already paid for that lesson once — it is why the einsum `gp_impl` is a
+two-operand chain rather than the 3-operand form, and the comment saying so is in `gp.py`. It
+came back because **every RECOMP gate in this tree runs under `no_grad`**, so none of them has
+ever seen the joint graph. `test_sparse_gp.test_compiled_training_step_does_not_respecialize`
+now does, at layer scale, ungated, in 15 s.
+
+**Verification.** `gradcheck` and `gradgradcheck` in fp64 (the latter proves the backward is
+itself differentiable — no in-place fold onto a saved tensor); forward bit-equality and
+gradient agreement ≤ 4e-16 against the exact expression replaced; the `sp_val == 0` branch,
+which the Lorentz metric never reaches, gated against a deliberately reduced path set;
+whole-model gradients within 2.6e-10 of the einsum reference, matching `matmul`'s 2.9e-10 on
+the same parameter — and matmul is untouched by this work, so the ~6 digits are the model's own
+backward conditioning. Compiled: 0 graph breaks, 1 unique graph forward, 1 unique graph across
+a four-shape compiled training sweep, and a compiled training step producing 37 finite
+gradients.
+
+### Item 1 — `activation_memory_budget`, shipped off
+
+`activation_memory_budget: null` on all three CGENN wrappers (`config/` and `config_quick/`),
+applied as a scoped `torch._functorch.config.patch` around the compiled call — the same shape as
+the existing `recompute_views` patch on `LorentzNetLGATrSlimGraphGPSWrapper`, and for the same
+reason (the smoke test and the FLOPs harness build many models per process; a global leaks).
+It is an OOM escape hatch: it buys peak activation memory with backward recompute. Reach for
+`gp_impl: sparse` first — after item 2 it gives 3.5× for free, which is the pressure this knob
+would otherwise relieve, and it costs no recomputation.
+
+Verified live rather than assumed — a knob that changes nothing measurable should not ship.
+Retained across the fwd/bwd boundary of the **compiled** `tag_cgenn`, fp64, fixture batch:
+
+| budget | `gp_impl: einsum` | `gp_impl: sparse` |
+|---|---|---|
+| `null` (torch default) | 253.6 MB | 45.0 MB |
+| `1.0` | 253.6 MB | 45.0 MB |
+| `0.5` | 41.2 MB | 24.9 MB |
+| `0.2` | 41.2 MB | 12.8 MB |
+
+`null` and `1.0` agreeing is the control (1.0 *is* torch's default); `0.5` and `0.2` differing
+is the proof the scoped patch reaches AOT's partitioner through hydra → wrapper → call. Note
+the einsum column floors at 0.5 — the partitioner has nothing further it is willing to
+recompute — while sparse keeps going, and that compiled sparse at the default (45.0 MB) sits
+**5.6×** below compiled einsum at the default, a wider margin than the 3.46× eager figure.
+The knob's remaining headroom on top of that is another 3.5×.
+
+### Item 3 — `warmup_caches` has no CGENN equivalent to write, and here is the proof
+
+lgatr's primitive tables are `@lru_cache` functions keyed by `(device, dtype)`. The first call
+for a new pair does a host→device copy *inside* the compiled region, which under
+`mode="reduce-overhead"` partitions the captured graph — hence `warmup_caches`, called from
+`_apply` so every `.to()`/`.cuda()`/`.float()` re-warms.
+
+CGENN has no such cache. Every table is a `register_buffer(..., persistent=False)` on
+`CliffordAlgebra`, an `nn.Module`, so `.to()` moves it by construction and there is no first-call
+path at all. That is the same fix at a different layer, and it is stronger: their warm-up
+*works around* a lazy cache, ours *has no* lazy cache. Verified rather than asserted — the CGENN
+stack contains exactly one `functools.cached_property` (`geometric_product_paths`), zero
+`lru_cache`, and its three call sites are `.nonzero()`, `.sum()` and `.size()`, all at `__init__`.
+
+The stronger closure is a new gate. **`test_meta_device_forward`** runs the real CGENN nets on
+the `meta` device: `.to("meta")` moves exactly what `.to("cuda")` moves and leaves exactly what
+`.to("cuda")` leaves, and mixing the two raises the same error the GPU raises — a GPU
+placement gate on a CPU-only runner, at no cost (meta tensors carry no storage). This is what
+the header of `test_device_hygiene.py` records `FakeTensorMode` failing to do; it works here
+because it is applied to the **net**, with the wrapper's data-dependent preprocessing already
+run for real. Two things it taught immediately:
+
+- `_alpha_signs` is not on the live forward path, so the first version of the self-check — which
+  pinned one buffer by name — passed vacuously. It now sweeps every buffer of every algebra and
+  asserts at least one unregistration fails the forward. Live set: `_beta_signs`, `cayley`.
+- `tag_CGENNLGATrGraphTrans` holds **two** `CliffordAlgebra` instances (`net.algebra` for
+  `mv_bridge`, `net.cgenn.algebra` for the CGENN block). Only the second is device-checked;
+  `mv_bridge` reaches its algebra through embed/get_grade, which are index and slice ops.
+
+Stated blind spot: `matmul` does *not* raise on a meta/cpu mix (measured — it promotes
+silently), and `meta[cpu_idx]` does not raise, exactly as `cuda[cpu_idx]` does not. So this
+catches the **crash** class — all three bugs found this session — and not the **silent-cost**
+class, which is what the other two nets in that file are for.
+
+### Upstream issue text (DavidRuhe/clifford-group-equivariant-neural-networks)
+
+Reproduced against the upstream code shape before writing (touch-then-move poisons it; the
+tensor never appears in `named_buffers()`, so nothing reports it):
+
+> `CliffordAlgebra._alpha_signs` / `._beta_signs` / `._gamma_signs` are
+> `functools.cached_property`, which stores the tensor in `instance.__dict__` — bypassing
+> `nn.Module.__setattr__`, so it is not a buffer and `.to(device)` cannot move it. Any access
+> before the model is moved (a CPU sanity forward, a summary tool, a warm-up) pins them to CPU
+> permanently, and every later `signs * mv` in `alpha`/`beta`/`gamma` raises *"Expected all
+> tensors to be on the same device"*. `register_buffer(..., persistent=False)` fixes it with
+> identical values and an unchanged `state_dict`.
+
+Worth filing: latent upstream (nothing in their `__init__` touches the properties, so the
+common order is the lucky one) but unconditional here, because our dynamo warm-up loop
+materializes every `cached_property` at construction — before `.to(device)`. We caused the
+crash; they carry the hazard.
+
+### Adversarial audit of this change
+
+Ten things went wrong on the way here, eight of them found by auditing rather than by a
+failing test. Recorded because the pattern is the useful part.
+
+0. **The one that would have cost real GPU time: a recompile per batch shape.** Two
+   3-operand einsums in the backward pinned the compiled training graph to concrete sizes
+   (1, 2, 3, 4 unique graphs over four shapes, against 1, 1, 1, 1 for einsum). Every gate in
+   the tree was green, because every RECOMP measurement runs under `no_grad` and none of them
+   has ever seen the joint graph. Worse, it is a lesson this repo had **already** learned and
+   written down in `gp.py`'s einsum branch — the comment was two functions away from the code
+   that broke it. Found by asking "RECOMP is forward-only; what does the backward do?" rather
+   than by any test. Fixed (binary chains throughout), and now gated at layer scale, ungated
+   and fast, by `test_sparse_gp.test_compiled_training_step_does_not_respecialize`.
+1. **The first `dL/dy` I wrote was 2.6×/3.5× slower than necessary.** Gathering `w` and `g`
+   before the feature contraction is the obvious reading of the math and inflates both
+   operands to (B, M, 16, 16). Gathering after gives the same bits at a third of the cost.
+   Found by benchmarking a decision I had already justified in a comment.
+2. **The meta gate's non-vacuity proof was itself vacuous.** It unregistered `_alpha_signs`
+   and asserted the forward fails — but `alpha()` is not on the forward path, so the
+   assertion could never have fired. A gate that proves it can fail must prove it against
+   something live; it now sweeps every buffer and reports which ones are.
+3. **…and it swept the wrong object.** `tag_CGENNLGATrGraphTrans` has two
+   `CliffordAlgebra` instances; `next(...)` found the one serving `mv_bridge`, which
+   reaches its algebra only through index ops. Fixed by sweeping all instances.
+4. **`torch.empty_like` behind a strippable assert.** `gp_j_idx` is built by scattering
+   into an empty tensor, which covers every entry only because the bijection assert holds —
+   and `python -O` strips asserts. The uncovered case would have been uninitialized memory
+   used as a gather index: silently wrong gradients. Now `full_like(-1)`, which is an
+   out-of-range gather instead.
+5. **The budget context manager held one patch slot**, so any nesting or concurrency would
+   have leaked a patched config. Now a stack.
+6. **The gradcheck would have been deleted by the wipe.** `test_cgenn_compile.py` is a port
+   instrument scheduled for deletion in `cleanup.md` step 7; putting the only gates on a
+   hand-written backward inside it would have removed them along with the scaffolding — the
+   exact mistake `test_compile_posture.py` was carved out to fix, repeated. Carved out again
+   into `tests/experiments/test_sparse_gp.py` (KEEP), and `cleanup.md` updated.
+7. **`sp_val == 0` had no coverage.** Under the Lorentz metric all 256 blade pairs land on
+   an allowed grade triple, so the masked branch and its clamp-to-path-0 are dead code in
+   production — and its failure mode (clamped entries dumping gradient onto path 0) is
+   silent. Now gated against a deliberately reduced path set, with the test asserting that
+   masking actually occurred and that a live entry shares index 0, so a clobber would show.
+8. **A TF32 coupling on the new GEMM.** `dL/dweight` ends in a matmul against the 0/±1
+   selection matrix; under `float32_matmul_precision: high` that would round the gradient
+   to a 10-bit mantissa for no gain, since the matrix is exactly representable. The repo
+   ships `highest`, so it is inert — documented at the call site rather than guarded.
+9. **One reported failure was not real.** The first `test_compiled_backward[sparse]` run
+   failed with an unexpected-keyword TypeError: the process had imported `wrappers.py`
+   before the budget parameter was added and read the yaml after. A stale-process artifact,
+   not a defect; re-run clean.
+
+Checked and clean: no inline sparse-GP expression survives anywhere; no wrapper is
+constructed outside hydra; every `CliffordAlgebra` in the tree uses the same metric, so the
+new bijection assert has exactly one case and it passes; `state_dict` is unchanged
+(`persistent=False` throughout, and the BIT gate's `load_state_dict(strict=True)` passes);
+FLOPs are unchanged (`FlopCounterMode` counts the einsum, which moved but did not change,
+and it counts the forward only); `use_amp: false` in every model config, so the dtype
+promotion in the backward is inert.
+
+Not verified, stated rather than glossed:
+
+- **GPU peak memory.** No GPU here. The 1.50× that motivated all of this is a real H100
+  number; the effect of the fix on it is a prediction. First thing for the β-PERF matrix.
+- **Wall-clock.** Also β-PERF's job. The CPU dL/dy micro-benchmarks above are the only
+  timing evidence, and they cover one kernel, not a step.
+- **The `meta` gate cannot see the silent-cost class**, only the crash class. Stated in the
+  test file and repeated here because a green run is easy to over-read.
