@@ -4,8 +4,10 @@ compile: true  # torch.compile(net, dynamic=True); edges hoisted eager (operator
 activation_memory_budget: null  # OOM escape hatch only: fraction in (0,1] handed to
                                 # AOT's partitioner, buying peak activation memory with
                                 # backward recompute (lgatr 2.0's knob). null = torch
-                                # default. Try the sparse gp_impl first -- it already
-                                # cut retained activations 3.5x for free.
+                                # default. NOTE the sparse gp_impl does NOT relieve this
+                                # under compile: AOT's partitioner equalizes retention
+                                # across all three impls (its 3.5x is eager-only --
+                                # docs/cgenn-compile.md, CORRECTION).
 
 net:
   _target_: experiments.baselines.cgennlgatrgraphgps.CGENNLGATrGraphGPS

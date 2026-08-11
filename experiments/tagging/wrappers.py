@@ -44,10 +44,12 @@ class _activation_memory_budget:
     config while COMPILING, and compilation happens inside the wrapped call, so a scope
     around the call covers every (re)compilation of that net.
 
-    Reach for it only on a measured OOM. The sparse-GP autograd Function
-    (experiments/baselines/cgenn/sparse_gp.py) already cut CGENN's retained activations by
-    3.5x, which is the pressure this would otherwise relieve -- and unlike this knob, it
-    costs no recomputation.
+    Reach for it only on a measured OOM, and do not expect `gp_impl: sparse` to have
+    relieved the pressure first: its 3.5x retention win is EAGER-only. Under compile --
+    which every CGENN config ships -- AOT's partitioner already equalizes retention across
+    all three impls, which is both why the sparse-GP autograd Function is routed off the
+    compiled path and why this knob is the only lever left there
+    (docs/cgenn-compile.md, CORRECTION).
     """
 
     def __init__(self, budget):

@@ -663,6 +663,27 @@ grep FIND_LR lr_sweep.log
 # FIND_LR  model=PlainGraphTrans  batchsize=2048  lr=3.10e-04  ->  config/training/top_PlainGraphTrans.yaml
 ```
 
+**Before you launch on the numbers this prints: `evaluation.batchsize` is NOT tuned by
+this sweep and does not follow `training.batchsize`.** `config/tagging.yaml` pins it at 512
+independently, and `find_lr.py` never looks at it. Evaluation runs under `@torch.no_grad()`,
+so per sample it is far lighter than training and 512 is usually fine — but the two numbers
+are decoupled, and the gap is worst exactly where the sweep sizes a batch DOWN. CGENN is the
+one to watch: its graph is fully connected, so nodes scale with the batch but edges scale
+with `B · P²` (≈6.2 M edges at B=512, P≈110). A row whose training batch the probe puts at
+32 or 64 is then asked to evaluate at 512, and that OOM lands AFTER training finishes —
+losing the evaluation of a multi-day job, not the job itself, which is the expensive way to
+find out.
+
+Cheap insurance, since nothing here is load-bearing for the science: carry the eval batch on
+the launch line for any row the sweep sized below ~128, e.g.
+
+```bash
+sbatch train.sbatch tag_cgenn toptagging evaluation.batchsize=64
+```
+
+Anything from one training batch upward is safe by construction — evaluation retains no
+activations, so it cannot need more than the training step at the same size.
+
 Plots and their raw curves land in `lr_finder/`, named after what produced them —
 `lr_finder_<Model>_bs<N>_lr<lr>.png` plus a matching `.npz` — so an image never needs to be
 matched to a log line by timestamp, and a re-sweep at a different batch size sits beside the old

@@ -302,3 +302,40 @@ why the FLOPs harness's force-eager walk can be defeated within a single pytest 
 if a pelican model was built compiled earlier in the run. Not currently observed as a
 failure (the FLOPs suite passes 64/0/36), but it makes process-order a hidden variable.
 
+
+---
+
+## 2026-08-11 — `tag_cgenn` aborts in the compiled multi-step training smoke (pre-existing)
+
+`CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 pytest tests/experiments/test_training_smoke.py
+-k tag_cgenn` dies with **`Fatal Python error: Aborted`** (SIGABRT, exit 134), inside
+`torch/_functorch/_aot_autograd/subclass_codegen.py:codegen(compiled_function_backward)`
+with ~240 inductor kernels loaded — i.e. while executing AOT's compiled backward.
+
+**Not caused by the sparse-GP work.** Reproduced identically at `3fe5197`, the commit
+before any of it, in a clean worktree. Recorded here rather than fixed because the cause is
+not established and it is not ours to guess at.
+
+Scope, measured, so nobody over- or under-reads it:
+
+- `tag_PlainGraphGPS` with compile ON passes the same smoke in 24 s, so this is not "the
+  compiled smoke is broken" — it is CGENN specifically.
+- `test_cgenn_compile.test_compiled_backward[sparse|matmul|einsum]` PASSES: a compiled
+  CGENN training step producing 37 finite gradients. So a single compiled step is fine and
+  something about the multi-step smoke path is not.
+- The box has 15 GB RAM with 12 GB free at the time, so it is not obviously an allocator
+  death, though CPU inductor building 240 kernels for a joint graph is heavy.
+- CPU inductor emits C++; the campaign's GPU inductor emits Triton. A CPU-only abort is
+  weak evidence about the campaign, in either direction.
+
+**Why no gate caught it:** `test_training_smoke` forces `compile: false` unless
+`CGENN_SMOKE_COMPILE=1` is set, and nothing in CI or the standard gated run sets it. So
+CGENN's compiled MULTI-STEP training has never been exercised anywhere — the compile gates
+are single-step or `no_grad`, and this is the fourth time in this program that a `no_grad`
+or single-shot gate has been mistaken for a statement about training.
+
+**Before committing days to a compiled CGENN run**, do the §3-style short real run on the
+GPU that the runbook already recommends for `tag_slim`, and watch it past the first
+validation. If it dies, `model.compile=false` on the launch line is the one-character
+fallback and costs only the compile speedup — CGENN's compiled gain has never been measured
+on GPU anyway.
