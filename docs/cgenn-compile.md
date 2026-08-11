@@ -1437,5 +1437,20 @@ every efficiency claim regardless.
 
 Still open, and the reason `utils/bperf.py` is not deletable yet: the CGENN rows. Their
 last sweep is the one the sparse-GP autograd Function was built to invalidate — sparse was
-sized to 32 where einsum and matmul got 64. `docs/oscar-bperf.sbatch` is the batch runner
-for it; `--find-batchsize` is not optional there, because the sizes are the finding.
+sized to 32 where einsum and matmul got 64.
+
+That one wants a batch job rather than an `interact` session: `--find-batchsize` walks an
+OOM ladder per state, every rung paying its own compile, three `gp_impl` rows deep — hours,
+and a dropped session takes the sweep with it. Build `bperf.sbatch` from
+`docs/oscar-train.sbatch` (root-level `*.sbatch` is gitignored, which is the point: the
+partition and account in it are yours, not this public repo's), changing three things —
+`--mem=64G` (the OOM ladder's last surviving batch has a host-side collate to match), `-t
+8:00:00`, and the command:
+
+    sbatch -J bperf-cgenn bperf.sbatch --models tag_cgenn --find-batchsize \
+        --iters 1010 --window 100 1000
+
+`--find-batchsize` is not optional for these rows: without it every row uses the unswept
+512 yaml fallback, and the sizes the OOM search chooses ARE the finding here. Read them
+before the speedups. Do not pass `--apply` from a batch job — it edits production yamls,
+and the point of reading the table first is to decide whether the flip is one you want.
