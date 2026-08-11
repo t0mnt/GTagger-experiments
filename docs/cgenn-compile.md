@@ -959,9 +959,21 @@ Two GPU-only defects, both invisible to every CPU gate by construction:
   * `CliffordAlgebra`'s `_alpha/_beta/_gamma_signs` were `functools.cached_property`, which
     writes to `instance.__dict__` and so is NOT a buffer `.to(device)` can move. `__init__`
     materialized them, so every instance carried CPU sign vectors unconditionally and
-    `signs * mv` in `beta()` raised a device mismatch on the live forward path. Pre-existing
-    on `main`, in both pre-dedup copies. Fixed: non-persistent buffers, values bit-identical,
-    `state_dict` unchanged.
+    `signs * mv` in `beta()` raised a device mismatch on the live forward path. Fixed:
+    non-persistent buffers, values bit-identical, `state_dict` unchanged.
+
+    **CORRECTION (2026-08-11) to the attribution.** An earlier revision said "pre-existing on
+    `main`, in both pre-dedup copies". The `cached_property` is pre-existing -- it is upstream
+    CGENN's, vendored at `50c0f38` -- but the CRASH is not, and we caused it. Upstream's
+    properties are LAZY: build -> `.to(device)` -> first access computes from an already-moved
+    buffer and lands on the right device, so upstream runs on GPU. What forces the bad order
+    here is the cached-property warm-up loop at the end of our `__init__`, added by US in
+    `ec1d4d2` for a dynamo reason (`functools.cached_property` materializes through an RLock,
+    and a lock inside the traced region is a graph break). It touches every property before the
+    model is ever moved, turning a latent footgun into a guaranteed failure. Verified in both
+    orders rather than reasoned: build -> `.to()` -> access follows the module; build -> access
+    -> `.to()` goes stale. Upstream keeps the latent hazard (worth an issue); this repo's crash
+    was self-inflicted.
   * `embed()`'s `torch.zeros(..., 2**self.dim, ...)` reached the graph as a symbolic
     expression rather than the constant 16, so inductor lowered the stride as
     `libdevice.pow(2.0, ks0)` -- a float -- and Triton refused
