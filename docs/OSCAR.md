@@ -143,6 +143,22 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc '
 grep -qF 'TRITON_LIBCUDA_PATH' venv/bin/activate || \
   echo 'export TRITON_LIBCUDA_PATH=/usr/local/cuda/compat/lib' >> venv/bin/activate
 
+# Inductor's compiled-kernel cache, moved off per-node /tmp onto shared scratch. torch.compile
+# pays a large ONE-TIME cost per job to generate and benchmark Triton kernels -- measured 86 min
+# for tag_cgenn at production batch size on an H100. The default cache lives in
+# /tmp/torchinductor_$USER, which is per-NODE and purged, so every campaign job recompiles from
+# scratch: at ~18 models x 3 seeds that is tens of GPU-hours spent regenerating identical
+# kernels. A shared directory lets seed 2 and 3 of a model reuse seed 1's build almost entirely.
+# Safe by construction: inductor keys its cache on torch version, GPU architecture and graph, so
+# a stale or foreign entry is a miss, not a wrong answer.
+# NOT for gates: a cache is exactly what hides a real lowering failure (a graph that compiled
+# before is served from disk instead of being rebuilt). Every gate in this repo sets
+# TORCHINDUCTOR_FORCE_DISABLE_CACHES=1, which overrides this and disables caching outright --
+# so the two coexist correctly and you do not have to remember which is which.
+mkdir -p "/oscar/scratch/$USER/inductor_cache"
+grep -qF 'TORCHINDUCTOR_CACHE_DIR' venv/bin/activate || \
+  echo "export TORCHINDUCTOR_CACHE_DIR=/oscar/scratch/$USER/inductor_cache" >> venv/bin/activate
+
 # sanity: torch must still be the CONTAINER's own build -- a local +cuXXX / nvXX.XX string
 # (e.g. 2.8.0a0+...nv25.08 on the 25.08 image, or 2.3.0a0...nv24.3 on 24.03), NOT a plain
 # pip wheel (a bare "2.11.0+cu130"-style version here means a LEAKED pip torch is answering

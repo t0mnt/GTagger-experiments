@@ -987,6 +987,65 @@ Triton finds libcuda.so by parsing `ldconfig -p`, which comes up empty inside th
 so without it every compiled model dies at its first `torch.compile`. Set in
 `venv/bin/activate` per docs/OSCAR.md §2; `utils/env_check.py --gpu` now checks it.
 
+**Upstream evidence: Favaro, Plehn, Qu, Spinner, "Virtues and Vices of Equivariant
+Transformers" (arXiv:2608.02735), read 2026-08-11.** The reference implementation for lgatr 2.0,
+and the authors of the library we migrated to. Their §2.2 settles several things this log had
+open, and contradicts one of our own measurements.
+
+*Compile is universal and large.* "In the left panel of Figure 2, we observe significant
+speedups for all architectures" -- 1.0-2.5x on GPU inference. Their Table 2 gives JetClass
+TRAINING times before -> after (1M iterations, batch 512, H100): transformer 15h->9h, ParT
+33h->19h, L-GATr-slim 27h->16h, LLoCa-Tr 28h->12h, L-GATr 166h->63h (sparse) / ->57h (dense).
+"The training time of all networks is reduced by values between 40% and 70%." That is compile
+plus the sparse GP plus micro-optimizations, not compile alone. Their configs match: `part.yaml`
+and `lgatr.yaml` both ship `compile: true` with `compile_kwargs: {dynamic: true, mode: default}`.
+Our 16-of-18 posture is the same posture.
+
+*BUT compile is a LONG-RUN optimization, and that is not visible in their numbers.* The
+break-even is `C < T_eager (1 - 1/s)` for one-time compile cost C and speedup s. Measured here
+for tag_cgenn on an H100 at production batch: C = 86 min, s = 1.49 -> break-even at ~29k
+iterations (~4.4 h of eager training). Below that, compiling is a LOSS: a one-hour eager run
+becomes ~2.1 h compiled. Their runs are 1M iterations, so the cost is invisible in Table 2;
+ours are 20 epochs (~378k iterations at batch 64), comfortably past it. Any short run -- a
+debug job, a smoke test, config_quick -- should stay eager, which is already the shipped
+posture for config_quick.
+
+*Sparse vs dense, and where our CGENN diverges.* The paper is precise about a split we had
+merged: "the sparse variant is faster on geometric product operations. For linear operations,
+the dense approach is still faster on a GPU". Hence upstream's `lgatr.yaml` ships
+`sparse_gp: true` with `sparse_linear: false`, and hence their two published variants differ
+only in the LINEAR layer (L-GATr_dense faster on GPU, L-GATr_sparse faster on CPU). Our
+`gp_impl` knob is the geometric-product half only; we have no sparse-linear variant, and by
+their result we should not want one on GPU.
+
+**Our sparse GP does not reproduce their result, and the reason is memory.** beta-PERF on an
+H100 sized each row by OOM search: `gp_impl=einsum` and `matmul` both fit batch 128 (peak
+80.2 GB at 128), but `sparse` peaked at 15.2 GB already at batch 16 and OOM'd at 128 -- it was
+sized to 32 where the others got 64. Throughput must therefore be read as jets/s, not it/s:
+einsum 2.80 it/s x 64 = 179 jets/s, matmul 2.70 x 64 = 173 jets/s, sparse at half the batch.
+So our sparse GP buys 16x fewer MACs and pays for it in memory, on a device where memory is
+the binding constraint -- the opposite trade to lgatr's. The likely cause is that our
+implementation gathers the Cayley entries into a per-pair intermediate (`gather + 2-op
+einsum`) where lgatr's sparse GP does not materialize one. Treat `gp_impl: sparse` as
+UNCONFIRMED on GPU until it is measured at a common batch size against einsum.
+
+*Mixed precision, where we differ from upstream by omission.* The paper: "the baseline
+transformer and ParT can be used with mixed precision without performance drop", while "For
+the Lorentz-equivariant LLoCa-Transformer, L-GATr-slim, and L-GATr, training with AMP reduces
+performance at a rate that renders it impractical, so we stick to float32." Their `part.yaml`
+ships `use_amp: true`; their `default.yaml` ships `autocast_bfloat16: true`. Every model config
+in THIS repo ships `use_amp: false`. For the equivariant family that matches their finding and
+should stay. For `tag_ParT`, `tag_transformer` and the ParticleNet/ParT hybrids it leaves
+their reported 1.5-2x AMP gain unclaimed -- a larger factor than compile, and independent of
+it. Not changed here: bf16 changes training numerics and needs its own gate, so it is an
+operator decision with a measurable payoff, recorded rather than taken.
+
+*Sparse jet representations.* They report ~2x time and memory from dropping zero-padding, and
+use it "for all other architectures" but NOT for ParT, because its learnable attention bias has
+no variable-length kernel. This repo's sparse-jet assessment concluded the effort was not
+worth it; that assessment stands for our scale, but the factor they quote is larger than
+anything compile gives, and it is the honest place to look next if throughput matters.
+
 ## Table-wide compile policy
 
 `torch.compile` changes neither accuracy (numerics-preserving up to fusion order) nor
