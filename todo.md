@@ -85,6 +85,32 @@ per-run `table …:` log line that the regex reads.
   variants: `learnedso3` (rotations), `learnedso2`, `learnedz`, `learnedrest`, `learnedpd`;
   `randomlorentz` is the data-augmentation baseline. (CGENN / LorentzNet are already internally
   equivariant → leave on `identity`.)
+  - **DECIDED: `learnedso13`, not `learnedpd`, despite pd being lloca's own default.** lloca's
+    docstring says *"This is our default approach. LearnedSO13Frames works similarly well, but
+    is less flexible"* — quoting that back is not evidence, so the call rests on three things
+    checked here:
+    1. *Invariance, measured in this repo.* `test_tag_equivariance.FRAME_TOL` needs
+       `(1e-2, 1e-2, 2e-2)` for pd against `(1e-4, 1e-4, 1e-3)` for so13 — ~5e-3 vs ~1e-6, three
+       and a half orders of magnitude. pd's polar decomposition divides by energy in the
+       rest-frame boost, so a boost amplifies float64 rounding across the per-edge transport;
+       so13 orthonormalizes directly and has no such division. A paper claiming "LLoCa makes
+       the backbone Lorentz invariant" states that cleanly at 1e-6 and has to explain a floor
+       at 5e-3.
+    2. *pd has an unbounded failure mode, and OUR config disables the guard.* pd predicts a
+       boost vector and applies `clamp_boost`, where gamma = E/m — a near-lightlike prediction
+       sends gamma to infinity. `config/model/framesnet/learnedpd.yaml` ships `gamma_max: null`,
+       and `lloca/framesnet/equi_frames.py:550-551` returns the boost UNCHANGED in that case,
+       so the regulator is off and `gamma_hardness: 10` is inert without it. so13 has no gamma
+       and no knob because orthonormalization cannot produce an unbounded boost. Using pd
+       properly means setting `gamma_max` — i.e. adding a hyperparameter to tune and defend.
+    3. *Same capacity, so "less flexible" costs nothing measurable.* Both take `n_vectors=3`
+       from the same `equivectors: equimlp` net and both land in SO(1,3); pd merely factorizes
+       it as boost x rotation so the network steers the two separately. Neither lloca's docs
+       nor anything here quantifies a performance difference.
+  - [ ] **One `learnedpd` ablation row anyway**, on one backbone (ParticleNet-ParT GraphTrans
+        is the natural pick), because pd is the LLoCa paper's default and a referee may ask why
+        we deviated. Set a finite `gamma_max` for that row, or report the tracked `gamma_mean` /
+        `reg_gammamax` (both already in `_init_metrics`) so it is visibly not a runaway.
 - **ParT pairwise bias (ParticleNet-ParT GraphTrans + GraphGPS).** `model.net.bias=true|false`;
   `model.net.pair_input_dim=1|4|5|8` selects how many QCD interaction features (1=lnΔ; 4=+ln kT,
   ln z, ln m²; 5=+lnΔs²; 8=+cosθ,Δy,Δφ — see `pairwise_lv_fts`; the weaver feature ladder jumps
@@ -449,14 +475,14 @@ the split is not by importance, it is by whether the change can touch a number.
       it/s. Do it to PUT A NUMBER on the knob for the next campaign and for a methods
       sentence.
       Two corrections to earlier reasoning here, both checked:
-      (a) *"walltime isn't shown for top tagging"* — it IS. `time` is column 10 of the
-      `toptagging` legend in `utils/aggregate_table.py` (and of `toptagxl` and `jctagging`),
-      fed by `train_time`, which `base_experiment.py:777` accumulates as real wall clock. So
-      the knob does touch a published column. Mitigating: on a shared cluster the run-to-run
-      spread of that column from node/queue/filesystem is plausibly wider than the ~2%
-      estimated here, so the effect is likely inside the column's own noise — the problem is
-      methodological (can the methods say all rows ran identically?) rather than a visible
-      number shift.
+      (a) *"walltime isn't shown for top tagging"* — half right, and the half that matters
+      is yours. `time` IS emitted: column 10 of the `toptagging` legend in
+      `utils/aggregate_table.py`, fed by `train_time`, real wall clock from
+      `base_experiment.py:777`. But the aggregator's column set is a superset of the paper's,
+      and this column is not one that a top-tagging table conventionally carries. If it does
+      not go in the paper, the knob touches no published number, and on a shared cluster its
+      ~2% is inside that column's own node/queue/filesystem spread anyway. What survives is
+      only the methods statement — whether the rows can be described as run identically.
       (b) *"retraining a fast subset makes it worse"* — only if you retrain SOME. What matters
       is uniformity of the FINAL table. If the rows already finished are the fast ones,
       re-running exactly those with the variable on gives a uniform table cheaply, and is the
