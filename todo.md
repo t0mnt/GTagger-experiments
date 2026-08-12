@@ -85,32 +85,39 @@ per-run `table …:` log line that the regex reads.
   variants: `learnedso3` (rotations), `learnedso2`, `learnedz`, `learnedrest`, `learnedpd`;
   `randomlorentz` is the data-augmentation baseline. (CGENN / LorentzNet are already internally
   equivariant → leave on `identity`.)
-  - **DECIDED: `learnedso13`, not `learnedpd`, despite pd being lloca's own default.** lloca's
-    docstring says *"This is our default approach. LearnedSO13Frames works similarly well, but
-    is less flexible"* — quoting that back is not evidence, so the call rests on three things
-    checked here:
-    1. *Invariance, measured in this repo.* `test_tag_equivariance.FRAME_TOL` needs
-       `(1e-2, 1e-2, 2e-2)` for pd against `(1e-4, 1e-4, 1e-3)` for so13 — ~5e-3 vs ~1e-6, three
-       and a half orders of magnitude. pd's polar decomposition divides by energy in the
-       rest-frame boost, so a boost amplifies float64 rounding across the per-edge transport;
-       so13 orthonormalizes directly and has no such division. A paper claiming "LLoCa makes
-       the backbone Lorentz invariant" states that cleanly at 1e-6 and has to explain a floor
-       at 5e-3.
-    2. *pd has an unbounded failure mode, and OUR config disables the guard.* pd predicts a
-       boost vector and applies `clamp_boost`, where gamma = E/m — a near-lightlike prediction
-       sends gamma to infinity. `config/model/framesnet/learnedpd.yaml` ships `gamma_max: null`,
-       and `lloca/framesnet/equi_frames.py:550-551` returns the boost UNCHANGED in that case,
-       so the regulator is off and `gamma_hardness: 10` is inert without it. so13 has no gamma
-       and no knob because orthonormalization cannot produce an unbounded boost. Using pd
-       properly means setting `gamma_max` — i.e. adding a hyperparameter to tune and defend.
-    3. *Same capacity, so "less flexible" costs nothing measurable.* Both take `n_vectors=3`
-       from the same `equivectors: equimlp` net and both land in SO(1,3); pd merely factorizes
-       it as boost x rotation so the network steers the two separately. Neither lloca's docs
-       nor anything here quantifies a performance difference.
-  - [ ] **One `learnedpd` ablation row anyway**, on one backbone (ParticleNet-ParT GraphTrans
-        is the natural pick), because pd is the LLoCa paper's default and a referee may ask why
-        we deviated. Set a finite `gamma_max` for that row, or report the tracked `gamma_mean` /
-        `reg_gammamax` (both already in `_init_metrics`) so it is visibly not a runaway.
+  - **DECIDED: `learnedpd` — keep upstream's default. This REVERSES an earlier call here for
+    `learnedso13`; the reversal is recorded because the reasoning is the useful part.**
+    The so13 case rested on three claims. Checked against `heidelberg-hepml/lloca-experiments`,
+    two of them do not survive:
+    1. *"pd's unbounded gamma is a fragility, and our config disables the guard."* **Withdrawn.**
+       Their `config/model/framesnet/learnedpd.yaml` ships `gamma_max: null` and
+       `gamma_hardness: 10` — identical to ours. So ours is not a misconfiguration, it is their
+       configuration, and the authors' own published runs use PD with the boost regulator off.
+       The failure mode is structurally real (gamma = E/m, and
+       `lloca/framesnet/equi_frames.py:550-551` returns the boost untouched when `gamma_max` is
+       None) but evidently does not bite on jet data, or they would have set it. Monitor rather
+       than switch: `gamma_mean` and `reg_gammamax` are already tracked in `_init_metrics`.
+    2. *"Equal capacity, so 'less flexible' costs nothing."* **Backwards.** Both reach
+       SO+(1,3) — pd via the boost x rotation polar decomposition, so13 via 4d orthonormalization
+       — but equal REACHABILITY is not equal optimization. pd lets the network steer boost and
+       rotation independently; so13 couples them through the orthonormalization. The only
+       evidence anyone has on that axis is the authors', who trained both and made pd the
+       default. "Unquantified" is not "absent", and there was no counter-evidence on the axis
+       that decides it, which is accuracy.
+    3. *The invariance floor (~5e-3 pd vs ~1e-6 so13).* **Stands as a fact, but it is not a
+       performance argument.** It is measured under an adversarial float64 test that applies
+       random boosts; nothing in the training or evaluation pipeline boosts events, they arrive
+       in the lab frame. So it bounds how tightly the invariance CLAIM can be stated, not how
+       well the model tags. It belongs in the methods sentence (§4e), not in this decision.
+    Net: pd is the validated-at-scale choice and the apples-to-apples one against published
+    LLoCa numbers, and the deviation would have needed evidence on accuracy that nobody has.
+    **Consequence: the "on =" line above should read `learnedpd`**, with `learnedso13` demoted
+    to the ablation row — the inverse of what was written, and cheaper, since so13 needs no
+    extra knob.
+  - [ ] **One `learnedso13` ablation row**, on one backbone (ParticleNet-ParT GraphTrans is
+        the natural pick), to show the frame family is not load-bearing for the conclusions —
+        and because it is the variant with the tighter invariance floor, which makes it the
+        honest companion to the methods sentence about pd's.
 - **ParT pairwise bias (ParticleNet-ParT GraphTrans + GraphGPS).** `model.net.bias=true|false`;
   `model.net.pair_input_dim=1|4|5|8` selects how many QCD interaction features (1=lnΔ; 4=+ln kT,
   ln z, ln m²; 5=+lnΔs²; 8=+cosθ,Δy,Δφ — see `pairwise_lv_fts`; the weaver feature ladder jumps
