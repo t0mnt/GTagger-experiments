@@ -447,9 +447,21 @@ the split is not by importance, it is by whether the change can touch a number.
       The measurement worth doing (cheap, and ParticleNet is the right subject because it is
       fast): one paired A/B, same model, same seed, same batch, variable on vs off, compare
       it/s. Do it to PUT A NUMBER on the knob for the next campaign and for a methods
-      sentence — NOT to adopt it into this one. Retraining a fast subset with it on makes the
-      walltime column MORE heterogeneous, not less: it creates exactly the split the rule
-      exists to prevent.
+      sentence.
+      Two corrections to earlier reasoning here, both checked:
+      (a) *"walltime isn't shown for top tagging"* — it IS. `time` is column 10 of the
+      `toptagging` legend in `utils/aggregate_table.py` (and of `toptagxl` and `jctagging`),
+      fed by `train_time`, which `base_experiment.py:777` accumulates as real wall clock. So
+      the knob does touch a published column. Mitigating: on a shared cluster the run-to-run
+      spread of that column from node/queue/filesystem is plausibly wider than the ~2%
+      estimated here, so the effect is likely inside the column's own noise — the problem is
+      methodological (can the methods say all rows ran identically?) rather than a visible
+      number shift.
+      (b) *"retraining a fast subset makes it worse"* — only if you retrain SOME. What matters
+      is uniformity of the FINAL table. If the rows already finished are the fast ones,
+      re-running exactly those with the variable on gives a uniform table cheaply, and is the
+      right move. If any slow row is already done, leave it off instead. Either way the
+      per-run `env:` line now makes which rows had it auditable rather than remembered.
 
 **Post-campaign — real, but each one changes a number:**
 
@@ -498,6 +510,9 @@ the split is not by importance, it is by whether the change can touch a number.
       already recorded at `docs/lgatr2-migration.md` H6, and the line-73 note there is
       exactly that check (confirming the private name survives at lgatr 2.0.0 so lloca 1.3.6
       keeps working) — not a usage.
+      Still true on lloca's `dev` branch, checked 2026-08-12: `lloca/equivectors/lgatr.py`
+      line 15 imports the same private name, so the coupling is not something they have
+      already fixed and it is fair to mention.
       If it is ever raised it goes to **lgatr** (make it public) or to lloca (stop depending
       on a private upstream name), and both are the same group, so it is one conversation
       and one sentence inside a mail sent for other reasons. Not worth a mail of its own.
