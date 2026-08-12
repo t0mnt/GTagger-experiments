@@ -375,6 +375,41 @@ project, not this fork.)
       deletion" line from its own docstring when this is decided, so the file stops
       contradicting the plan.
 
+## 4d-bis. Overnight campaign-readiness audit (2026-08-12)
+
+Ran the tools rather than reading them. What it found, all fixed and pushed:
+
+- **`???` is not enforced.** All 25 unswept recipes resolved to the inherited `batchsize:
+  512` / `lr: 1e-3` and trained without complaint — the worst failure shape available, a
+  wrong number that looks right. `run.py::_check_recipe_is_swept` now refuses to launch one;
+  gated in `tests/internal/test_recipe_sweep_guard.py`. The 17 recipes calling the keys
+  "REQUIRED" were corrected; all 25 now describe the marker accurately.
+- **`utils/find_lr.py` invoked with `-cp config` does not run.** Hydra resolves `-cp` relative to
+  the SCRIPT, so it looked for `utils/config`. Six shipped invocations were broken, including
+  the `tag_cgenn.yaml` comment carrying the per-impl loop that decides the gp_impl posture.
+  `find_lr.py` already defaults to `../config`; `-cp` dropped. Gated by a new check in
+  `test_docs_commands.py` covering config comments and module docstrings, not just the docs.
+- **My own `use_amp: false` additions were invalid and are reverted.** Those six wrappers do
+  not ACCEPT the parameter (`TypeError: … got an unexpected keyword argument 'use_amp'`), so
+  the key's absence was a requirement. AMP was and remains off everywhere via the
+  `default=False` in `base_experiment`. Caught by `test_production_manifest` — a compose-only
+  audit misses it, because compose succeeds and INSTANTIATE is what fails.
+
+Confirmed clean:
+
+- All **72** campaign (task, model, recipe) combinations compose AND resolve.
+- The four LLoCa-canonicalised models **train end to end under `learnedpd`** — the frame
+  family settled on today, and previously uncovered since every shipped config is `identity`
+  (`CGENN_COMPILE_GATES=1 CGENN_SMOKE_OVERRIDES="model/framesnet=learnedpd" pytest
+  tests/experiments/test_training_smoke.py -k "Plain or ParticleNetParT"`).
+- β-PERF's `check_window` accepts both recommended windows (`--iters 1010 --window 100 1000`
+  and the 110/10-100 screen). NOTE `--models CGENN` matches the two hybrids ONLY; for the
+  three `gp_impl` rows as well use `--models tag_cgenn CGENN`.
+- `_resolve_epoch_budget` runs before `_init_scheduler` and derives iterations from the real
+  loader length, so a batch size from `find_lr` propagates correctly into the anneal.
+- Deprecation ranking corrected: `torch.cuda.amp.autocast` is a **FutureWarning** (940 of them
+  in a 29 s run), the ParT-GPS mask only a **UserWarning** — the reverse of an earlier note.
+
 ## 4e. Release gate — the pre-publication list, triaged
 
 The campaign has STARTED, which sets the rule for everything below: **anything that changes
