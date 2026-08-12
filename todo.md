@@ -408,6 +408,17 @@ Ran the tools rather than reading them. What it found, all fixed and pushed:
   a parameter of the class its `_target_` names, over all 36 + quick configs in <4 s, no
   model construction. Currently clean; mutation-tested against the real bug.
 
+- **The probe on JetClass / TopTagXL: it cannot be constructed there, and now says so.**
+  Both stream through `SimpleIterDataset` — no `data_list`, no indexable items — so there is
+  nothing to select from. Their batches still vary (weaver's dense `(B, 4, P)` goes straight
+  through `dense_to_sparse_jet` into the same `ptr` layout top-tagging uses), so the blind
+  spot is real there; only the fix is unavailable. Two changes: the fallback is hardened
+  (a `data_list` property raising anything but AttributeError used to propagate and kill the
+  search), and `+lr_find.bs_draws=N` probes the heaviest of N drawn batches as the one
+  available substitute — worth about the p87 batch at N=8, against construction's
+  worst-of-run, and off by default. **For the 8 `jc_*` recipes, use `bs_draws` AND keep
+  `bs_safety<1`; that family is the one place the old headroom argument still holds.**
+
 Confirmed clean:
 
 - All **72** campaign (task, model, recipe) combinations compose AND resolve.
