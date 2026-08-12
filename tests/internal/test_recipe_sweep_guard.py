@@ -122,3 +122,36 @@ def test_marker_inventory_matches_what_the_guard_catches():
     assert caught, "no recipe carries `???` any more — delete this guard and its gate"
     assert all(n.split("_")[0] in ("top", "jc", "xl") for n in caught), sorted(caught)
     print(f"guard covers {len(caught)} unswept recipes: {sorted(caught)}")
+
+
+def test_find_lr_names_the_recipe_for_every_model():
+    """find_lr's `FIND_LR ... -> <recipe>` pointer must resolve for every model.
+
+    It is what a 25-model sweep is transcribed from (`grep FIND_LR`), so a dropped pointer
+    is a value typed into the wrong file, or hunted for by hand. The derivation keys off the
+    MODEL CONFIG name; it used to key off the net's CLASS name, which agrees for the 8
+    hybrids (tag_PlainGraphGPS -> PlainGraphGPS -> top_PlainGraphGPS.yaml) and disagrees for
+    all 8 baselines (tag_cgenn -> CGENN -> top_CGENN.yaml, which does not exist), silently
+    printing no pointer at all -- including for tag_cgenn, whose recipe is one of the unswept
+    25 and whose gp_impl posture is still open.
+
+    Mirrors find_lr's lookup rather than importing it: the real one needs a live HydraConfig.
+    """
+    import yaml
+
+    missing = []
+    for model_cfg in sorted((CONFIG / "model").glob("tag_*.yaml")):
+        stem = model_cfg.stem[len("tag_") :]
+        net = (yaml.safe_load(model_cfg.read_text()) or {}).get("net") or {}
+        cls = net.get("_target_", "").rsplit(".", 1)[-1]
+        for prefix in ("top", "jc", "xl"):
+            real = CONFIG / "training" / f"{prefix}_{stem}.yaml"
+            if not real.is_file():
+                continue  # no recipe for this (model, task) pair -- nothing to point at
+            found = next(
+                (c for c in (stem, cls) if (CONFIG / "training" / f"{prefix}_{c}.yaml").is_file()),
+                None,
+            )
+            if found is None:
+                missing.append(f"{model_cfg.name} @ {prefix}: {real.name} exists but is unreachable")
+    assert not missing, "\n".join(missing)

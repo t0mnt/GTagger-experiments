@@ -783,10 +783,31 @@ def main(cfg):
     np.savez(os.path.splitext(params["output"])[0] + ".npz", lr=lrs, loss=losses)
 
     # The recipe these numbers belong in, so a chained sweep's log says where each pair goes.
+    #
+    # Keyed off the MODEL CONFIG NAME, not `model_name` (which is the net's class). Those
+    # agree for the 8 hybrids -- tag_PlainGraphGPS -> PlainGraphGPS -> top_PlainGraphGPS.yaml
+    # -- and disagree for all 8 baselines: tag_cgenn's net class is CGENN, so the old
+    # derivation looked for top_CGENN.yaml, missed the real top_cgenn.yaml, and silently
+    # dropped the pointer. That hit tag_{cgenn,lgatr,slim,lorentznet,particlenet,transformer,
+    # ParT,MIParT} -- including the one model in the unswept 25 whose posture is still open.
+    # Class name kept as the fallback so this cannot end up worse than it was.
     prefix = {"toptagging": "top", "jctagging": "jc", "toptagxl": "xl"}.get(cfg.exp_type)
-    recipe = f"config/training/{prefix}_{model_name}.yaml" if prefix else None
-    if recipe and not os.path.isfile(recipe):
-        recipe = None
+    recipe = None
+    if prefix:
+        stems = []
+        try:
+            from hydra.core.hydra_config import HydraConfig
+
+            choice = HydraConfig.get().runtime.choices.get("model")
+            if choice:
+                stems.append(choice[4:] if choice.startswith("tag_") else choice)
+        except Exception:
+            pass  # not under hydra.main (imported by bperf, or composed directly)
+        stems.append(model_name)
+        recipe = next(
+            (p for s in stems if os.path.isfile(p := f"config/training/{prefix}_{s}.yaml")),
+            None,
+        )
 
     LOGGER.info("=" * 64)
     if params["find_batch_size"]:
