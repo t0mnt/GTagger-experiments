@@ -1554,3 +1554,59 @@ partition and account in it are yours, not this public repo's), changing three t
 512 yaml fallback, and the sizes the OOM search chooses ARE the finding here. Read them
 before the speedups. Do not pass `--apply` from a batch job — it edits production yamls,
 and the point of reading the table first is to decide whether the flip is one you want.
+
+## β-PERF, CGENN rows — the memory inversion, measured (2026-08-12)
+
+H100, `--find-batchsize --bs-safety 1.0`, top-tagging, 322,689-parameter CGENN. The OOM
+search runs **eager** and sizes one batch that both states then share.
+
+| eager probe peak | einsum | matmul | sparse |
+|---|---|---|---|
+| bs 16 | 10.1 GB | 10.1 GB | **6.0 GB** |
+| bs 32 | 17.5 | 17.5 | **10.4** |
+| bs 64 | 37.3 | 37.4 | **22.2** |
+| bs 128 | 80.2 | 80.2 | **47.6** |
+| bs 256 | OOM | OOM | OOM |
+| chosen | 128 | 128 | 128 |
+
+**The ratio inverted, and this is the result the sparse-GP autograd Function was built
+for.** It previously read sparse 15.2 GB at bs 16 against einsum's 10.1 — 1.50× WORSE, and
+sparse got half the batch of the others. It now reads 6.0 against 10.1: **0.59×**, i.e.
+einsum needs 1.68× sparse's memory, and all three size to the same 128. The earlier
+CPU-measured eager win (0.17× retained at layer scale, 3.46× whole-model) transfers to the
+H100. Note WHY it counts despite the Function being eager-only: `find_max_batch_size` runs
+an eager training step, so the eager path is what sets the batch size both states run at.
+
+Throughput at the shared bs 128:
+
+| gp_impl | eager it/s | compiled it/s | verdict |
+|---|---|---|---|
+| einsum | **OOM at step ~10** | 1.41 | INCOMPLETE (eager row missing) |
+| matmul | 1.04 | 1.36 | compile: true |
+| sparse | 0.46 | 1.25 | compile: true |
+
+Two things follow, and they pull in opposite directions.
+
+**1. Compiled, einsum is fastest — 1.41 vs sparse's 1.25, +12.8%**, far outside β-PERF's 3%
+margin. On throughput alone at a shared batch, einsum wins and `gp_impl: einsum` would be
+the posture.
+
+**2. But einsum OOM'd in a real eager run at the batch its own probe chose.** The probe said
+128 fits at 80.2 GB of 93.09; ten steps into real training it needed another 11.30 GiB and
+died. `find_max_batch_size`'s docstring warns about exactly this ("it probes one batch per
+size; verify the chosen batchsize with a short real run"), and this is that warning firing.
+sparse at the same 128 peaked 47.6 GB — 45 GB of headroom — and its eager run completed.
+
+**Do not flip `gp_impl` on this table.** The batch was sized EAGER and shared across impls,
+which is right for a paired speed comparison and wrong for the campaign question, because
+`find_lr` will size each model on the SHIPPED config — compiled, per impl. Compiled peaks
+are lower than eager ones, and sparse starts 1.68× lower, so sparse may well take a larger
+batch than einsum can. jets/s at each impl's OWN batch is what decides, and no one has
+measured that. Sequence: run `find_lr` per impl, compare jets/s (it/s × batch), then flip
+if einsum still leads.
+
+**Operational consequence for `find_lr`, independent of which impl wins:** its batch probe
+is the same one-step probe, and it has now been observed choosing a batch that dies in real
+training. For the CGENN family either pass `+lr_find.bs_safety=0.5`, or take the chosen
+batch and confirm it with a short real run before committing a multi-day job. The einsum row
+above is what a campaign would have looked like without that step: dead at step 10, hours in.

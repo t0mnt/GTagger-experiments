@@ -143,15 +143,31 @@ class CliffordAlgebra(nn.Module):
         self.register_buffer(
             "gp_j_idx", torch.full_like(gp_k_idx, -1).scatter_(1, gp_k_idx, _ar),
             persistent=False)
-        # functools.cached_property materializes through an RLock (functools.__get__); a
-        # lock context manager inside the traced region is a dynamo graph break -- and one
-        # dynamo.explain cannot see, because any eager warm-up forward fills the caches
-        # first and explain then reads plain attributes. Touch every cached property here
-        # so the compiled net never triggers the descriptor (same values, computed once).
-        for klass in type(self).__mro__:
-            for name, member in vars(klass).items():
-                if isinstance(member, functools.cached_property):
-                    getattr(self, name)
+        # Grade-path table. The LAST of the four tensors that `.to(device)` could not
+        # reach: it was a @functools.cached_property, which stores its value in
+        # instance.__dict__ and so bypasses nn.Module.__setattr__. Its consumers only ever
+        # call .nonzero()/.sum()/.size() on it at THEIR __init__ (gp.py, fcgp.py), so it
+        # never crashed -- but that was a property of the call sites, not of the storage,
+        # and the other three in this family all did bite. Derived entirely from cayley and
+        # grade_to_slice, so persistent=False leaves state_dict byte-identical.
+        #
+        # Converting it also retires the warm-up loop that stood here. That loop walked the
+        # MRO touching every cached_property so the compiled net would never hit the
+        # descriptor's RLock (a graph break dynamo.explain cannot see, because any eager
+        # warm-up fills the caches first and explain then reads plain attributes). With no
+        # cached_property left in the MRO it was dead code -- and worse than dead: forcing
+        # the sign vectors to materialize at __init__, BEFORE any `.to(device)`, is exactly
+        # what turned upstream's latent CPU-pinning hazard into a guaranteed GPU crash here.
+        # The cold-model BREAKS gate is what now catches a newly added cached_property.
+        gp_paths = torch.zeros((self.dim + 1, self.dim + 1, self.dim + 1), dtype=bool)
+        for i in range(self.dim + 1):
+            for j in range(self.dim + 1):
+                for k in range(self.dim + 1):
+                    m = self.cayley[self.grade_to_slice[i],
+                                    self.grade_to_slice[j],
+                                    self.grade_to_slice[k]]
+                    gp_paths[i, j, k] = (m != 0).any()
+        self.register_buffer("geometric_product_paths", gp_paths, persistent=False)
 
     @property
     def grade_to_index(self):
@@ -378,18 +394,3 @@ class CliffordAlgebra(nn.Module):
     def rotor(self):
         return self.versor()
 
-    @functools.cached_property
-    def geometric_product_paths(self):
-        gp_paths = torch.zeros((self.dim + 1, self.dim + 1, self.dim + 1), dtype=bool)
-
-        for i in range(self.dim + 1):
-            for j in range(self.dim + 1):
-                for k in range(self.dim + 1):
-                    s_i = self.grade_to_slice[i]
-                    s_j = self.grade_to_slice[j]
-                    s_k = self.grade_to_slice[k]
-
-                    m = self.cayley[s_i, s_j, s_k]
-                    gp_paths[i, j, k] = (m != 0).any()
-
-        return gp_paths

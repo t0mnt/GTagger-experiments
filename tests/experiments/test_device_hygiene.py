@@ -7,7 +7,8 @@ GPU-resident buffer. Bit-identical and free on a CPU runner, a per-forward host-
 transfer on a GPU. Every gate in the repo runs on CPU, so nothing could see it, and the
 fix reached only one of two duplicated copies of the class.
 
-Three complementary nets, none of which needs a GPU:
+Four complementary nets, none of which needs a GPU. Two watch how tensors are CREATED,
+one watches where they are STORED, and one runs the arithmetic somewhere other than CPU:
 
 1. ``test_no_device_implicit_tensor_in_forward`` (dynamic) intercepts torch's tensor
    factories during a REAL forward and fails on any call that omits ``device=``,
@@ -15,25 +16,34 @@ Three complementary nets, none of which needs a GPU:
 2. ``test_no_default_device_tensor_creation`` (static) is the cheap always-on scan of
    the same property, so a new offender fails even in code the mini batch doesn't reach.
 
-Both are proven non-vacuous: reverting the ``b()`` fix makes each of them fail on
-exactly that line, which also demonstrates that ``b()`` really is on the live forward
-path (via ``MVLayerNorm -> norm()``).
+   Both are proven non-vacuous: reverting the ``b()`` fix makes each of them fail on
+   exactly that line, which also demonstrates that ``b()`` really is on the live forward
+   path (via ``MVLayerNorm -> norm()``).
 
-3. ``test_meta_device_forward`` runs the real nets on the ``meta`` device, which moves
-   exactly what ``.to("cuda")`` moves and leaves exactly what it leaves. It is the only
-   one of the three that runs the model's arithmetic somewhere other than CPU, and it
-   costs nothing (meta tensors carry no storage). Scoped to the CGENN family, where all
-   three unmovable-tensor bugs lived.
+3. ``test_no_unmovable_tensor_attributes`` (structural) walks every module's ``__dict__``
+   for tensors that are not in ``_buffers``/``_parameters`` -- the ones ``.to(device)``
+   cannot reach. It needs no forward at all, and it is the one that caught the
+   sign-vector bug that made tag_cgenn unable to run on a GPU. It also walks CONTAINERS,
+   because ``grade_to_index`` was a plain LIST of tensors and a bare-tensor scan walked
+   straight past it. Nets 1 and 2 are blind to this class by construction: these tensors
+   are built once in ``__init__``, which both of them exempt.
 
-A fake-CUDA forward under ``FakeTensorMode`` was tried FIRST and abandoned, recorded
-here so nobody retries it: fake tensors do enforce device agreement (verified: binary
-ops, matmul and index_select all raise ``FakeTensorDeviceMismatchError``), but they
-cannot traverse these models at all -- ``to_dense_batch`` needs real counts and raises
-``GuardOnDataDependentSymNode`` even with a ``ShapeEnv``. Net 3 gets around exactly that
-by running the WRAPPER for real on CPU and handing the net its captured arguments.
-Note also that advanced indexing (``gpu[cpu_idx]``) is legal in torch and raises nowhere,
-which is precisely why the b() bug degraded performance rather than crashing -- and
-equally why net 3 cannot see that class, only the crash class.
+4. ``test_meta_device_forward`` runs the real nets on the ``meta`` device, which moves
+   exactly what ``.to("cuda")`` moves and leaves exactly what it leaves. The only net
+   that executes the model's arithmetic off-CPU, and it costs nothing (meta tensors carry
+   no storage). Scoped to the CGENN family, where all three unmovable-tensor bugs lived.
+
+Net 4 is the one that made a fake-CUDA forward unnecessary. ``FakeTensorMode`` was tried
+first and does enforce device agreement (verified: binary ops, matmul and index_select all
+raise ``FakeTensorDeviceMismatchError``), but it cannot traverse these models at all --
+``to_dense_batch`` needs real counts and raises ``GuardOnDataDependentSymNode`` even with a
+``ShapeEnv``. Net 4 sidesteps that by running the WRAPPER for real on CPU and handing the
+net its captured arguments, which is why it works where FakeTensorMode did not. Do not
+re-attempt the FakeTensorMode route; net 4 already covers what it was for.
+
+Note that advanced indexing (``gpu[cpu_idx]``) is legal in torch and raises nowhere, which
+is precisely why the b() bug degraded performance rather than crashing -- and equally why
+net 4 sees only the crash class. Nets 1-3 are what cover the silent-cost class.
 """
 
 import ast
@@ -168,7 +178,6 @@ _NON_FORWARD_FNS = {
     "random_vector": "equivariance-test utility; reached only via versor/rotor",
     "versor": "equivariance-test utility; no forward call site",
     "rotor": "equivariance-test utility; no forward call site",
-    "geometric_product_paths": "__init__-time grade-path table",
 }
 # files whose tensors must all be device-explicit (model code that runs per forward)
 _SCANNED = [
@@ -237,8 +246,6 @@ _UNMOVABLE_OK = {
     ("CliffordAlgebra", "grades"):
         "__init__ only: grades_list (python ints), n_subspaces (len), subspaces (comb), "
         "and _grade_to_slice, which reduces it to int slice bounds",
-    ("CliffordAlgebra", "geometric_product_paths"):
-        "__init__ only: .nonzero() -> the _path_idx BUFFER, .sum() -> a count, .size()",
     ("FullyConnectedSteerableGeometricProductLayer", "product_paths"):
         "copy of the above; same three init-time uses (.nonzero()/.sum()/.size())",
     ("SteerableGeometricProductLayer", "product_paths"):
@@ -273,7 +280,7 @@ def _tensors_in(val, _depth=0):
 def test_no_unmovable_tensor_attributes(model):
     """STRUCTURAL: no module may hold a forward-used tensor that `.to(device)` cannot move.
 
-    The third net in this file, and the one that would have caught the bug the other two
+    The THIRD net in this file, and the one that would have caught the bug the other two
     missed. `nn.Module.to()` walks `_buffers` and `_parameters`. A tensor that reaches
     `__dict__` by any other route -- a plain `self.x = tensor`, or a
     `functools.cached_property` (whose `__get__` writes to `instance.__dict__` directly,
@@ -322,7 +329,7 @@ def test_no_unmovable_tensor_attributes(model):
 
 
 # ---------------------------------------------------------------- meta-device forward
-# The third net, and the only one that runs the model's real arithmetic on a device that
+# The FOURTH net, and the only one that runs the model's real arithmetic on a device that
 # is not CPU. `.to("meta")` moves EXACTLY what `.to("cuda")` moves -- parameters and
 # buffers -- and leaves behind EXACTLY what `.to("cuda")` leaves behind: plain __dict__
 # tensors, cached_property values, tensors inside lists and inside plain (non-Module)
