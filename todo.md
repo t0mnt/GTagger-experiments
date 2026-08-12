@@ -569,7 +569,17 @@ the split is not by importance, it is by whether the change can touch a number.
       Our fix: pass the frames THROUGH the trimmer with x/v/mask
       (`experiments/baselines/particletransformer.py:1210-1227`).
 
-      **(2) `_load_from_state_dict` mutates the dict it is iterating.**
+      **STATUS ON `dev`, checked 2026-08-12 — send only (1) and (3).**
+      (2) is ALREADY FIXED on dev: the loop reads `for k in list(state_dict.keys()):`.
+      Report it against 1.3.6 only if you care about the released version; otherwise drop it.
+      (1) is UNFIXED on dev: `prepare_frames` is still called before `_forward_encoder`, and
+      the frames still do not ride the trimmer.
+      (3) is UNFIXED on dev: `prepare_frames` still exists (now taking `p_ref`/`ptr` for a new
+      `preserve_variance` path) and still does
+      `reshape(*frames.shape[:-3], 1, frames.shape[-3], 4, 4)` then `expand` — the same
+      head-dim-at--3 logic, so a flat `(N,4,4)` input still expands head-major.
+
+      **(2) `_load_from_state_dict` mutates the dict it is iterating.** *(fixed on dev)*
       `backbone/particletransformer.py:551`: `for k in state_dict.keys():` while the body
       does `state_dict[...] = state_dict.pop(k)` for the `in_proj_weight`/`in_proj_bias`
       rename. That is a `RuntimeError: dictionary changed size during iteration`, or

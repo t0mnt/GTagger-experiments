@@ -218,11 +218,14 @@ CANONICALIZED_MODELS = [
 
 
 # Per-frame float64 tolerance: (rtol, atol, bound). learnedso13 builds the frame by direct
-# 4d orthonormalization and transports near-exactly (~1e-6). learnedpd's polar decomposition
-# divides by energy in the rest-frame boost, so boosts amplify rounding and the per-edge
-# transport accumulates a higher floor (worse with more edges; ~5e-3 fully connected). Both
-# are exact in real arithmetic; the looser learnedpd bound still catches any true break
-# (those are O(0.1-1), far above the floor).
+# 4d orthonormalization and transports near-exactly (~1e-6). learnedpd accumulates a higher
+# floor (worse with more edges; ~5e-3 fully connected). CAUSE, corrected by measurement: this
+# said "divides by energy in the rest-frame boost", and that division is ~1 ulp (3.7e-17
+# median). The digits go in `1 - beta^2` at lloca/utils/polar_decomposition.py:36 -- a
+# catastrophic cancellation, since 1-beta^2 ~ m^2/E^2 for relativistic inputs -- measured at
+# 1.2e-12 median and 1.1e-9 p99 on jet-like momenta, which rsqrt and the per-edge transport
+# then carry forward. Both frames are exact in real arithmetic; the looser learnedpd bound
+# still catches any true break (those are O(0.1-1), far above the floor).
 FRAME_TOL = {
     "learnedso13": (1e-4, 1e-4, 1e-3),
     "learnedpd": (1e-2, 1e-2, 2e-2),
