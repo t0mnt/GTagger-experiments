@@ -94,6 +94,7 @@ long job.
 
 import os
 import sys
+import time
 
 # living in utils/, the repo root is no longer the script dir (= sys.path[0]);
 # put it back so the `experiments` package resolves without needing an install
@@ -329,13 +330,21 @@ def find_max_batch_size(exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine
     probe falls back to one random batch and the log line says so.
 
     ``refine`` (off by default) spends 3 more probes bisecting the octave the doubling
-    search discards, and that octave is the bigger number here. Measured over 60 simulated
-    card sizes spanning two octaves: refining gains a mean 1.35x batch (median 1.25x, up to
-    1.88x), while the constructed probe changes the chosen rung at all in only 28% of cases
-    -- the rest of the time its 1.05-1.3x is swallowed by the power-of-two granularity. For
-    scale, ``bs_safety=0.5`` costs a flat 0.5x. Refining is off by default because a power
-    of two is the campaign's convention -- comparable across recipes -- not because it is
-    unsound: the bisection only ever returns a size it has actually run a training step at.
+    search discards, and in BATCH terms that octave is the bigger number here. Measured over
+    60 simulated card sizes spanning two octaves: refining gains a mean 1.35x batch (median
+    1.25x, up to 1.88x), while the constructed probe changes the chosen rung at all in only
+    28% of cases -- the rest of the time its 1.05-1.3x is swallowed by the power-of-two
+    granularity. End to end the new default is 0.82x the old default's batch (the price of
+    not dying at step 10) and 1.08x with ``refine`` on; against the ``bs_safety=0.5`` the
+    docs used to recommend for CGENN, refined is 2.16x. Refining is off by default because a
+    power of two is the campaign's convention -- comparable across recipes -- not because it
+    is unsound: the bisection only ever returns a size it has run a full training step at.
+
+    BATCH IS NOT THROUGHPUT, and none of those ratios are speedups. jets/s = batchsize /
+    step time saturates once the card is compute-bound, and past that point a bigger batch
+    buys nothing. Which regime a given model is in is a measurement nobody here had made --
+    so this function now times the second step at every rung and prints the jets/s curve
+    with the result. Read it before deciding that the largest batch is the one you want.
 
     CUDA only (returns the configured batchsize on CPU). The optimizer step mutates
     the model + optimizer state, so the caller MUST re-initialise before the lr sweep.
@@ -351,10 +360,17 @@ def find_max_batch_size(exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine
 
     exp.model.train()
     lengths = _probe_lengths(getattr(exp, "data_train", None))
-    state = {"warned": False}
+    state = {"warned": False, "rates": {}}
 
     def fits(bs):
-        """One full training step at `bs`: True if it fits, False on a CUDA OOM."""
+        """TWO full training steps at `bs`: True if both fit, False on a CUDA OOM.
+
+        Two, not one, for two reasons. The second is TIMED -- the first pays for allocator
+        growth, cudnn/inductor autotune and lazily-created optimizer state, so it says
+        nothing about steady-state speed. And running a second step is itself a better
+        memory probe: a rung that survives one step and dies on an identical repeat is a
+        rung that does not fit, and the old single-step probe would have called it OK.
+        """
         try:
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
@@ -370,20 +386,32 @@ def find_max_batch_size(exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine
                     )
                     state["warned"] = True
                 data = next(iter(exp.train_loader))
-            loss, _ = exp._batch_loss(data)
-            exp.optimizer.zero_grad(set_to_none=True)
-            exp.scaler.scale(loss).backward()
-            exp.scaler.unscale_(exp.optimizer)
-            if exp.cfg.training.clip_grad_norm is not None:
-                torch.nn.utils.clip_grad_norm_(
-                    exp.model.parameters(),
-                    exp.cfg.training.clip_grad_norm,
-                    error_if_nonfinite=False,
-                )
-            exp.scaler.step(exp.optimizer)
-            exp.scaler.update()
+
+            def step():
+                loss, _ = exp._batch_loss(data)
+                exp.optimizer.zero_grad(set_to_none=True)
+                exp.scaler.scale(loss).backward()
+                exp.scaler.unscale_(exp.optimizer)
+                if exp.cfg.training.clip_grad_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(
+                        exp.model.parameters(),
+                        exp.cfg.training.clip_grad_norm,
+                        error_if_nonfinite=False,
+                    )
+                exp.scaler.step(exp.optimizer)
+                exp.scaler.update()
+
+            step()  # warm-up: allocator growth, autotune, first-step optimizer state
+            torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            step()
+            torch.cuda.synchronize()
+            dt = time.perf_counter() - t0
+
             peak = torch.cuda.max_memory_allocated() / 1e9
-            LOGGER.info(f"  batchsize {bs:6d}: OK  (peak {peak:.1f} GB)")
+            rate = bs / dt if dt > 0 else float("nan")
+            state["rates"][bs] = rate
+            LOGGER.info(f"  batchsize {bs:6d}: OK  (peak {peak:.1f} GB, {rate:8.0f} jets/s)")
             return True
         except RuntimeError as err:
             if not _is_oom(err):
@@ -440,6 +468,29 @@ def find_max_batch_size(exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine
         if lengths is not None:
             note += " -- the probe was already the worst-case batch, so this stacks on top"
     LOGGER.info(f"Largest fitting batchsize {last_ok} -> using {chosen} ({note}).")
+
+    # LARGEST is not the same question as FASTEST, and this repo has never checked which.
+    # jets/s = batchsize / step time saturates once the card is compute-bound; past that
+    # point a bigger batch buys nothing but risk, and the whole doubling search is chasing
+    # a number that stopped mattering several rungs ago. The steps have already been run,
+    # so the curve is free -- report it and let the reader decide. Single timed steps, so
+    # treat differences under ~10% as noise.
+    rates = {bs: r for bs, r in sorted(state["rates"].items()) if r == r}
+    if len(rates) >= 2:
+        best = max(rates, key=rates.get)
+        curve = "  ".join(f"{bs}:{r:.0f}" for bs, r in rates.items())
+        LOGGER.info(f"  jets/s by batchsize: {curve}")
+        if best != last_ok and rates[best] > 1.1 * rates.get(last_ok, 0.0):
+            LOGGER.info(
+                f"  NOTE: throughput peaks at batchsize {best} ({rates[best]:.0f} jets/s), "
+                f"{rates[best] / rates[last_ok]:.2f}x the largest fit's {rates[last_ok]:.0f}. "
+                f"The largest batch that FITS is not the fastest one here."
+            )
+        else:
+            LOGGER.info(
+                f"  throughput is still rising (or flat) at the largest fit -- "
+                f"{rates[last_ok]:.0f} jets/s, the best measured."
+            )
     return chosen
 
 

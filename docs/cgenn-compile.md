@@ -1102,7 +1102,12 @@ Two ways forward, in order of risk:
 >   **Which leaves the campaign posture UNRESOLVED, and leaning the other way.** Because
 >   the Function is eager-only, the compiled sparse path today is byte-for-byte the code
 >   the H100 OOM search measured -- so that finding is untouched: sparse peaked at 15.2 GB
->   by batch 16 and was sized to 32 where einsum and matmul got 64, i.e. half the jets/s.
+>   by batch 16 and was sized to 32 where einsum and matmul got 64. ("i.e. half the jets/s"
+>   is what this line used to say, and that was an ASSUMPTION, not a measurement: it holds
+>   only if it/s is unchanged by batch size, i.e. only if the card is nowhere near
+>   saturated. If it is saturated, halving the batch nearly doubles it/s and jets/s barely
+>   moves. `find_lr` now times every rung it probes and prints the jets/s curve, so the
+>   next run of it settles this instead of assuming it.)
 >   `gp_impl: sparse` therefore now rests on lgatr's default plus a CPU timing inside a 9%
 >   noise floor, against a direct measurement of OUR code on the target hardware saying the
 >   opposite. That is the wrong way round for this repo. Either rerun beta-PERF for the
@@ -1659,10 +1664,48 @@ search's power-of-two granularity. That granularity is itself the bigger loss: t
 brackets the true ceiling between `2^k` and `2^(k+1)` and then throws the whole octave away,
 returning on average 1/1.5 of what the card holds. `+lr_find.bs_refine=true` bisects the
 bracket in 3 more probes for a mean **1.35x** batch (median 1.25x, up to 1.88x). Off by
-default, because a round batch size is what makes the recipe table comparable — but for a
-throughput-bound campaign it is the knob with the most in it. Gated end-to-end against a
-simulated card in `tests/experiments/test_probe_batch.py`, which is also the first test this
-search has ever had.
+default, because a round batch size is what makes the recipe table comparable. Gated
+end-to-end against a simulated card in `tests/experiments/test_probe_batch.py`, which is also
+the first test this search has ever had.
+
+End to end, in batch size, over the same 60 card sizes:
+
+| posture | vs old default |
+|---|---|
+| `bs_safety=0.5` (what this doc used to recommend) | 0.50x |
+| old default | 1.00x |
+| new default (constructed probe) | **0.82x** |
+| new default + `bs_refine=true` | **1.08x** |
+
+So the safety the constructed probe buys costs 18% of the batch, and refining more than pays
+it back. Refined-vs-recommended is 2.16x.
+
+**None of which are speedups.** `jets/s = batchsize / step time` saturates once the card is
+compute-bound, and nobody here had measured where that happens for these models — the
+"sparse got half the batch, i.e. half the jets/s" line above is exactly that assumption,
+and it is only true in the un-saturated limit. `find_max_batch_size` now times its second
+step at every rung and prints the jets/s curve, so the next `find_lr` run answers it as a
+side effect. If the curve is flat across the top rungs the card is saturated, `bs_refine`
+is not worth turning on, and the sparse-vs-einsum batch-size argument above loses its force
+in the same stroke.
+
+**Three alternatives considered and not built, with why:**
+
+* *Size to the median and make the training loop OOM-resilient.* Recovers the 18% and
+  survives the rare heavy batch. But the naive form — catch the OOM, skip the batch — is a
+  PHYSICS bug, not an engineering one: the batches that OOM are systematically the ones with
+  the most constituents, which correlates with top jets, so it silently drops signal. The
+  sound form (re-run the failed batch as two halves with gradient accumulation) is unbiased
+  but is a change to the core training loop, and recovering cleanly from an OOM raised inside
+  backward under AMP is fiddly. Not the week before a campaign.
+* *Token-budget batching* — build batches to a fixed `sum n` rather than a fixed jet count,
+  as seq2seq training does. This is the principled answer: the variance disappears entirely
+  and you can run at the true ceiling with no headroom at all. It also makes the number of
+  jets per step vary, which changes gradient noise step to step and is a confounder in a
+  25-recipe comparison. Right answer for a single production model, wrong one here.
+* *Per-moment sigmas.* At B=128 the constructed batch is ~10% heavier than it needs to be
+  because `sum n` (which concentrates more slowly) sets `k`. Tightening this only matters at
+  small batches, which is not where the campaign runs.
 
 ### The sweep spent ~95% of its wall clock on evaluation it never read
 

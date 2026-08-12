@@ -289,15 +289,34 @@ fragmentation, which grows with run length and no single-step probe can see: run
 and the job alike under `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`, and confirm a
 chosen batch size with a short real run before committing a multi-day job.
 
-**`+lr_find.bs_refine=true` is the bigger throughput lever, and it is off by default.** The
-doubling search brackets the ceiling between two powers of two and then discards the whole
-octave, so the number it returns is on average 1/1.5 of what the card holds. Refining bisects
-that bracket in 3 more probes: measured over 60 simulated card sizes, a mean **1.35×** batch
-(median 1.25×, up to 1.88×) — against the constructed probe's 1.05–1.3×, which the
-power-of-two granularity swallows entirely in 72% of cases. The default is off only because a
-round batch size is comparable across the recipe table; the bisection never returns a size it
-has not actually run a full training step at. Turn it on when throughput matters more than
-the round number.
+**`+lr_find.bs_refine=true` recovers the octave the search throws away, and it is off by
+default.** The doubling search brackets the ceiling between two powers of two and then
+discards the whole octave, so the number it returns is on average 1/1.5 of what the card
+holds. Refining bisects that bracket in 3 more probes: measured over 60 simulated card sizes,
+a mean **1.35×** batch (median 1.25×, up to 1.88×) — against the constructed probe's
+1.05–1.3×, which the power-of-two granularity swallows entirely in 72% of cases. End to end
+the new default gives **0.82×** the old default's batch (the price of not dying at step 10)
+and **1.08×** with refine on; against the `bs_safety=0.5` this guide used to recommend for
+CGENN, refined is **2.16×**. The default is off only because a round batch size is comparable
+across the recipe table; the bisection never returns a size it has not run a full training
+step at.
+
+**But batch is not throughput — read the jets/s curve the search now prints.** `jets/s =
+batchsize / step time` saturates once the card is compute-bound, and past that point a bigger
+batch buys risk and nothing else. Which regime each model is in had never been measured here,
+so the search now times its second step at every rung and reports:
+
+```
+  batchsize   1024: OK  (peak 41.2 GB,    3180 jets/s)
+  batchsize   2048: OK  (peak 78.9 GB,    3260 jets/s)
+  jets/s by batchsize: 256:2840  512:3050  1024:3180  2048:3260
+```
+
+Flat across the top rungs means the card is saturated and `bs_refine` is not worth turning
+on; still climbing means it is. Single timed steps, so treat differences under ~10% as noise.
+The search runs two steps per rung rather than one for this — which also makes it a stricter
+memory probe, since a rung that survives one step and dies on an identical repeat does not
+actually fit.
 
 **When `loss-min/10` does not apply.** The heuristic assumes a trough *before* the blow-up. On a
 model whose loss falls monotonically into divergence the argmin lands in the near-divergence tail,

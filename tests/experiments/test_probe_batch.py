@@ -27,6 +27,7 @@ as one that under-shoots leaves the job to die at step 10.
 """
 
 import logging
+from collections import Counter
 
 import numpy as np
 import pytest
@@ -171,20 +172,25 @@ class _FakeExp:
     search actually touches.
     """
 
-    def __init__(self, lengths, ceiling):
+    def __init__(self, lengths, ceiling, second_step_ceiling=None):
         self.lengths, self.ceiling, self.peak = lengths, ceiling, 0.0
+        self.second_ceiling = ceiling if second_step_ceiling is None else second_step_ceiling
         self.data_train = _FakeDataset(lengths)
         self.train_loader = _FakeLoader(lengths, self.data_train)
         self.model = torch.nn.Linear(1, 1)
         self.optimizer, self.scaler = _FakeOptimizer(), _FakeScaler()
         self.cfg = OmegaConf.create({"training": {"batchsize": 16, "clip_grad_norm": None}})
+        self.calls = []
 
     def _init_dataloader(self):
         self.train_loader.batch_size = int(self.cfg.training.batchsize)
 
     def _batch_loss(self, data):
-        self.peak = float((np.asarray(data) ** 2).sum())
-        if self.peak > self.ceiling:
+        data = np.asarray(data)
+        self.peak = float((data**2).sum())
+        repeat = bool(self.calls) and self.calls[-1] == len(data)
+        self.calls.append(len(data))
+        if self.peak > (self.second_ceiling if repeat else self.ceiling):
             raise torch.cuda.OutOfMemoryError("CUDA out of memory (simulated)")
         return self.model.weight.sum(), {}
 
@@ -244,15 +250,20 @@ class _FakeScaler:
         pass
 
 
-def _run_search(monkeypatch, lengths, ceiling, **kw):
+def _fake_cuda(monkeypatch):
     for name, fn in (
         ("is_available", lambda: True),
         ("empty_cache", lambda: None),
         ("reset_peak_memory_stats", lambda: None),
         ("max_memory_allocated", lambda: 0),
+        ("synchronize", lambda *a, **k: None),
     ):
         monkeypatch.setattr(torch.cuda, name, fn)
-    exp = _FakeExp(lengths, ceiling)
+
+
+def _run_search(monkeypatch, lengths, ceiling, exp=None, **kw):
+    _fake_cuda(monkeypatch)
+    exp = exp if exp is not None else _FakeExp(lengths, ceiling)
     return find_max_batch_size(exp, 16, 8192, kw.pop("safety", 1.0), **kw)
 
 
@@ -354,6 +365,41 @@ def test_refine_gains_are_worth_the_three_extra_probes(monkeypatch):
         plain = _run_search(monkeypatch, LENGTHS, float(ceiling))
         gains.append(_run_search(monkeypatch, LENGTHS, float(ceiling), refine=True) / plain)
     assert 1.2 <= float(np.mean(gains)) <= 1.6, f"mean gain {np.mean(gains):.2f}x"
+
+
+def test_every_rung_is_probed_twice(monkeypatch):
+    """The second step is what makes the timing meaningful AND the memory probe honest."""
+    _fake_cuda(monkeypatch)
+    exp = _FakeExp(LENGTHS, 1.5e6)
+    find_max_batch_size(exp, 16, 8192, 1.0)
+    counts = Counter(exp.calls)
+    once = [bs for bs, c in counts.items() if c == 1]
+    assert all(c == 2 for bs, c in counts.items() if bs not in once), f"not paired: {exp.calls}"
+    # exactly one rung may be probed once: the one that OOM'd, which never got a repeat
+    assert once == [max(counts)] or once == [], f"unpaired rungs that did not OOM: {once}"
+
+
+def test_a_rung_that_dies_on_the_repeat_is_rejected(monkeypatch):
+    """A size that survives one step and fails an identical repeat does not fit.
+
+    The old single-step probe called that OK and handed it to the campaign. This is the
+    smallest version of the gap a one-step probe has against a multi-day run.
+    """
+    _fake_cuda(monkeypatch)
+    flaky = _FakeExp(LENGTHS, 1.5e6, second_step_ceiling=0.8e6)  # repeats need more room
+    chosen = find_max_batch_size(flaky, 16, 8192, 1.0)
+    steady = _run_search(monkeypatch, LENGTHS, 0.8e6)  # what a card that size really holds
+    assert chosen == steady, f"flaky rung accepted: {chosen} vs {steady}"
+
+
+def test_throughput_curve_is_reported(monkeypatch, caplog):
+    """LARGEST is not FASTEST, and the search now says which rungs it measured."""
+    with caplog.at_level("INFO"):
+        _run_search(monkeypatch, LENGTHS, 1.5e6)
+    curve = [r.message for r in caplog.records if "jets/s by batchsize" in r.message]
+    assert len(curve) == 1, "the measured curve must be reported exactly once"
+    assert curve[0].count(":") >= 3, f"too few rungs timed: {curve[0]}"
+    assert any("jets/s" in r.message and "peak" in r.message for r in caplog.records)
 
 
 def test_search_honours_bs_safety_on_top(monkeypatch):
