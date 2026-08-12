@@ -344,9 +344,45 @@ the split is not by importance, it is by whether the change can touch a number.
       published-paper L-GATr numbers are indicative, not exact comparators. Without this
       sentence the paper implicitly claims a comparability it does not have. Highest-value
       item on this list.
-- [ ] **learnedpd boost-precision-floor methods sentence.**
-- [ ] **Rejection-metric convention differs top vs JetClass** — unify, or one methods
-      sentence. Exactly the kind of cross-dataset inconsistency a referee finds.
+- [ ] **learnedpd boost-precision-floor methods sentence.** What it means: LLoCa's default
+      frame (`learnedpd`) is built by POLAR DECOMPOSITION, whose rest-frame boost divides by
+      energy, so a boost amplifies rounding and the per-edge tensorial transport accumulates
+      an error floor — worse with more edges, **~5e-3 fully connected in float64**.
+      `learnedso13` builds the frame by direct 4d orthonormalization and transports to
+      **~1e-6**. Both are exact in real arithmetic; this is a numerical floor, not a broken
+      symmetry (true breaks are O(0.1–1), far above it), which is why
+      `test_tag_equivariance.FRAME_TOL` carries two bounds: `learnedso13 (1e-4, 1e-4, 1e-3)`
+      vs `learnedpd (1e-2, 1e-2, 2e-2)`. The obligation is that a reader who sees "LLoCa
+      frames make the backbone Lorentz invariant" must not infer machine precision under
+      `learnedpd`. Draft: *"Under learned local frames the non-equivariant backbones are
+      Lorentz invariant up to a numerical floor: ~1e-6 with the SO(1,3) tetrad frame, and
+      ~5e-3 with the default polar-decomposition frame, whose rest-frame boost divides by
+      energy and so amplifies float64 rounding across the per-edge transport. Both are exact
+      in exact arithmetic."*
+- [ ] **Rejection-metric convention differs top vs JetClass — DOCUMENT, do not unify.** The
+      WORKING POINTS differing is the community convention for these two datasets, so
+      unifying them would deviate from both literatures. Formulas as implemented:
+
+      top tagging (`experiments/tagging/experiment.py:361`), binary QCD vs top:
+          rej(eS) = 1 / fpr[ argmin_i |tpr_i - eS| ]        eS in {0.3, 0.5, 0.8}
+      i.e. the NEAREST ROC grid point, no interpolation; single binary AUC.
+
+      JetClass (`experiments/tagging/jetclassexperiment.py:198`), 10-class, ovo-macro AUC;
+      per class i binarised against QCD with a renormalised two-class score:
+          s_i    = p_i / (p_0 + p_i)
+          rej_i(eS) = 1 / interp1d(tpr, fpr)(eS)
+          eS_i   = 0.5 for all i except class 5 -> 0.99 and class 7 -> 0.995
+      i.e. LINEAR INTERPOLATION of the ROC.
+
+      Three differences, only one of which is not convention: the working points are (keep),
+      the renormalised two-class score is the standard multiclass-to-binary discriminant
+      (keep), but **nearest-grid-point vs interpolation is an estimator difference in a
+      quantity reported under the same name**. It matters most exactly where JetClass uses
+      it — eS = 0.99 / 0.995, the sparse tail of the ROC — which is the arm that already
+      interpolates, so the current split is the safe way round. Not locked by the campaign:
+      both are computed at EVAL from the ROC, and `evaluation.save_roc` writes
+      `roc.txt` (fpr, tpr), so either estimator can be recomputed post hoc without
+      retraining. One methods sentence naming both is enough.
 - [ ] **Fill the 8 `jc_<Hybrid>.yaml` `???` batchsize/lr** from `find_lr` on jctagging.
       Blocking for any JetClass row: hydra will not compose a `???`. NOTE these are the ONE
       family where the constructed probe batch does not apply — JetClass streams from files
@@ -373,10 +409,19 @@ the split is not by importance, it is by whether the change can touch a number.
 
 **Post-campaign — real, but each one changes a number:**
 
-- [ ] **ParT-GPS float `attn_mask` + bool `key_padding_mask`.** Torch warns and has said it
-      will become fatal. Merging the masks is the fix, but mask handling is exactly where a
-      silent numerical change hides, so it needs a bit-identity gate against recorded
-      fixtures. Do it after the campaign, then re-record.
+- [ ] **ParT-GPS float `attn_mask` + bool `key_padding_mask`.** CORRECTION to an earlier
+      note here that said torch "will make it fatal": no removal version has been announced.
+      Reproduced on this repo's torch (2.13.0+cu130) — it is a plain `UserWarning`:
+      *"Support for mismatched key_padding_mask and attn_mask is deprecated. Use same type
+      for both instead."* It has been a warning since ~1.11 and still is. What removal WOULD
+      mean mechanically: `F._canonical_mask` currently converts the bool mask to a float one
+      (`0.0` / `-inf`) and adds it to the float `attn_mask`; dropping "support for
+      mismatched" means raising instead of converting. The fix is to do that merge at the
+      call site — broadcast the bool `key_padding_mask` to the attention shape, cast to the
+      float mask's dtype with `-inf` on masked slots, add, pass `attn_mask` only. Mechanical,
+      but it is mask arithmetic, which is where a silent numerical change hides, so it needs
+      a bit-identity gate against recorded fixtures. No deadline pressure — do it after the
+      campaign and re-record.
 - [ ] **LorentzNetKNNBlock `phi_e` BN normalises invalid edges** (`lorentznet.py:27`) and
       **LorentzNet-GPS padded slots between layers.** Both are real: BatchNorm running stats
       feed EVAL, so polluted statistics move eval logits, "cosmetic" understates it. But both

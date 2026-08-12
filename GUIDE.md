@@ -286,8 +286,19 @@ the lever for this — leave it at 1.0 on top tagging. JetClass and TopTagXL str
 and expose no per-item lengths, so there the probe falls back to one random batch (it logs
 which of the two it used) and `bs_safety<1` still applies. The remaining blind spot is
 fragmentation, which grows with run length and no single-step probe can see: run the probe
-and the job alike under `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`, and confirm a
-chosen batch size with a short real run before committing a multi-day job.
+and the job under the SAME allocator, and confirm a chosen batch size with a short real run
+before committing a multi-day job.
+
+On the allocator specifically: `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is what
+addresses fragmentation (it lets a segment grow instead of being a fixed block, which is what
+"reserved by PyTorch but unallocated" in an OOM message means). Two rules, and the second is
+the one that bites. **The probe and the job must match** — sizing under one allocator and
+training under another measures the wrong fragmentation. And **it is a walltime knob, so it
+is uniform across a campaign or absent from it**: same rule the `-n` / `num_workers` note in
+`docs/oscar-train.sbatch` already states, since walltime is a reported column. Decide it
+before the first row, not during. Mid-campaign, leave it alone — a fragmentation OOM is a
+recoverable single-row failure you can re-run with the variable set inline (and note as an
+exception), whereas a split walltime column is only fixable by re-running everything.
 
 **`+lr_find.bs_refine=true` recovers the octave the search throws away, and it is off by
 default.** The doubling search brackets the ceiling between two powers of two and then

@@ -1656,8 +1656,14 @@ and each now has its own answer rather than a shared fudge factor:
   at B=128; 1.053 vs 1.047 at B=4096). One probe per rung, same cost, deterministic — so a
   25-recipe sweep is reproducible. Gates in `tests/experiments/test_probe_batch.py`.
 * *Fragmentation grows with run length and a one-step probe cannot see it.* That is what the
-  OOM message's own 8.93 GiB is; run both the probe and the job under
-  `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
+  OOM message's own 8.93 GiB is, and `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is
+  what addresses it. Two rules on that variable, the second added after review pointed out
+  the first was not enough: the probe and the job must use the SAME allocator, AND the
+  setting is a per-CAMPAIGN decision taken before the first row, because it moves walltime
+  and walltime is a reported column (the `-n` / `num_workers` note in
+  `docs/oscar-train.sbatch` already states this rule for a different knob). Mid-campaign,
+  leave it: a fragmentation OOM is a recoverable single-row failure, a split walltime column
+  is not.
 
 `bs_safety` stays, but it is now for JetClass/TopTagXL only — iterable datasets expose no
 per-item lengths, so the probe there falls back to one random batch and logs that it did.
@@ -1859,7 +1865,7 @@ what drives retention (hence the exact reproduction), but peak also depends on i
 buffer reuse and scheduling, which are backend-specific. One GPU command closes it, and it
 is the same command either way:
 
-    for i in einsum matmul sparse; do PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+    for i in einsum matmul sparse; do \
       python utils/find_lr.py -cp config -cn toptagging model=tag_cgenn \
       model.net.gp_impl=$i save=false +lr_find.find_batch_size=true; done
 

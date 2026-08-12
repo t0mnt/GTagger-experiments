@@ -351,9 +351,11 @@ def find_max_batch_size(exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine
     the model + optimizer state, so the caller MUST re-initialise before the lr sweep.
 
     NOTE: it probes one batch per size, so it still measures a single step, not a
-    trajectory -- fragmentation grows with run length. Pair it with
-    ``PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`` and verify the chosen
-    batchsize with a short real run before launching a multi-day job.
+    trajectory -- fragmentation grows with run length, and no single-step probe sees that.
+    ``PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`` is what addresses it, but run this
+    under the SAME allocator setting as the job it is sizing, and treat the setting as a
+    per-CAMPAIGN decision made before the first row: it moves walltime, and walltime is a
+    reported column. Verify the chosen batchsize with a short real run either way.
     """
     if not torch.cuda.is_available():
         LOGGER.info("No CUDA device -> skipping batch-size search (keeping configured batchsize).")

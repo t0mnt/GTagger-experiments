@@ -31,7 +31,7 @@ net:
  # where sparse peaks 0.59x einsum (47.6 vs 80.2 GB at bs 128) -- and einsum then OOM'd ten
  # steps into its own eager run at that batch. Compiled, each impl will size its own batch,
  # and jets/s at each impl's OWN batch is the question. Nobody has measured it.
- #   for i in einsum matmul sparse; do PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+ #   for i in einsum matmul sparse; do \
  #     python utils/find_lr.py -cp config -cn toptagging model=tag_cgenn \
  #     model.net.gp_impl=$i save=false +lr_find.find_batch_size=true; done
  # find_lr sizes on the SHIPPED (compiled) config and now prints jets/s per rung, so that
