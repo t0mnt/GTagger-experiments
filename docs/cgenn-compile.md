@@ -1605,15 +1605,29 @@ batch than einsum can. jets/s at each impl's OWN batch is what decides, and no o
 measured that. Sequence: run `find_lr` per impl, compare jets/s (it/s × batch), then flip
 if einsum still leads.
 
-**Why the probe missed it, quantitatively.** `find_max_batch_size` takes ONE batch --
-`next(iter(train_loader))` -- and top-tagging's padded length varies 87-110 per batch
-(`utils/bperf.py` says so in its own docstring). CGENN is fully connected, so memory scales
-with `B * P²`: a probe batch at P=87 against a real batch at P=110 is (110/87)² = **1.60x**
-the edge memory. einsum's 80.2 GB probe peak becomes 128.2 GB against a 93.09 GB card --
-OOM, exactly as observed. sparse's 47.6 GB becomes 76.1 GB and fits, exactly as observed.
-So this is not allocator noise or fragmentation: it is the probe measuring a smaller jet
-than training later hands it, and the 1.68x memory gap between the impls deciding who
-survives that.
+**Why the probe missed it. FIRST EXPLANATION HERE WAS WRONG, corrected by measurement.**
+It said the padded length varies 87-110, that CGENN memory goes as `B * P²`, and so a probe
+batch could be (110/87)² = 1.60x optimistic. Two errors. The dominant term is not `P²`: the
+dense tensors are linear in `P_max`, the `pair` mask is `B * P_max²` but one byte per
+element, and what actually dominates is the EDGE tensors, which scale with `sum_j n_j²` over
+REAL nodes and are independent of padding. And `sum n²` is a sum of B i.i.d. terms, so it
+CONCENTRATES rather than varying 1.6x. Measured over 400 random batches of the top-tagging
+length distribution (mean n = 49.2, max 135):
+
+| B | `P_max` p99/p50 | `sum n²` p99/p50 |
+|---|---|---|
+| 4 | 1.55x | 2.10x |
+| 32 | 1.33x | 1.25x |
+| 128 | 1.28x | **1.16x** |
+| 512 | 1.24x | 1.07x |
+
+So at the batch that OOM'd the dominant term varies only **1.16x** p50→p99, not 1.60x. What
+actually happened is thinner and less exotic: einsum's probe peak was 80.2 GB of 93.09, i.e.
+86% utilisation with 12.9 GB of headroom, and a p99 batch alone eats ~13 GB of it. The OOM
+message then names the rest -- *"8.93 GiB is reserved by PyTorch but unallocated"* --
+fragmentation, and suggests `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` itself. A
+one-batch probe at the median plus 14% headroom is simply not enough margin, for any model
+sized that close to the card.
 
 **Operational consequence for `find_lr`, independent of which impl wins:** its batch probe
 is the same one-step probe, and it has now been observed choosing a batch that dies in real
@@ -1688,6 +1702,26 @@ autograd-Function finding:
     structure the fused form loses -- both spellings reach bmm. lgatr's GP is
     `(..., 16) x (..., 16) -> (..., 16)` with no `m` at all.
 
+**(4) One more form, in the same spirit: keep the tuned bmm but loop over OUTPUT BLADES**,
+so the live intermediate is `(B, N, 16)` instead of `(B, N, 16, 16)`. Bit-identical to
+einsum (rel = 0.000e+00 -- the per-`j` decomposition preserves each output element's
+reduction order). fc layer, B=512, compiled: 24.1 ms vs einsum's 15.7 (**1.53x slower**),
+and **retained memory IDENTICAL at 18.51 MB**. The 16x smaller instantaneous intermediate
+buys nothing, because autograd saves all sixteen per-`j` slices and they sum to exactly the
+same bytes. Rejected. (Eager it is 1.92x FASTER, which is real but lands on the path the
+autograd Function already owns.)
+
+**What the four measurements add up to.** Retention is set by what the BACKWARD needs, and
+every spelling of the same contraction needs the same information; the only lever is
+RECOMPUTING it instead of saving it. The fused form gets its 9x by being a pointwise-reduce
+that inductor is willing to recompute -- and pays 14x in time for giving up the bmm. So the
+memory win is real but is not reachable by re-spelling the kernel at acceptable cost.
+
+It IS reachable the other way, and that is already shipped: recompute chosen by the
+PARTITIONER rather than by the kernel spelling -- `activation_memory_budget` on the CGENN
+wrappers (default null), and the custom autograd Function on the eager path. Those are the
+two mechanisms that survive, and between them they cover both postures. There is no third.
+
 Nothing to implement. Recorded at this length because measurement (1) is genuinely
 attractive and someone who stops there will reach the wrong conclusion -- as this document
-did, for one commit, before (2) and (3) were run.
+did, for one commit, before (2), (3) and (4) were run.
