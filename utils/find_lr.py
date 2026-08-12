@@ -416,6 +416,25 @@ def main(cfg):
 
     # optional: size the batch to the GPU before the lr sweep, then sweep at that
     # batchsize so the suggested lr matches the regime you will actually train in
+    #
+    # COMPILE IS LEFT TO THE YAML HERE, DELIBERATELY, and that is the OPPOSITE of what
+    # utils/bperf.py does -- it forces `compile=false` before its identical call to
+    # find_max_batch_size. Both are right for their own job and the difference is not drift:
+    #
+    #   bperf needs ONE batch that BOTH states can run, because its whole output is a paired
+    #   eager-vs-compiled ratio; sizing per state would compare two different batch sizes.
+    #   It also does every row's search in ONE process, so sizing compiled would spend an
+    #   inductor build per row and leave dynamo cache entries holding each model alive for
+    #   the next row's search.
+    #
+    #   find_lr has no second state and no shared process. Its job is the batch you will
+    #   TRAIN at, and 13 production configs ship `compile: true`, so the shipped posture IS
+    #   the thing to measure. Sizing eager here would hand the campaign a batch chosen under
+    #   a memory profile it never runs at.
+    #
+    # Consequence worth carrying: bperf's it/s numbers are therefore taken at a batch nobody
+    # trains at. Fine for the speedup RATIO it reports; not a basis for ranking impls by
+    # jets/s, which is what this function's number decides.
     if params["find_batch_size"]:
         bs = find_max_batch_size(exp, params["bs_start"], params["bs_max"], params["bs_safety"])
         with open_dict(cfg):

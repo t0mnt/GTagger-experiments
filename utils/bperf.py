@@ -153,6 +153,15 @@ def find_batchsize(row_overrides, knob, config_path, bs_start, bs_max, safety):
     same rung in practice. If a compiled row ever OOMs at the eager-sized batch, that is
     itself the finding and the row reports it.
 
+    That "nowhere near a factor of two" is an ASSUMPTION, and the CGENN work has since put a
+    dent in it: eager retention differs by ~6x between gp_impls where compiled retention is
+    equal to within 1 MB (docs/cgenn-compile.md, CORRECTION), because AOT's partitioner
+    re-decides what to save. Eager is the memory-hungrier state, so an eager-sized batch is
+    the CONSERVATIVE shared choice and the pairing stays sound -- but it also means these
+    it/s are measured at a batch nobody trains at, since find_lr sizes on the SHIPPED
+    (compiled) config. Read the ratio, not the absolute, and do not rank gp_impls by it/s
+    from this driver.
+
     ``knob=false`` IS PASSED EXPLICITLY, not left to the yaml. Eleven production configs now
     ship ``compile: true``, so a bare ``model=tag_ParT`` sizes a COMPILED model -- which
     contradicts the paragraph above, spends an inductor build per row inside the driver
@@ -330,14 +339,32 @@ def main():
             p = REPO / yaml_path
             t = p.read_text()
             key = knob.split(".")[-1]
-            new, n = re.subn(rf"^(\s*{key}:\s*)(true|false)", rf"\g<1>{val}", t, count=1, flags=re.M)
-            if n == 1 and new != t:
+            # ANCHOR THE INDENT from the knob path rather than collapsing both conventions
+            # to a bare "compile". `model.compile` is the WRAPPER knob and sits at column 0;
+            # `model.net.compile` is the net's own and sits indented under `net:`. The old
+            # pattern used `\s*`, which matches either, and `count=1` then took whichever
+            # came FIRST in the file -- so a config carrying both would have had the wrong
+            # knob flipped, silently, on a driver whose --apply edits PRODUCTION yamls.
+            # Verified across config/model: every wrapper knob is at indent 0 and every net
+            # knob at indent 1. Latent today (no file carries both) and cheap to close.
+            indent = "" if knob.count(".") == 1 else "[ \t]+"
+            pat = rf"^({indent}{key}:[ \t]*)(true|false)\b"
+            # findall BEFORE substituting, because re.subn(count=1) returns n <= 1 and so
+            # cannot report multiplicity: the branch this replaces printed "no unique
+            # '{key}:' line found" but could only ever fire on ZERO matches. The uniqueness
+            # it claimed to check was never checked.
+            hits = re.findall(pat, t, flags=re.M)
+            level = "top level" if not indent else "net level"
+            if len(hits) != 1:
+                print(f"[bperf] SKIP {yaml_path}: expected exactly one '{key}:' at "
+                      f"{level}, found {len(hits)}")
+                continue
+            new, _ = re.subn(pat, rf"\g<1>{val}", t, count=1, flags=re.M)
+            if new != t:
                 p.write_text(new)
-                print(f"[bperf] applied {key}: {val} -> {yaml_path}")
-            elif n == 1:
-                print(f"[bperf] {yaml_path} already at {key}: {val}")
+                print(f"[bperf] applied {key}: {val} -> {yaml_path} ({level})")
             else:
-                print(f"[bperf] SKIP {yaml_path}: no unique '{key}:' line found")
+                print(f"[bperf] {yaml_path} already at {key}: {val}")
 
 
 if __name__ == "__main__":
