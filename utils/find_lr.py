@@ -700,9 +700,10 @@ def main(cfg):
     #   the next row's search.
     #
     #   find_lr has no second state and no shared process. Its job is the batch you will
-    #   TRAIN at, and 13 production configs ship `compile: true`, so the shipped posture IS
-    #   the thing to measure. Sizing eager here would hand the campaign a batch chosen under
-    #   a memory profile it never runs at.
+    #   TRAIN at, and EVERY model config carrying a `compile` key ships it TRUE (20 of the 36
+    #   in config/model; no config anywhere says false), so the shipped posture IS the thing
+    #   to measure. Sizing eager here would hand the campaign a batch chosen under a memory
+    #   profile it never runs at.
     #
     # Consequence worth carrying: bperf's it/s numbers are therefore taken at a batch nobody
     # trains at. Fine for the speedup RATIO it reports; not a basis for ranking impls by

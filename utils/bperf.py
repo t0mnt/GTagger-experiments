@@ -162,8 +162,10 @@ def find_batchsize(row_overrides, knob, config_path, bs_start, bs_max, safety):
     (compiled) config. Read the ratio, not the absolute, and do not rank gp_impls by it/s
     from this driver.
 
-    ``knob=false`` IS PASSED EXPLICITLY, not left to the yaml. Eleven production configs now
-    ship ``compile: true``, so a bare ``model=tag_ParT`` sizes a COMPILED model -- which
+    ``knob=false`` IS PASSED EXPLICITLY, not left to the yaml. EVERY model config that carries
+    a ``compile`` key ships it TRUE (20 of the 36 in ``config/model``: 18 tag_, 2 amp_; the
+    other 16 have no such key and none anywhere says false), so a bare ``model=tag_ParT``
+    would size a COMPILED model -- which
     contradicts the paragraph above, spends an inductor build per row inside the driver
     process, and leaves dynamo cache entries holding those models alive for every
     subsequent row's search.

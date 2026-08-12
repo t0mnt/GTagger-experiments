@@ -304,11 +304,12 @@ step at.
 **But batch is not throughput — read the jets/s curve the search now prints.** `jets/s =
 batchsize / step time` saturates once the card is compute-bound, and past that point a bigger
 batch buys risk and nothing else. Which regime each model is in had never been measured here,
-so the search now times its second step at every rung and reports:
+so the search now times its second step at every rung and reports — SHAPE OF THE OUTPUT ONLY,
+the numbers below are invented, no model here has been measured yet:
 
 ```
-  batchsize   1024: OK  (peak 41.2 GB,    3180 jets/s)
-  batchsize   2048: OK  (peak 78.9 GB,    3260 jets/s)
+  batchsize   1024: OK  (peak 41.2 GB,    3180 jets/s)     <- illustrative, not measured
+  batchsize   2048: OK  (peak 78.9 GB,    3260 jets/s)     <- illustrative, not measured
   jets/s by batchsize: 256:2840  512:3050  1024:3180  2048:3260
 ```
 
