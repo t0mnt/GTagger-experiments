@@ -207,6 +207,15 @@ def run_once(overrides, iters, window, config_path, timeout, seed):
         f"seed={seed}",  # makes the two states of a row PAIRED -- see the module docstring
         "training.epochs=null", f"training.iterations={iters}",
         f"training.validate_every_n_steps={iters + 1}",  # keep validation out of the window
+        # EVALUATION OFF. config/default.yaml ships `evaluate: true`, and without this every
+        # run followed its {iters} timed training steps with a full test+val pass -- 1578
+        # batches at the evaluation batchsize, for numbers this driver reads none of. It
+        # dominated the sweep: on the 2026-08-12 H100 run the two rows that COMPLETED took
+        # 125 and 119 minutes while the row that CRASHED before evaluation took 41, which is
+        # how the cost was spotted. Timing comes from the "Finished iteration N" lines during
+        # TRAINING, so dropping evaluation cannot move a measured number.
+        # (`plot` needs no override: base_experiment gates it behind `save`, already false.)
+        "evaluate=false",
     ]
     try:
         p = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, timeout=timeout)

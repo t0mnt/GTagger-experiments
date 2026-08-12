@@ -1605,8 +1605,58 @@ batch than einsum can. jets/s at each impl's OWN batch is what decides, and no o
 measured that. Sequence: run `find_lr` per impl, compare jets/s (it/s × batch), then flip
 if einsum still leads.
 
+**Why the probe missed it, quantitatively.** `find_max_batch_size` takes ONE batch --
+`next(iter(train_loader))` -- and top-tagging's padded length varies 87-110 per batch
+(`utils/bperf.py` says so in its own docstring). CGENN is fully connected, so memory scales
+with `B * P²`: a probe batch at P=87 against a real batch at P=110 is (110/87)² = **1.60x**
+the edge memory. einsum's 80.2 GB probe peak becomes 128.2 GB against a 93.09 GB card --
+OOM, exactly as observed. sparse's 47.6 GB becomes 76.1 GB and fits, exactly as observed.
+So this is not allocator noise or fragmentation: it is the probe measuring a smaller jet
+than training later hands it, and the 1.68x memory gap between the impls deciding who
+survives that.
+
 **Operational consequence for `find_lr`, independent of which impl wins:** its batch probe
 is the same one-step probe, and it has now been observed choosing a batch that dies in real
 training. For the CGENN family either pass `+lr_find.bs_safety=0.5`, or take the chosen
 batch and confirm it with a short real run before committing a multi-day job. The einsum row
 above is what a campaign would have looked like without that step: dead at step 10, hours in.
+
+### The sweep spent ~95% of its wall clock on evaluation it never read
+
+`run_once` passed `save=false` but not `evaluate=false`, and `config/default.yaml` ships
+`evaluate: true` -- so every timed run followed its 110 training iterations with a full
+test+val pass, 1578 batches, for numbers the driver reads none of. The row wall-clocks give
+it away: matmul 125 min and sparse 119 min both COMPLETED, while einsum took 41 min because
+it crashed before ever reaching evaluation. Fixed in `utils/bperf.py`; timing comes from the
+"Finished iteration N" lines during TRAINING, so no measured number moves. Expect rows in
+minutes rather than hours on the next sweep.
+
+### Not yet applied: lgatr's FUSED form, which is the one GP trick still on the table
+
+lgatr's sparse GP is not just the sparse contraction -- it is that contraction written as a
+SINGLE fused expression, `(signs * y[..., indices] * x.unsqueeze(-2)).sum(-1)`, with their
+comment stating it "fuses to a single kernel under torch.compile (no 16x16 buffer), which is
+both faster and far lighter on GPU". We adopted the contraction and the autograd Function
+but kept the einsum spelling, which materializes `pair` as a (B, N, 16, 16) buffer.
+
+**The learnable weight is NOT an obstacle** -- it broadcasts exactly where their `signs`
+does. `(x.unsqueeze(-1) * y[..., kidx] * w).sum(-2)` is the same arithmetic. Measured, fp64,
+B=2048, one layer, fwd+bwd:
+
+| | time | retained |
+|---|---|---|
+| einsum, eager | 524.6 ms | 132.0 MB |
+| einsum, compiled | 250.2 ms | 72.0 MB |
+| fused, eager | 683.3 ms | 132.0 MB |
+| **fused, compiled** | **213.2 ms** | **8.0 MB** |
+
+Compiled: **0.85x the time and 0.11x the retained memory.** That is the compiled-path memory
+win the autograd Function could not deliver, arriving from the direction lgatr documented all
+along. Eager it is worse (1.30x), which is fine -- eager already routes through the Function.
+
+Numerics: TOL-class, not bit-equal (different reduction order), at 1.9e-16 fp64 / 1.4e-7
+fp32 against the einsum spelling. `gp_impl=sparse` is already TOL-class against the einsum
+BIT reference at 1.5e-13, so this sits well inside the existing bar -- but it IS a numerics
+change and needs the TOL gate re-read, plus `test_compiled_path_bypasses_the_function`
+relaxed from bit-equal to TOL, plus a fresh beta-PERF. NOT taken here: it lands mid-campaign
+-prep and the decision of whether to spend that is the operator's.
