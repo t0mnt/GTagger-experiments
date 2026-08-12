@@ -543,6 +543,46 @@ the split is not by importance, it is by whether the change can touch a number.
       on a private upstream name), and both are the same group, so it is one conversation
       and one sentence inside a mail sent for other reasons. Not worth a mail of its own.
 
+- [ ] **THERE IS a mail worth sending, and it is not about the accessor.** Three bugs this
+      repo found by adversarial review and fixed locally are still present in lloca 1.3.6,
+      all verified against the installed source. Line numbers are lloca's, not ours.
+
+      **(1) Per-particle frames are silently scrambled during ParT training. Serious.**
+      `LLoCaParticleTransformer.forward` calls `self.attention.prepare_frames(frames)` at
+      `backbone/particletransformer.py:1088`, BEFORE `_forward_encoder`, which at `:1020`
+      runs `self.trimmer(x, v, mask, uu)`. `SequenceTrimmer` (`:231-242`) draws
+      `rand = torch.rand_like(mask)`, takes `perm = rand.argsort(...)`, and gathers x, v,
+      mask and uu by it — a RANDOM PERMUTATION of the token order. Frames are not in that
+      gather, so every token is then transported with another token's frame.
+      Reachable at defaults: `trim=True` (`:863`), trimmer enabled when
+      `trim and not for_inference` (`:875`), and the permutation starts only after
+      `warmup_steps` — so the first few steps are correct and the run silently goes wrong
+      from `warmup_steps+1`, which is exactly why a smoke test does not catch it. Global
+      frames are immune (one frame for all tokens); per-particle learned frames are not.
+      Our fix: pass the frames THROUGH the trimmer with x/v/mask
+      (`experiments/baselines/particletransformer.py:1210-1227`).
+
+      **(2) `_load_from_state_dict` mutates the dict it is iterating.**
+      `backbone/particletransformer.py:551`: `for k in state_dict.keys():` while the body
+      does `state_dict[...] = state_dict.pop(k)` for the `in_proj_weight`/`in_proj_bias`
+      rename. That is a `RuntimeError: dictionary changed size during iteration`, or
+      silently skipped keys depending on the path taken. One-word fix: iterate
+      `list(state_dict.keys())`.
+
+      **(3) `prepare_frames` silently mis-expands flat frames.**
+      `backbone/attention.py:46-52` inserts the head dimension at `-3`. Given batch-shaped
+      `(B, P, 4, 4)` that gives `(B, H, P, 4, 4)` — correct. Given FLAT `(N, 4, 4)`, which is
+      what the framesnets emit when driven with `ptr`, it gives `(H, N, 4, 4)`, i.e. head-
+      major, while q/k/v are `(B, H, P, ...)` — a systematic token/frame misalignment for
+      B>1, with no error. Since lloca's own framesnet produces the flat layout on the sparse
+      path, this is an internal contract mismatch rather than just a caller mistake; an
+      assert on `frames.dim()` would have caught all of it.
+
+      Worth including as context, not as bugs: the `learnedpd` invariance floor we measured
+      (~5e-3 vs `learnedso13`'s ~1e-6 in float64 — see §3), that `gamma_hardness` is silently
+      inert whenever `gamma_max is None` (`framesnet/equi_frames.py:550-551` returns early),
+      and one sentence on the private lgatr import above.
+
 ## 5. Paper release — branding / identity (only the maintainer has these)
 
 Critical (still point at the upstream LLoCa project):
