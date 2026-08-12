@@ -320,6 +320,88 @@ project, not this fork.)
       release, NOT before: an auditor re-reporting a settled decision is exactly what it
       prevents, and the campaign is still running.
 - [ ] Same timing for `todo.md` itself and, if you want the release lean, `docs/diffs.md`.
+- [ ] **More deletions and scaffolding removal.** `cleanup.md` schedules the one-shot
+      instruments (`utils/bperf.py`, `test_cgenn_compile.py`, the compile fixtures); sweep
+      once more at release for anything else that exists only because the build happened —
+      `utils/gp_memory_probe.py`, `bperf_results.md`, recorded fixtures whose gates were
+      deleted with them, dead hydra keys, and per-model scratch configs. Rule for the sweep:
+      keep what a READER of the published repo needs to rerun the paper; delete what only a
+      BUILDER of it needed. Do it after the campaign, so an instrument is still there if a
+      number needs re-deriving.
+
+## 4e. Release gate — the pre-publication list, triaged
+
+The campaign has STARTED, which sets the rule for everything below: **anything that changes
+model arithmetic is off the table until it finishes.** A mid-campaign model change makes rows
+incomparable and there is no cheap way to detect that later from the result table alone. So
+the split is not by importance, it is by whether the change can touch a number.
+
+**Must do — blocks publication, changes no arithmetic:**
+
+- [ ] **lgatr 2.0 methods sentence** (§2.4 obligation, `docs/lgatr2-migration.md`). The
+      `tag_lgatr`/`tag_slim` reference rows are retrained under lgatr 2.0.0 at v2-native
+      defaults (sigmoid slim gate, affine norms, sparse GP, tanh-GeLU, no qkv biases), so the
+      published-paper L-GATr numbers are indicative, not exact comparators. Without this
+      sentence the paper implicitly claims a comparability it does not have. Highest-value
+      item on this list.
+- [ ] **learnedpd boost-precision-floor methods sentence.**
+- [ ] **Rejection-metric convention differs top vs JetClass** — unify, or one methods
+      sentence. Exactly the kind of cross-dataset inconsistency a referee finds.
+- [ ] **Fill the 8 `jc_<Hybrid>.yaml` `???` batchsize/lr** from `find_lr` on jctagging.
+      Blocking for any JetClass row: hydra will not compose a `???`. NOTE these are the ONE
+      family where the constructed probe batch does not apply — JetClass streams from files
+      and exposes no per-item lengths, so `find_max_batch_size` falls back to a single random
+      batch and logs that it did. `bs_safety` is still the only headroom lever there; use
+      `+lr_find.bs_safety=0.9` or verify with a short real run.
+- [ ] **§3a-bis cost claim vs the DDP reality.** The ~2000–5000 GPU-h estimate is phrased as
+      "still weeks on four", which asserts a working multi-GPU path. Nothing initializes a
+      process group, so `world_size` is always 1 and multi-GPU is unreachable. Fix the
+      SENTENCE, not the code — state the cost as single-GPU hours and note multi-GPU is not
+      wired. Porting DDP is post-release (below).
+
+**Should do — safe now, no arithmetic touched:**
+
+- [ ] **`torch.cuda.amp.autocast(...)` migration**, 4 live sites
+      (`particlenetpartgraphgps.py:241`, `particlenettransformer.py:916`,
+      `plaingraphgps.py:403`, `plaingraphtrans.py:350`; mipart's two are commented out).
+      `torch.amp.autocast("cuda", enabled=X)` is exactly equivalent, and every model ships
+      `use_amp: false` so the context is inert either way. Safe mid-campaign precisely
+      because it cannot move a number.
+- [ ] **xformers pin note in `docs/SLURM.md`.** The NGC container's xformers is built against
+      a different torch and logs a scary load failure on every run; nothing here depends on
+      it. A reproducer will otherwise chase it. Documentation only.
+
+**Post-campaign — real, but each one changes a number:**
+
+- [ ] **ParT-GPS float `attn_mask` + bool `key_padding_mask`.** Torch warns and has said it
+      will become fatal. Merging the masks is the fix, but mask handling is exactly where a
+      silent numerical change hides, so it needs a bit-identity gate against recorded
+      fixtures. Do it after the campaign, then re-record.
+- [ ] **LorentzNetKNNBlock `phi_e` BN normalises invalid edges** (`lorentznet.py:27`) and
+      **LorentzNet-GPS padded slots between layers.** Both are real: BatchNorm running stats
+      feed EVAL, so polluted statistics move eval logits, "cosmetic" understates it. But both
+      are PRE-EXISTING and present in BOTH variants, so they shift absolute numbers equally
+      and leave the baseline-vs-hybrid comparison — the paper's actual claim — intact.
+      Fixing either mid-campaign would break that symmetry, which is worse than the flaw.
+      Document in the methods; fix after.
+- [ ] **Port the torchrun DDP entry path** from `heidelberg-hepml/tagging-guide` @f159df7:
+      `run.py:43-61` (read `WORLD_SIZE`/`RANK`/`LOCAL_RANK`, `dist.init_process_group`, pass
+      `local_rank` so per-rank device pinning has a source); `base_experiment._step` (all-
+      reduce the grad norm with `ReduceOp.MAX` before the skip decision — ours decides per
+      rank, which under DDP desynchronizes and deadlocks the next collective, latent today
+      only because `max_grad_norm: null` everywhere); `config/default.yaml` (`gpus: -1` ->
+      their `gpu: true` + "world size is set by torchrun", so the launcher owns topology).
+      Pairs with the `docs/SLURM.md` srun block needing a matching `torchrun --nproc_per_node`.
+      Explicitly post-release. Until then the grad-norm deadlock is a trap for anyone who
+      tries — it is recorded in `docs/audit-ledger.md` for that reason.
+
+**Optional:**
+
+- [ ] **Upstream lloca issue: public accessor for `_load_inner_product_factors`.** This repo
+      imports the private name; fine at lloca 1.3.6 + lgatr 2.0.0, re-check on any bump of
+      either (`docs/lgatr2-migration.md` H6). Worth one issue if you are contacting the author
+      anyway — it costs them a two-line alias and removes a re-check from every future bump.
+      Not a blocker, and not urgent: a pinned private name is a known, contained risk.
 
 ## 5. Paper release — branding / identity (only the maintainer has these)
 
