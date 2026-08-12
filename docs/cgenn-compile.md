@@ -1900,3 +1900,75 @@ is what ships, it runs compiled, and the eager-only branch inside
 sparse contraction. What this table questions is narrower and older — whether sparse is the
 right *choice* among three working impls, once compilation has erased the memory difference
 that was its whole case.
+
+---
+
+## Upstream's compile workflow, applied as far as a CPU allows (2026-08-12)
+
+From the lgatr/lloca author, asked about compiling CGENN:
+
+> *"I didn't work much with the CGENN code so it would take me quite a while to get into it
+> and do this properly. Also, its just a speedup thing, so assuming that the point of your
+> project is performance gains I think you can regard this as a small bonus that you can also
+> do later on. My torch.compile-improvement-workflow is to first use torch.profiler to find
+> all CPU-GPU synchronizations (you need a GPU for that) and fix them (this is the main
+> timing win usually), and afterwards look for rewrites to enable fast kernels everywhere
+> instead of 4x4 or so kernels (this is what gave the lloca speedup in lloca v2.0)."*
+
+Three things follow, in decreasing order of how much they change what we do.
+
+### 1. His step 2 is a result we already have, and it points at `einsum`
+
+*"Rewrites to enable fast kernels everywhere instead of 4x4 or so kernels"* is exactly what
+the gp_impl measurement found, from the other direction. The sparse geometric product is
+**provably minimal-arithmetic** — the Cl(1,3) Cayley table has 256 nonzeros of +-1 out of
+16^3, one `k` per `(i, j)`, all 256 products on distinct component pairs, nothing factorable
+— and compiled on the H100 it is the SLOWEST of the three: einsum 1.41 > matmul 1.36 >
+sparse 1.25 it/s. Doing 16x fewer multiplies in a gather-shaped kernel loses to doing 16x
+more in a GEMM.
+
+So his heuristic and our measurement agree, and both point the same way: prefer the dense
+form. That is independent evidence for the `gp_impl: einsum` flip that the per-impl `find_lr`
+loop is meant to confirm.
+
+### 2. His step 1, the sync census, is done as far as it can be without a GPU
+
+Static sweep over model code (nets, wrappers, per-step embedding — not the experiment
+drivers, where reading results back to the host is the point). Gated in
+`tests/internal/test_no_device_sync.py` so new ones cannot appear silently.
+
+| site | verdict |
+|---|---|
+| `if bad.any():` — `wrappers.py`, `jet_frames` | **one per-forward sync.** Hits the two GraphTrans wrappers that set `compute_jet_frames` (ParticleNetParT, Plain), regardless of framesnet |
+| `dev.max().item()` in the same warning | benign: behind that `if` AND a once-per-process latch |
+| `mask.tril(offset).nonzero(...)` — ParT PairEmbed | eager pair path only; `compiled_dense=True` routes the compiled posture to the dense twin |
+| `tril_indices` | builds a static index from `torch.ones(...)`, at init |
+
+**The one real site has a bit-identical fix.** Its fallback is already branchless —
+`torch.where(bad[:, None, None], eye, trafo)` returns `trafo` unchanged when `bad` is
+all-False — so hoisting it out of the `if` removes the sync without touching arithmetic; the
+`if` then guards only the once-only warning, which can be bounded to the first N steps.
+
+**Not applied.** The campaign has started, and the gain is unmeasured — a sync costs more
+than its own stall (it stops CPU run-ahead, so the queue drains and the GPU idles between
+kernels, which bites hardest in exactly this repo's many-small-kernels shape), but "more than
+nothing" is not a number. Measure first, with the recipe below, then apply post-campaign.
+
+### 3. The recipe for the GPU half
+
+    from torch.profiler import profile, ProfilerActivity
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
+        for _ in range(5):          # warm first -- step 1 is compilation, not steady state
+            loss, _ = exp._batch_loss(next(it)); loss.backward()
+    print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=25))
+    prof.export_chrome_trace("trace.json")          # look for cudaStreamSynchronize and
+                                                    # Memcpy DtoH between kernel spans
+
+Read it for two things, in his order: `cudaStreamSynchronize` / `Memcpy DtoH` events between
+kernels (step 1), then the kernel-size histogram — many sub-10us kernels is the 4x4 problem
+(step 2). Do this on ONE model first; `tag_PlainGraphTrans` is the natural pick, since it is
+one of the two carrying the known sync.
+
+**Timing, and his own framing of it:** *"just a speedup thing … a small bonus you can also do
+later on."* That settles the order. Profiling is read-only and can be done any time; the
+rewrites change arithmetic or timing and therefore wait for the campaign to finish.
