@@ -267,14 +267,37 @@ With `+lr_find.find_batch_size=true` it doubles the batch size until CUDA OOM
 (running a full train step, so the probe includes optimizer-state memory) and keeps
 the largest fitting power of two (`bs_safety=1.0` default; set `<1` to trade the
 power of two for headroom), then prints the batch size and LR, e.g.
-`-> reuse with: training.batchsize=2048 training.lr=3.1e-04`, followed by a single greppable line naming the model and the recipe the pair belongs in (`FIND_LR model=X batchsize=N lr=L -> config/training/<prefix>_X.yaml`), so a chained sweep is transcribed with `grep FIND_LR`. Verify the batch size
-with a short real run first (it probes one batch, and jets vary in size). Knobs:
-`+lr_find.{bs_start,bs_max,bs_safety,num_iter,end_lr}` — keep `num_iter` short (~300;
+`-> reuse with: training.batchsize=2048 training.lr=3.1e-04`, followed by a single greppable line naming the model and the recipe the pair belongs in (`FIND_LR model=X batchsize=N lr=L -> config/training/<prefix>_X.yaml`), so a chained sweep is transcribed with `grep FIND_LR`. Knobs:
+`+lr_find.{bs_start,bs_max,bs_sigmas,bs_refine,bs_safety,num_iter,end_lr}` — keep `num_iter` short (~300;
 a longer sweep biases the suggestion lower, it doesn't sharpen it). For models that expose a
 `knn_metric`, the sweep pins **`deltaR`** by default so the suggested LRs are comparable across
 the family (the LR scale is metric-independent — the model still *trains* under its own
 configured metric); pass `+lr_find.force_knn_metric=keep` to sweep each model's own metric
 instead (or `=minkowski` to pin that).
+
+**The probe batch is built, not drawn.** Jets vary in size (top tagging: mean 49.2
+constituents, max 135), so a random batch is a *median* batch while a long run meets the
+worst of ~10⁵ draws — which is how a probe once picked a batch that OOM'd at step 10, hours
+into a job. The search therefore constructs each probe batch from the dataset's own lengths:
+`bs_sigmas` (default 5) standard deviations above a typical batch's total in **both** `sum n`
+and `sum n²`, with the longest jets in it so `P_max` is at its cap. That clears the heaviest
+batch of a directly simulated 50-epoch run at every batch size, so `bs_safety` is no longer
+the lever for this — leave it at 1.0 on top tagging. JetClass and TopTagXL stream from files
+and expose no per-item lengths, so there the probe falls back to one random batch (it logs
+which of the two it used) and `bs_safety<1` still applies. The remaining blind spot is
+fragmentation, which grows with run length and no single-step probe can see: run the probe
+and the job alike under `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`, and confirm a
+chosen batch size with a short real run before committing a multi-day job.
+
+**`+lr_find.bs_refine=true` is the bigger throughput lever, and it is off by default.** The
+doubling search brackets the ceiling between two powers of two and then discards the whole
+octave, so the number it returns is on average 1/1.5 of what the card holds. Refining bisects
+that bracket in 3 more probes: measured over 60 simulated card sizes, a mean **1.35×** batch
+(median 1.25×, up to 1.88×) — against the constructed probe's 1.05–1.3×, which the
+power-of-two granularity swallows entirely in 72% of cases. The default is off only because a
+round batch size is comparable across the recipe table; the bisection never returns a size it
+has not actually run a full training step at. Turn it on when throughput matters more than
+the round number.
 
 **When `loss-min/10` does not apply.** The heuristic assumes a trough *before* the blow-up. On a
 model whose loss falls monotonically into divergence the argmin lands in the near-divergence tail,

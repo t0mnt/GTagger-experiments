@@ -4,8 +4,23 @@ forward): this is the layer where this repo has shipped broken twice (tag_lorent
 in_s_channels/n_scalar key, jc_lgatr's tag_gatr base) because nothing exercised the
 jctagging config path."""
 import hydra, pytest, logging
-import experiments.logger; experiments.logger.LOGGER.disabled = True; logging.disable(logging.CRITICAL)
+import experiments.logger
 from experiments.tagging.jetclassexperiment import JetClassTaggingExperiment
+
+# Quieten init_physics' logging for THIS module's tests only. This used to run at import
+# time and never be undone, which silenced the `main` logger for every test collected after
+# it in the same session -- so any test asserting on log output passed alone and failed in a
+# full run (test_probe_batch.py found it). Silencing is fine; leaking it is not.
+@pytest.fixture(autouse=True)
+def _quiet_logger():
+    logger, was_disabled = experiments.logger.LOGGER, experiments.logger.LOGGER.disabled
+    logger.disabled = True
+    logging.disable(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        logging.disable(logging.NOTSET)
+        logger.disabled = was_disabled
 
 HYBRIDS_NONEQ = ["tag_PlainGraphTrans", "tag_PlainGraphGPS",
                  "tag_ParticleNetParTGraphTrans", "tag_ParticleNetParTGraphGPS"]

@@ -62,15 +62,34 @@ On a GPU you can also auto-size the batch first, then sweep the lr at that size
     +lr_find.find_batch_size=true   double the batchsize until CUDA OOM (full step)
     +lr_find.bs_start=16            smallest batchsize tried               (default 16)
     +lr_find.bs_max=16384           largest batchsize tried                (default 16384)
+    +lr_find.bs_sigmas=5.0          how heavy the probe batch is, in sd of the batch
+                                    total  (default 5.0 ~ the worst batch of any run
+                                    length you will actually launch; 0 probes a typical
+                                    batch, which is what a random draw gives you)
+    +lr_find.bs_refine=true         bisect the octave the doubling search throws away
+                                    (default false; 3 more probes, and the answer is no
+                                    longer a power of two. Worth up to 2x, ~1.5x on
+                                    average -- more than the probe fix below is worth --
+                                    but the campaign's convention is a round batch that
+                                    is comparable across recipes, hence off by default)
     +lr_find.bs_safety=1.0          fraction of the largest fit to use     (default 1.0,
                                     i.e. the largest fitting power of two; <1 adds
                                     headroom but breaks the power of two)
 
+The probe batch is CONSTRUCTED from the dataset's own jet lengths, not drawn: it sits
+`bs_sigmas` sd above a typical batch's total size, with P_max at the dataset maximum.
+A random draw is a MEDIAN batch, and a long run meets the worst of ~10^5 draws, which
+is what used to make `bs_safety<1` necessary -- see PROBE_SIGMAS in this file for the
+measured gap. On datasets with no cheap per-item lengths (JetClass, TopTagXL) the probe
+falls back to one random batch and says so in the log; there `bs_safety` still applies.
+
 e.g.  python utils/find_lr.py -cp config -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \\
           save=false +lr_find.find_batch_size=true
 prints both the GPU-fit batchsize and the suggested lr. (On CPU the batch-size
-search is a no-op.) Verify the printed batchsize with a short real run before a
-long job -- it measures one fwd+bwd, not a full training trajectory.
+search is a no-op.) It still measures one step rather than a trajectory, so run it
+under `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` -- the same setting the run
+itself should use -- and verify the printed batchsize with a short real run before a
+long job.
 """
 
 import os
@@ -124,6 +143,8 @@ DEFAULTS = dict(
     find_batch_size=False,
     bs_start=16,  # smallest batchsize tried
     bs_max=16384,  # largest batchsize tried
+    bs_sigmas=5.0,  # how heavy the constructed probe batch is, in sd of the batch total
+    bs_refine=False,  # bisect the octave the doubling search discards (3 more probes, no power of two)
     bs_safety=1.0,  # fraction of the largest fitting batchsize to use (1.0 keeps a power of two)
 )
 
@@ -158,7 +179,139 @@ def _is_oom(err):
     return isinstance(err, torch.cuda.OutOfMemoryError) or "out of memory" in str(err).lower()
 
 
-def find_max_batch_size(exp, start, max_cap, safety):
+# --- the probe batch ---------------------------------------------------------
+#
+# The batch-size search used to probe each rung with ONE random batch --
+# next(iter(train_loader)) -- which is a MEDIAN batch, while a real run sees the worst
+# of ~10^5 draws. Jets vary in length (top-tagging: mean 49.2, sd 17.2, max 135), and
+# memory follows the batch's TOTAL size: dense terms in B*P_max, pair masks in
+# B*P_max^2, edge/attention terms in sum_j n_j^2, kNN in k*sum_j n_j. Measured over the
+# real length distribution, the worst batch of a 50-epoch run carries 1.31x (B=128) to
+# 1.05x (B=4096) the median's sum n^2, and P_max at the dataset cap rather than the
+# ~p50 of a batch maximum. That gap is what `bs_safety=0.5` was covering -- by halving
+# the batch, i.e. ~2x headroom for a <=1.3x problem.
+#
+# So build the probe batch to BE the worst batch instead. `_worst_case_indices` picks
+# `bs` real jets that sit `sigmas` sd above a typical batch in BOTH `sum n` and
+# `sum n^2`, and that include the longest jets in the dataset so P_max hits its cap too.
+# One probe per rung (same cost as before), deterministic (so a 25-recipe sweep is
+# reproducible), and it MEASURES the peak rather than modelling it -- which is what keeps
+# it correct whatever a given model's memory actually scales with, as long as memory is
+# non-decreasing in each jet's length. Every net here qualifies.
+#
+# Constructed batch vs the heaviest batch of a DIRECTLY SIMULATED 50-epoch run (every one
+# of its 473k / 118k / 15k batches drawn), each relative to a random batch's median:
+#
+#             ------ sum n ------      ----- sum n^2 -----
+#     B       built   run's worst      built   run's worst
+#     128     1.165      1.150         1.428      1.299
+#     512     1.078      1.063         1.187      1.144
+#    4096     1.029      1.024         1.053      1.045
+#
+# P_max needs no such comparison: the longest jet in the dataset is in every constructed
+# batch, and no batch can exceed that. (An earlier version targeted `sum n^2` only and
+# came in 4% UNDER the run's worst `sum n` at B=128 -- the entire margin for a model whose
+# memory is linear in total nodes. Both moments, or neither.)
+#
+# Iterable datasets (JetClass, TopTagXL) do not expose per-item lengths cheaply; there
+# the old random-batch probe still applies and `bs_safety` is still the only lever.
+PROBE_SIGMAS = 5.0
+
+
+def _probe_lengths(dataset):
+    """Per-item constituent counts, cached on the dataset. None if not cheaply available."""
+    if dataset is None:
+        return None
+    cached = getattr(dataset, "_probe_lengths", None)
+    if cached is not None:
+        return cached
+    data_list = getattr(dataset, "data_list", None)  # map-style TaggingDataset only
+    if data_list is None or len(data_list) == 0:
+        return None
+    try:
+        lengths = np.fromiter(
+            (int(d.x.shape[0]) for d in data_list), dtype=np.int64, count=len(data_list)
+        )
+    except (AttributeError, TypeError, ValueError, IndexError):
+        return None
+    try:
+        dataset._probe_lengths = lengths
+    except AttributeError:  # __slots__ dataset: recompute per rung rather than fail
+        pass
+    return lengths
+
+
+def _worst_case_indices(lengths, bs, sigmas=PROBE_SIGMAS):
+    """Indices of `bs` items forming an unusually -- but realistically -- heavy batch.
+
+    Start from `bs` items spread evenly over the quantiles of the length distribution
+    (that alone reproduces a typical batch's totals by quadrature), then swap the `k`
+    smallest picks for the `k` longest items in the dataset. `k` is the smallest value
+    putting the batch `sigmas` sd above typical -- i.e. the total a run of order
+    ``exp(sigmas^2 / 2)`` batches expects to see once -- for EVERY memory-relevant
+    statistic at once:
+
+        sum n     node features, kNN edge lists       (concentrates least slowly)
+        sum n^2   dense edge tensors, block attention (the CGENN family's dominant term)
+        P_max     padded/dense terms in B*P_max(^2)   (ParT-style attention)
+
+    ``sum n^p`` is non-decreasing in `k` for both p, so each gets its own smallest
+    sufficient `k` and the batch takes the larger -- targeting only `sum n^2` leaves
+    `sum n` about 4% short at B=128, which is the whole margin for a kNN model. P_max
+    needs no target: `k` is clamped to >= 1, so the dataset's longest jet is always in,
+    which is the exact maximum no batch can exceed. The other clamp, `k <= bs//4`, keeps
+    the grid and the longest-item pool disjoint so no item is ever repeated.
+
+    Returns None when the batch cannot be built from this dataset.
+    """
+    n = np.asarray(lengths, dtype=np.int64)
+    size, bs = n.size, int(bs)
+    kmax = max(1, bs // 4)
+    if bs < 1 or size < bs + kmax:
+        return None
+
+    order = np.argsort(n, kind="stable")
+    asc = n[order].astype(np.float64)  # ascending
+    grid = ((np.arange(bs) + 0.5) * (size - kmax) / bs).astype(np.int64)  # excludes the top kmax
+    top = np.arange(size - kmax, size)
+
+    k, shortfall = 1, None
+    for power in (1, 2):
+        moment = asc**power
+        target = bs * moment.mean() + sigmas * np.sqrt(bs) * moment.std()
+        gain = moment[top[::-1]] - moment[grid[:kmax]]  # gain[j]: swap in the (j+1)-th longest
+        if (gain < 0).any():  # impossible for a sorted array; guards searchsorted's contract
+            return None
+        totals = moment[grid].sum() + np.concatenate(([0.0], np.cumsum(gain)))
+        need = int(np.searchsorted(totals, target))
+        if need > kmax:  # a length distribution too spread for bs//4 swaps to cover
+            shortfall = min(shortfall or 1.0, totals[kmax] / target)
+        k = max(k, min(need, kmax))
+
+    if shortfall is not None:
+        LOGGER.warning(
+            f"  probe batch for bs={bs} reaches {shortfall:.0%} of the +{sigmas:g} sd "
+            f"target ({kmax} longest jets is the cap); keep some bs_safety."
+        )
+    return np.concatenate([order[grid[k:]], order[top[kmax - k :]]])
+
+
+def _worst_case_batch(exp, bs, lengths, sigmas=PROBE_SIGMAS):
+    """Collate the worst-case batch for `bs`, or None to fall back to a random one."""
+    idx = _worst_case_indices(lengths, bs, sigmas)
+    if idx is None:
+        return None
+    collate = getattr(exp.train_loader, "collate_fn", None)
+    if collate is None:
+        return None
+    try:
+        return collate([exp.data_train[int(i)] for i in idx])
+    except Exception as err:  # any dataset/collate mismatch -> the random-batch path
+        LOGGER.warning(f"  worst-case probe batch could not be collated ({err}); using a random one.")
+        return None
+
+
+def find_max_batch_size(exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine=False):
     """Doubling search for the largest batchsize that survives a full training step.
 
     At each candidate it runs a real fwd + bwd + optimizer step (scaler + gradient
@@ -166,31 +319,57 @@ def find_max_batch_size(exp, start, max_cap, safety):
     clipping so it does not mask divergence), so the measured memory reflects what
     training actually uses -- not just a fwd+bwd lower bound. The search doubles
     until a CUDA OOM, so the largest size that fits is a power of two; with the
-    default ``safety=1.0`` that power of two is returned unchanged (a fractional
-    ``safety`` trades GPU utilisation / the power-of-two for headroom and is only
-    worth it if you see OOM later from jets larger than those in the probe batch).
+    default ``safety=1.0`` that power of two is returned unchanged.
+
+    The probe batch is CONSTRUCTED, not drawn: `sigmas` sd above a typical batch's
+    total size, with P_max at the dataset maximum, so it stands in for the worst batch
+    of a long run rather than a median one (see PROBE_SIGMAS above for the numbers).
+    That is what makes ``safety=1.0`` the right default -- a fractional ``safety`` is
+    now only for datasets whose lengths this cannot see (JetClass, TopTagXL), where the
+    probe falls back to one random batch and the log line says so.
+
+    ``refine`` (off by default) spends 3 more probes bisecting the octave the doubling
+    search discards, and that octave is the bigger number here. Measured over 60 simulated
+    card sizes spanning two octaves: refining gains a mean 1.35x batch (median 1.25x, up to
+    1.88x), while the constructed probe changes the chosen rung at all in only 28% of cases
+    -- the rest of the time its 1.05-1.3x is swallowed by the power-of-two granularity. For
+    scale, ``bs_safety=0.5`` costs a flat 0.5x. Refining is off by default because a power
+    of two is the campaign's convention -- comparable across recipes -- not because it is
+    unsound: the bisection only ever returns a size it has actually run a training step at.
 
     CUDA only (returns the configured batchsize on CPU). The optimizer step mutates
     the model + optimizer state, so the caller MUST re-initialise before the lr sweep.
 
-    NOTE: it probes one batch per size; verify the chosen batchsize with a short
-    real run before launching a multi-day job.
+    NOTE: it probes one batch per size, so it still measures a single step, not a
+    trajectory -- fragmentation grows with run length. Pair it with
+    ``PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`` and verify the chosen
+    batchsize with a short real run before launching a multi-day job.
     """
     if not torch.cuda.is_available():
         LOGGER.info("No CUDA device -> skipping batch-size search (keeping configured batchsize).")
         return int(exp.cfg.training.batchsize)
 
     exp.model.train()
-    last_ok, bs = None, int(start)
-    LOGGER.info("Searching for the largest batchsize that fits a full training step:")
-    while bs <= max_cap:
+    lengths = _probe_lengths(getattr(exp, "data_train", None))
+    state = {"warned": False}
+
+    def fits(bs):
+        """One full training step at `bs`: True if it fits, False on a CUDA OOM."""
         try:
             torch.cuda.empty_cache()
             torch.cuda.reset_peak_memory_stats()
             with open_dict(exp.cfg):
                 exp.cfg.training.batchsize = bs
             exp._init_dataloader()
-            data = next(iter(exp.train_loader))
+            data = None if lengths is None else _worst_case_batch(exp, bs, lengths, sigmas)
+            if data is None:
+                if lengths is not None and not state["warned"]:
+                    LOGGER.warning(
+                        f"  batchsize {bs}: no worst-case batch constructible from "
+                        f"{lengths.size} jets -> falling back to a random batch."
+                    )
+                    state["warned"] = True
+                data = next(iter(exp.train_loader))
             loss, _ = exp._batch_loss(data)
             exp.optimizer.zero_grad(set_to_none=True)
             exp.scaler.scale(loss).backward()
@@ -205,24 +384,61 @@ def find_max_batch_size(exp, start, max_cap, safety):
             exp.scaler.update()
             peak = torch.cuda.max_memory_allocated() / 1e9
             LOGGER.info(f"  batchsize {bs:6d}: OK  (peak {peak:.1f} GB)")
-            last_ok = bs
-            bs *= 2
+            return True
         except RuntimeError as err:
             if not _is_oom(err):
                 raise
             LOGGER.info(f"  batchsize {bs:6d}: OOM")
             torch.cuda.empty_cache()
+            return False
+
+    LOGGER.info("Searching for the largest batchsize that fits a full training step:")
+    if lengths is None:
+        LOGGER.info(
+            "  probe batch: ONE RANDOM BATCH (this dataset does not expose per-item "
+            f"lengths) -- a median batch, so keep headroom via bs_safety (now {safety})."
+        )
+    else:
+        LOGGER.info(
+            f"  probe batch: constructed at +{sigmas:g} sd of the batch total, P_max="
+            f"{int(lengths.max())} (dataset max) -- stands in for the worst batch of a long run."
+        )
+
+    last_ok, oom_at, bs = None, None, int(start)
+    while bs <= max_cap:
+        if not fits(bs):
+            oom_at = bs
             break
+        last_ok = bs
+        bs *= 2
 
     if last_ok is None:
         LOGGER.warning(f"Even batchsize {start} does not fit; keeping {start}.")
         return int(start)
+
+    refined = False
+    if refine and oom_at is not None:
+        # The doubling search brackets the ceiling in [last_ok, oom_at) and then discards
+        # the whole interval -- so it returns, on average, 1/1.5 of what the card holds.
+        # Bisect it back in steps of last_ok//8: 3 extra probes for up to 2x the batch.
+        lo, hi, step = last_ok, oom_at, max(8, last_ok // 8)
+        while hi - lo > step:
+            mid = (lo + hi) // 2 // step * step
+            if not lo < mid < hi:
+                break
+            if fits(mid):
+                lo = mid
+            else:
+                hi = mid
+        refined, last_ok = lo > last_ok, lo
+
     chosen = max(int(start), int(last_ok * safety))
-    note = (
-        "the largest fitting power of two"
-        if safety >= 1.0
-        else f"{safety:.0%} of {last_ok} (NOT a power of two)"
-    )
+    if safety >= 1.0:
+        note = "the largest fit, refined off the power of two" if refined else "the largest fitting power of two"
+    else:
+        note = f"{safety:.0%} of {last_ok}"
+        if lengths is not None:
+            note += " -- the probe was already the worst-case batch, so this stacks on top"
     LOGGER.info(f"Largest fitting batchsize {last_ok} -> using {chosen} ({note}).")
     return chosen
 
@@ -436,7 +652,14 @@ def main(cfg):
     # trains at. Fine for the speedup RATIO it reports; not a basis for ranking impls by
     # jets/s, which is what this function's number decides.
     if params["find_batch_size"]:
-        bs = find_max_batch_size(exp, params["bs_start"], params["bs_max"], params["bs_safety"])
+        bs = find_max_batch_size(
+            exp,
+            params["bs_start"],
+            params["bs_max"],
+            params["bs_safety"],
+            sigmas=float(params["bs_sigmas"]),
+            refine=bool(params["bs_refine"]),
+        )
         with open_dict(cfg):
             cfg.training.batchsize = bs
         # the search ran optimizer steps -> rebuild a clean model/optimizer/scaler so

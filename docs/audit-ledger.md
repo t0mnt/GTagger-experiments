@@ -362,3 +362,35 @@ compiled smoke now just runs:
         pytest tests/experiments/test_training_smoke.py -k tag_cgenn    # ~18 min
 
 The underlying inductor behaviour is untouched and remains a torch-side issue, not ours.
+
+---
+
+## A test silenced the `main` logger for every test collected after it
+
+`tests/internal/test_jc_wiring.py` ran, at IMPORT time and with no teardown:
+
+    import experiments.logger; experiments.logger.LOGGER.disabled = True
+    logging.disable(logging.CRITICAL)
+
+Both statements are process-global. Pytest imports every collected module before running
+anything, so from that point on the `main` logger was dead for the whole session — and
+`logging.disable(CRITICAL)` suppresses records at the `logging` level, below where
+`caplog` installs its handler, so it cannot be worked around by a fixture that only
+re-enables the logger object.
+
+**Consequence:** any test asserting on log output passes when run alone and fails in a full
+run, or vice versa, depending purely on collection order. Nothing asserted on log output
+until `tests/experiments/test_probe_batch.py` did, which is why this sat undetected; it
+would have bitten the next such test just as silently. The failure mode is the bad one — an
+assertion that quietly stops meaning anything, rather than an error.
+
+**FIXED 2026-08-12** by scoping the silencing to an autouse fixture in that module, which
+keeps the original intent (no `init_physics` spam from these eight parametrisations) and
+restores both globals afterwards. `test_probe_batch.py` additionally carries its own
+autouse fixture re-enabling the logger, so its three log-reading gates do not depend on that
+fix staying in place. Verified in both collection orders: 185 passed either way.
+
+**Worth generalising:** module-level mutation of process-global state (logging, `torch`
+defaults, env vars, seeds) in a test file is a session-wide side effect regardless of what
+it touches. `torch.set_num_threads(1)` at module scope appears in three gate files here and
+is the same pattern — benign only because every file wants the same value.

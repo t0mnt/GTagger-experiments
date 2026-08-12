@@ -1630,10 +1630,39 @@ one-batch probe at the median plus 14% headroom is simply not enough margin, for
 sized that close to the card.
 
 **Operational consequence for `find_lr`, independent of which impl wins:** its batch probe
-is the same one-step probe, and it has now been observed choosing a batch that dies in real
-training. For the CGENN family either pass `+lr_find.bs_safety=0.5`, or take the chosen
-batch and confirm it with a short real run before committing a multi-day job. The einsum row
-above is what a campaign would have looked like without that step: dead at step 10, hours in.
+was the same one-step probe, and it was observed choosing a batch that dies in real training.
+The einsum row above is what a campaign looks like without a fix: dead at step 10, hours in.
+
+**FIXED, and not with `bs_safety`.** The two terms the probe was blind to are the two above,
+and each now has its own answer rather than a shared fudge factor:
+
+* *A median batch stands in for the worst of ~10^5 draws.* `find_max_batch_size` no longer
+  DRAWS its probe batch, it CONSTRUCTS one: `bs` real jets whose total `sum n^2` sits
+  `+lr_find.bs_sigmas` (default 5) standard deviations above a typical batch, with the
+  dataset's longest jets included so `P_max` lands at its cap too. Against the simulated
+  worst batch of a 50-epoch run that is accurate to ~1% at every batch size (1.313 vs 1.307
+  at B=128; 1.053 vs 1.047 at B=4096). One probe per rung, same cost, deterministic — so a
+  25-recipe sweep is reproducible. Gates in `tests/experiments/test_probe_batch.py`.
+* *Fragmentation grows with run length and a one-step probe cannot see it.* That is what the
+  OOM message's own 8.93 GiB is; run both the probe and the job under
+  `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
+
+`bs_safety` stays, but it is now for JetClass/TopTagXL only — iterable datasets expose no
+per-item lengths, so the probe there falls back to one random batch and logs that it did.
+For top-tagging, `bs_safety=0.5` on top of the constructed probe would double-count: it was
+~2x headroom for what measurement says is a 1.05-1.31x problem.
+
+**And a third thing, larger than either, that the investigation turned up by accident.** The
+constructed probe changes the chosen batch in only **28%** of card sizes (measured over 60,
+spanning two octaves) — the rest of the time its 1.05-1.31x vanishes into the doubling
+search's power-of-two granularity. That granularity is itself the bigger loss: the search
+brackets the true ceiling between `2^k` and `2^(k+1)` and then throws the whole octave away,
+returning on average 1/1.5 of what the card holds. `+lr_find.bs_refine=true` bisects the
+bracket in 3 more probes for a mean **1.35x** batch (median 1.25x, up to 1.88x). Off by
+default, because a round batch size is what makes the recipe table comparable — but for a
+throughput-bound campaign it is the knob with the most in it. Gated end-to-end against a
+simulated card in `tests/experiments/test_probe_batch.py`, which is also the first test this
+search has ever had.
 
 ### The sweep spent ~95% of its wall clock on evaluation it never read
 

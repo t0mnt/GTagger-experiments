@@ -172,6 +172,12 @@ def find_batchsize(row_overrides, knob, config_path, bs_start, bs_max, safety):
     subprocesses and start clean, but the searches all share THIS process, so a row that
     left 4 GB resident would hand the next row a smaller ceiling and silently undersize it.
 
+    Inherits find_max_batch_size's default probe batch, which is CONSTRUCTED at +5 sd of
+    the batch total rather than drawn at random. That lowers the chosen rung slightly
+    versus the old random probe; harmless here, because this driver reports a RATIO and
+    both states get the same batch, and strictly better than OOMing partway through a
+    row's timing run.
+
     CUDA only -- find_max_batch_size returns the configured batchsize unchanged on CPU.
     """
     import gc
