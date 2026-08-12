@@ -286,7 +286,8 @@ def _worst_case_indices(lengths, bs, sigmas=PROBE_SIGMAS):
         totals = moment[grid].sum() + np.concatenate(([0.0], np.cumsum(gain)))
         need = int(np.searchsorted(totals, target))
         if need > kmax:  # a length distribution too spread for bs//4 swaps to cover
-            shortfall = min(shortfall or 1.0, totals[kmax] / target)
+            ratio = totals[kmax] / target
+            shortfall = ratio if shortfall is None else min(shortfall, ratio)
         k = max(k, min(need, kmax))
 
     if shortfall is not None:
@@ -478,18 +479,22 @@ def find_max_batch_size(exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine
     rates = {bs: r for bs, r in sorted(state["rates"].items()) if r == r}
     if len(rates) >= 2:
         best = max(rates, key=rates.get)
-        curve = "  ".join(f"{bs}:{r:.0f}" for bs, r in rates.items())
-        LOGGER.info(f"  jets/s by batchsize: {curve}")
-        if best != last_ok and rates[best] > 1.1 * rates.get(last_ok, 0.0):
+        LOGGER.info(f"  jets/s by batchsize: " + "  ".join(f"{bs}:{r:.0f}" for bs, r in rates.items()))
+        # `chosen` can be absent from `rates` only if its timing came back non-finite; say
+        # so rather than half-guard it, since this runs after an expensive search.
+        here = rates.get(last_ok)
+        if here is None:
+            LOGGER.info(f"  (no usable timing at the chosen batchsize {last_ok}; curve above only)")
+        elif best != last_ok and rates[best] > 1.1 * here:
             LOGGER.info(
                 f"  NOTE: throughput peaks at batchsize {best} ({rates[best]:.0f} jets/s), "
-                f"{rates[best] / rates[last_ok]:.2f}x the largest fit's {rates[last_ok]:.0f}. "
+                f"{rates[best] / here:.2f}x the largest fit's {here:.0f}. "
                 f"The largest batch that FITS is not the fastest one here."
             )
         else:
             LOGGER.info(
                 f"  throughput is still rising (or flat) at the largest fit -- "
-                f"{rates[last_ok]:.0f} jets/s, the best measured."
+                f"{here:.0f} jets/s, the best measured."
             )
     return chosen
 

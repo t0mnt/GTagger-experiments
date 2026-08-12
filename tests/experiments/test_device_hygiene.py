@@ -246,10 +246,19 @@ _UNMOVABLE_OK = {
     ("CliffordAlgebra", "grades"):
         "__init__ only: grades_list (python ints), n_subspaces (len), subspaces (comb), "
         "and _grade_to_slice, which reduces it to int slice bounds",
+    # Both are plain aliases of `algebra.geometric_product_paths`, taken at init (gp.py:29,
+    # fcgp.py:37). That buffer IS registered (non-persistent) on CliffordAlgebra, but the
+    # alias does NOT follow it: `.to(device)` rebinds `_buffers[key]` to a NEW tensor and
+    # leaves the alias pointing at the original CPU one. So these are stale after a move,
+    # and safe anyway for the reason at the top of this dict -- never a tensor OPERAND.
+    # `.nonzero()` and `.sum()` run at init; `.size()` runs in the forward, inside
+    # `_get_weight`, but returns python ints and never touches the device.
     ("FullyConnectedSteerableGeometricProductLayer", "product_paths"):
-        "copy of the above; same three init-time uses (.nonzero()/.sum()/.size())",
+        "alias of the algebra's geometric_product_paths buffer; .nonzero()/.sum() at init "
+        "and .size() in _get_weight -- shape only, never an operand",
     ("SteerableGeometricProductLayer", "product_paths"):
-        "copy of the above; same three init-time uses (.nonzero()/.sum()/.size())",
+        "alias of the algebra's geometric_product_paths buffer; .nonzero()/.sum() at init "
+        "and .size() in _get_weight -- shape only, never an operand",
 }
 
 
