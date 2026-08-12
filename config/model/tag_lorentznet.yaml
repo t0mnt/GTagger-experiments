@@ -1,6 +1,7 @@
 _target_: experiments.tagging.wrappers.LorentzNetWrapper
 out_channels: null
 compile: true  # torch.compile(net, dynamic=True); Stage-2 gates green (operator-adopted default)
+use_amp: false  # NOT a speed choice: AMP destroys the equivariance this model exists for
 
 net:
  _target_: experiments.baselines.lorentznet.LorentzNet

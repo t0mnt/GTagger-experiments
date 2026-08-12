@@ -232,6 +232,27 @@ class BaseExperiment:
         job_id = self.cfg.get("slurm_job_id", None)
         if job_id is not None:
             LOGGER.info(f"slurm_job_id: {job_id}")
+        # Environment toggles that change how a run behaves but appear in NO config, so
+        # nothing else in the record distinguishes two rows that ran under different ones.
+        # docs/OSCAR.md section 2 appends two of these to venv/bin/activate, which makes them
+        # invisible per-run state; PYTORCH_CUDA_ALLOC_CONF in particular moves walltime, and
+        # walltime is a reported column. Logging them costs nothing and makes a row's
+        # provenance readable from its own log.
+        env = {
+            k: os.environ.get(k)
+            for k in (
+                "PYTORCH_CUDA_ALLOC_CONF",
+                "TORCHINDUCTOR_CACHE_DIR",
+                "TRITON_LIBCUDA_PATH",
+                "CUDA_VISIBLE_DEVICES",
+                "OMP_NUM_THREADS",
+            )
+        }
+        LOGGER.info(
+            "env: " + ", ".join(f"{k}={v}" for k, v in env.items() if v is not None)
+            + (f" (unset: {', '.join(k for k, v in env.items() if v is None)})"
+               if any(v is None for v in env.values()) else "")
+        )
         self._init_backend()
 
         return experiment_id, run_name

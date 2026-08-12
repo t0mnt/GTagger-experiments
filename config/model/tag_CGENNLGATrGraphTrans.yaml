@@ -1,6 +1,7 @@
 _target_: experiments.tagging.wrappers.CGENNLGATrGraphTransWrapper
 out_channels: null              # init_physics -> num_outputs 
 compile: true  # torch.compile(net, dynamic=True); edges hoisted eager (operator-adopted default)
+use_amp: false  # NOT a speed choice: AMP destroys the equivariance this model exists for
 activation_memory_budget: null  # OOM escape hatch only: fraction in (0,1] handed to
                                 # AOT's partitioner, buying peak activation memory with
                                 # backward recompute (lgatr 2.0's knob). null = torch

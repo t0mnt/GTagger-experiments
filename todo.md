@@ -328,6 +328,19 @@ project, not this fork.)
       keep what a READER of the published repo needs to rerun the paper; delete what only a
       BUILDER of it needed. Do it after the campaign, so an instrument is still there if a
       number needs re-deriving.
+- [ ] **`utils/bperf.py` — KEEP, but remove `--apply`.** `cleanup.md` schedules the whole
+      file for deletion as a one-shot instrument. Recommendation is to keep it: it is the
+      only thing that substantiates the `compile: true` posture shipped in 20 configs, and a
+      methods section claiming "compilation is worth X" should ship the tool that measured X
+      — deleting it makes the claim unverifiable by re-running, which is the opposite of what
+      a reproduction repo is for. Its numbers already persist in `bperf_results.md` and
+      `docs/cgenn-compile.md`, but numbers are not a method.
+      What SHOULD go is `--apply`: a published tool that rewrites production yamls in place
+      is a footgun, the flips it existed to make are already committed, and its regex
+      targeting was subtle enough to need a fix this month. Delete the flag and the
+      `apply_knob` path, keep the measurement. Also drop the "one-shot instrument, schedule
+      deletion" line from its own docstring when this is decided, so the file stops
+      contradicting the plan.
 
 ## 4e. Release gate — the pre-publication list, triaged
 
@@ -406,6 +419,37 @@ the split is not by importance, it is by whether the change can touch a number.
 - [ ] **xformers pin note in `docs/SLURM.md`.** The NGC container's xformers is built against
       a different torch and logs a scary load failure on every run; nothing here depends on
       it. A reproducer will otherwise chase it. Documentation only.
+- [x] **Log the environment toggles per run.** `docs/OSCAR.md` §2 appends two exports to
+      `venv/bin/activate` (`TRITON_LIBCUDA_PATH`, `TORCHINDUCTOR_CACHE_DIR`) — correct place
+      for those, but it makes them invisible per-run state: nothing in a row's config or log
+      said which environment it ran under. `BaseExperiment` now logs
+      `PYTORCH_CUDA_ALLOC_CONF`, `TORCHINDUCTOR_CACHE_DIR`, `TRITON_LIBCUDA_PATH`,
+      `CUDA_VISIBLE_DEVICES`, `OMP_NUM_THREADS` (naming the unset ones too), so a row's
+      provenance is readable from its own log. Safe mid-campaign: logging only.
+- [x] **`use_amp: false` made explicit on the six equivariant models** (the 4 CGENN-/
+      LorentzNet-LGATr hybrids, `tag_cgenn`, `tag_lorentznet`). They previously relied on the
+      implicit default (`base_experiment.py:677` selects with `default=False`, and every
+      wrapper signature is `use_amp=False`), so AMP was already off everywhere — but the
+      models where AMP is a CORRECTNESS matter rather than a speed one were the only ones not
+      saying so, while ParT/ParticleNet/Plain stated it. Same value, zero behaviour change,
+      and the comment records the reason (AMP destroys equivariance; lgatr measured this).
+
+- [ ] **`PYTORCH_CUDA_ALLOC_CONF` — decide BEFORE the next campaign, not during this one.**
+      Order-of-magnitude estimate, since no GPU was available to measure it: a cached-pool
+      allocation is ~µs and a step is ~700 ms (β-PERF's 1.41 it/s), so allocator work is
+      well under 1% of step time and expandable segments changes only part of that. The
+      benefit is not per-step either — it is avoiding `release_cached_blocks`
+      (cudaFree + re-cudaMalloc + a device sync, ~10-100 ms and lumpy) and the OOM at the
+      end of that road. So |effect| is plausibly **under ~2% either way**, i.e. BELOW the 3%
+      margin β-PERF itself uses to justify a flip. That reframes it: this is not a throughput
+      knob, it is OOM insurance, and the question is whether you need the insurance rather
+      than what it costs.
+      The measurement worth doing (cheap, and ParticleNet is the right subject because it is
+      fast): one paired A/B, same model, same seed, same batch, variable on vs off, compare
+      it/s. Do it to PUT A NUMBER on the knob for the next campaign and for a methods
+      sentence — NOT to adopt it into this one. Retraining a fast subset with it on makes the
+      walltime column MORE heterogeneous, not less: it creates exactly the split the rule
+      exists to prevent.
 
 **Post-campaign — real, but each one changes a number:**
 

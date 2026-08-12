@@ -1,6 +1,7 @@
 _target_: experiments.tagging.wrappers.LorentzNetLGATrSlimGraphGPSWrapper
 out_channels: null              # init_physics -> num_outputs
 compile: true                   # torch.compile(net, dynamic=True), enabled by a SCOPED
+use_amp: false  # NOT a speed choice: AMP destroys the equivariance this model exists for
                                 # torch._functorch.config.patch(recompute_views=True) around the net
                                 # call (LorentzNetLGATrSlimGraphGPSWrapper.forward).
                                 #
