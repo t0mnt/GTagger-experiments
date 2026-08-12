@@ -1,12 +1,17 @@
 # LLoCa's default frame, and upstream lloca-experiments ships this file verbatim.
-# Lorentz invariance holds to ~5e-3 here in float64, against ~1e-6 for learnedso13. Cause,
-# measured (NOT the division by energy, which is ~1 ulp): restframe_boost builds gamma from
-# `1 - beta^2` (polar_decomposition.py:36), and for relativistic inputs that is a
-# catastrophic cancellation -- 1-beta^2 ~ m^2/E^2 -- costing ~1e-12 median and ~1e-9 at p99
-# on jet-like momenta, which the rsqrt and the per-edge transport then carry forward.
-# A numerical floor, not a broken symmetry (real breaks are O(0.1-1)). The actual boost
-# vectors are network-predicted, so how close they run to lightlike sets the real floor --
-# which is what gamma_mean tracks, and gamma is unregulated at gamma_max: null.
+# Lorentz invariance holds to ~5e-3 here in float64, against ~1e-6 for learnedso13.
+# Cause, measured: NOT the division by energy (~1 ulp). gamma comes from `1 - beta^2`
+# (lloca/utils/polar_decomposition.py:36), a catastrophic cancellation for relativistic
+# inputs since 1-beta^2 ~ m^2/E^2 -- ~1e-12 median, ~1e-9 p99 on jet-like momenta, carried
+# forward by rsqrt and the per-edge transport.
+# NOT an implementation flaw: every algebraic route is equally conditioned (measured --
+# E/m via E^2-|p|^2 gives 5.8e-13, via (E-|p|)(E+|p|) 8.0e-13, against lloca's 6.2e-13).
+# Recovering a small mass from a large E and |p| is ill-conditioned, full stop; only
+# carrying m instead of recovering it helps (3.9e-17), and a network-predicted vector has
+# no carried mass. lloca already applies both available mitigations -- the float64 upcast
+# in polar_decomposition and the lightlike/mass regularizers. learnedso13 escapes it by
+# never building a rest frame at all, not by better arithmetic.
+# gamma is unregulated at gamma_max: null (upstream's setting too) -- watch gamma_mean.
 _target_: lloca.framesnet.equi_frames.LearnedPDFrames
 is_global: false
 random: false
