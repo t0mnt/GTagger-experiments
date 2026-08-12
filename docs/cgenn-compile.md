@@ -1631,32 +1631,63 @@ it crashed before ever reaching evaluation. Fixed in `utils/bperf.py`; timing co
 "Finished iteration N" lines during TRAINING, so no measured number moves. Expect rows in
 minutes rather than hours on the next sweep.
 
-### Not yet applied: lgatr's FUSED form, which is the one GP trick still on the table
+### lgatr's FUSED form: measured, and REJECTED for CGENN. Do not retry it.
 
 lgatr's sparse GP is not just the sparse contraction -- it is that contraction written as a
-SINGLE fused expression, `(signs * y[..., indices] * x.unsqueeze(-2)).sum(-1)`, with their
-comment stating it "fuses to a single kernel under torch.compile (no 16x16 buffer), which is
-both faster and far lighter on GPU". We adopted the contraction and the autograd Function
-but kept the einsum spelling, which materializes `pair` as a (B, N, 16, 16) buffer.
+SINGLE fused expression, `(signs * y[..., indices] * x.unsqueeze(-2)).sum(-1)`, which their
+comment says "fuses to a single kernel under torch.compile (no 16x16 buffer), which is both
+faster and far lighter on GPU". We took the contraction and the autograd Function but kept
+the einsum spelling, which materializes `pair`. So: take the fused spelling too?
 
-**The learnable weight is NOT an obstacle** -- it broadcasts exactly where their `signs`
-does. `(x.unsqueeze(-1) * y[..., kidx] * w).sum(-2)` is the same arithmetic. Measured, fp64,
-B=2048, one layer, fwd+bwd:
+No. Three measurements, in the order they were made, because the first two were misleading
+and the third is the one that decides.
+
+**(1) Plain layer, B=2048, compiled, fwd+bwd -- looks like a clear win.**
 
 | | time | retained |
 |---|---|---|
-| einsum, eager | 524.6 ms | 132.0 MB |
-| einsum, compiled | 250.2 ms | 72.0 MB |
-| fused, eager | 683.3 ms | 132.0 MB |
-| **fused, compiled** | **213.2 ms** | **8.0 MB** |
+| einsum | 250.2 ms | 72.0 MB |
+| fused | **213.2 ms** | **8.0 MB** |
 
-Compiled: **0.85x the time and 0.11x the retained memory.** That is the compiled-path memory
-win the autograd Function could not deliver, arriving from the direction lgatr documented all
-along. Eager it is worse (1.30x), which is fine -- eager already routes through the Function.
+0.85x time, 0.11x retained.
 
-Numerics: TOL-class, not bit-equal (different reduction order), at 1.9e-16 fp64 / 1.4e-7
-fp32 against the einsum spelling. `gp_impl=sparse` is already TOL-class against the einsum
-BIT reference at 1.5e-13, so this sits well inside the existing bar -- but it IS a numerics
-change and needs the TOL gate re-read, plus `test_compiled_path_bypasses_the_function`
-relaxed from bit-equal to TOL, plus a fresh beta-PERF. NOT taken here: it lands mid-campaign
--prep and the decision of whether to spend that is the operator's.
+**(2) Which layer actually ships? Not that one.** `CGENN.__init__` defaults to
+`layer_type="fc"` and no yaml overrides it, so every CGENN model -- `tag_cgenn` and both
+hybrids -- instantiates `FullyConnectedSteerableGeometricProductLayer` and nothing else
+(counted: 2, 2, 4). `SteerableGeometricProductLayer` appears ZERO times, behind the
+never-taken `layer_type="gpmlp"` branch. The layer the win was measured on is dead code.
+
+**(3) On the fc layer, and on the plain layer at a matched shape, it loses.** Same B=512,
+compiled, fwd+bwd:
+
+| layer | einsum | fused | ratio |
+|---|---|---|---|
+| plain | 37.1 ms | 40.9 ms | **1.10x slower** |
+| fc | 18.3 ms | 258.1 ms | **14.11x slower** |
+
+So the plain-layer "win" in (1) is shape-dependent -- it reverses between B=2048 and B=512
+-- and on the shipped fc layer the fused spelling is an order of magnitude worse. Rejected.
+
+**Why, stated only as far as it was actually checked.** The first explanation written here
+was that the fc contraction has GEMM structure the fused spelling throws away. That is
+WRONG and the dispatch trace says so: BOTH spellings' einsum path dispatches
+`aten.bmm.default`, plain and fc alike. What is left is the arithmetic-shape argument: the
+two forms have the same MAC count, but einsum routes them through a tuned bmm while the
+fused spelling routes them through a generated loop nest, and the gap between those two
+depends on the reduction. One reduction axis (plain) is close, 1.10x. The fc form's extra
+output-feature axis `m` multiplies the elementwise work by 16 before reducing over two
+axes, and there the generated nest is 14x off the tuned kernel.
+
+That also settles a question raised earlier in a way worth keeping separate from the
+autograd-Function finding:
+
+  * *Why is the autograd Function not inlined under compile?* NOT the weights. Dynamo
+    inlines no `torch.autograd.Function` at all -- lgatr's own included, measured.
+  * *Why does the fused spelling not transfer?* The output-feature axis that our learnable
+    weight introduces, but by inflating the elementwise work, NOT by creating GEMM
+    structure the fused form loses -- both spellings reach bmm. lgatr's GP is
+    `(..., 16) x (..., 16) -> (..., 16)` with no `m` at all.
+
+Nothing to implement. Recorded at this length because measurement (1) is genuinely
+attractive and someone who stops there will reach the wrong conclusion -- as this document
+did, for one commit, before (2) and (3) were run.
