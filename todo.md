@@ -209,9 +209,9 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
 - [ ] ParT-GPS float attn_mask + bool key_padding_mask deprecation (merge masks before torch
       makes it fatal).
 - [ ] xformers pin note for the SLURM target (docs/SLURM.md install step).
-- [ ] Upstream lloca issue: request a public accessor for `_load_inner_product_factors`
-      (this repo imports the private name; fine at lloca 1.3.6 + lgatr 2.0.0, re-check on
-      any bump of either — docs/lgatr2-migration.md H6, Phase 5).
+- [ ] ~~Upstream lloca issue: public accessor for `_load_inner_product_factors`~~ —
+      DROPPED, see §4e: the symbol is lgatr's and lloca imports it; this repo imports it
+      nowhere, so there is no accessor for us to request.
 - [ ] learnedpd boost-precision-floor methods sentence for the paper.
 - [ ] lgatr 2.0 methods sentence (§2.4 obligation, docs/lgatr2-migration.md): the
       `tag_lgatr`/`tag_slim` reference rows are (re)trained under lgatr 2.0.0 at v2-native
@@ -486,11 +486,21 @@ the split is not by importance, it is by whether the change can touch a number.
 
 **Optional:**
 
-- [ ] **Upstream lloca issue: public accessor for `_load_inner_product_factors`.** This repo
-      imports the private name; fine at lloca 1.3.6 + lgatr 2.0.0, re-check on any bump of
-      either (`docs/lgatr2-migration.md` H6). Worth one issue if you are contacting the author
-      anyway — it costs them a two-line alias and removes a re-check from every future bump.
-      Not a blocker, and not urgent: a pinned private name is a known, contained risk.
+- [ ] ~~**Upstream lloca issue: public accessor for `_load_inner_product_factors`.**~~
+      **CORRECTED — this repo has no direct exposure and there is probably nothing to send.**
+      The entry said "this repo imports the private name". It does not: `grep` finds the
+      symbol in no file here. The real shape is an UPSTREAM-TO-UPSTREAM coupling —
+      `_load_inner_product_factors` is defined in **lgatr**
+      (`lgatr/primitives/invariants.py:20`) and imported by **lloca**
+      (`lloca/equivectors/lgatr.py:9`). We are a bystander.
+      So our exposure is transitive only: if lgatr renames or drops that private symbol,
+      lloca breaks and we break through lloca. The mitigation is the version-pin re-check
+      already recorded at `docs/lgatr2-migration.md` H6, and the line-73 note there is
+      exactly that check (confirming the private name survives at lgatr 2.0.0 so lloca 1.3.6
+      keeps working) — not a usage.
+      If it is ever raised it goes to **lgatr** (make it public) or to lloca (stop depending
+      on a private upstream name), and both are the same group, so it is one conversation
+      and one sentence inside a mail sent for other reasons. Not worth a mail of its own.
 
 ## 5. Paper release — branding / identity (only the maintainer has these)
 
