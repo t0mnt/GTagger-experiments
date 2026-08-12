@@ -1,3 +1,7 @@
+# Orthonormal SO(1,3) tetrad. More numerically invariant than the default learnedpd
+# (~1e-6 vs ~5e-3 in float64: no division by energy) and has no boost to regulate, but pd
+# is upstream's default and the parametrisation they trained on, so pd ships and this is
+# the ablation. See todo.md section 3.
 _target_: lloca.framesnet.equi_frames.LearnedSO13Frames
 is_global: false
 random: false

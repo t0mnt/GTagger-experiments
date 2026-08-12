@@ -1,3 +1,9 @@
+# LLoCa's default frame, and upstream lloca-experiments ships this file verbatim.
+# Lorentz invariance holds to ~5e-3 here in float64, against ~1e-6 for learnedso13:
+# the polar decomposition divides by energy in the rest-frame boost, so a boost amplifies
+# rounding through the per-edge transport. Exact in real arithmetic -- a numerical floor,
+# not a broken symmetry (real breaks are O(0.1-1)). See tests/.../test_tag_equivariance.py
+# FRAME_TOL, and note gamma is unregulated at gamma_max: null -- watch gamma_mean instead.
 _target_: lloca.framesnet.equi_frames.LearnedPDFrames
 is_global: false
 random: false
