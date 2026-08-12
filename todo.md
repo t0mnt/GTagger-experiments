@@ -395,6 +395,19 @@ Ran the tools rather than reading them. What it found, all fixed and pushed:
   `default=False` in `base_experiment`. Caught by `test_production_manifest` — a compose-only
   audit misses it, because compose succeeds and INSTANTIATE is what fails.
 
+- **`find_lr`'s recipe pointer dropped for all 8 baselines.** The
+  `FIND_LR … -> <recipe>` line — what a 25-model sweep is transcribed from — derived the
+  recipe from the NET CLASS name, which matches for the 8 hybrids and misses for every
+  baseline (`tag_cgenn` -> `top_CGENN.yaml`, absent; the real file is `top_cgenn.yaml`), so
+  it silently printed nothing. Now keyed off the hydra `model` choice with the class name as
+  fallback. Gated in `test_recipe_sweep_guard.py`.
+- **No instantiate-level gate covered most production configs.** `test_production_manifest`
+  covers the six lgatr-family models only, which is why `tag_cgenn` and `tag_lorentznet`
+  carried my invalid `use_amp` key with nothing to report it. Added
+  `tests/internal/test_config_target_signatures.py`: a static check that every config key is
+  a parameter of the class its `_target_` names, over all 36 + quick configs in <4 s, no
+  model construction. Currently clean; mutation-tested against the real bug.
+
 Confirmed clean:
 
 - All **72** campaign (task, model, recipe) combinations compose AND resolve.
