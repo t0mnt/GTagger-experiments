@@ -1,4 +1,4 @@
-# Training recipe for tag_ParticleNetParTGraphTrans -- fill in the REQUIRED (???) keys, then:
+# Training recipe for tag_ParticleNetParTGraphTrans -- fill in the (???) keys, then:
 #   python run.py model=tag_ParticleNetParTGraphTrans training=top_ParticleNetParTGraphTrans data.dataset=full gpus=1
 #
 #   lr         <- utils/find_lr.py                                   (reported loss-min / 10)
@@ -7,6 +7,9 @@
 #   weight_decay (optional override) -> see the weight-decay guidance
 #
 # Inherits tag_gts_and_friends_default: AdamW, CosineAnnealingWarmup, epochs=20, grad-clip 1.0, best-val checkpoint.
+# NOTE: `???` is NOT enforced by hydra -- the shared default would silently supply
+# batchsize 512 / lr 1e-3. run.py refuses to launch an unswept recipe instead
+# (_check_recipe_is_swept); pass `training.<key>=<value>` if you mean to override.
 defaults:
   - tag_gts_and_friends_default
 

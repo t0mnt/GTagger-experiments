@@ -1,4 +1,4 @@
-# Training recipe for tag_cgenn -- fill in the REQUIRED (???) keys, then:
+# Training recipe for tag_cgenn -- fill in the (???) keys, then:
 #   python run.py model=tag_cgenn training=top_cgenn data.dataset=full gpus=1
 #
 #   lr         <- utils/find_lr.py                                   (reported loss-min / 10)
@@ -31,6 +31,9 @@
 # Both are legitimate; only one of them is comparable to the eight hybrids it is the reference
 # for, which is why the shared recipe wins here. Say so in the methods section rather than
 # implying the two agree.
+# NOTE: `???` is NOT enforced by hydra -- the shared default would silently supply
+# batchsize 512 / lr 1e-3. run.py refuses to launch an unswept recipe instead
+# (_check_recipe_is_swept); pass `training.<key>=<value>` if you mean to override.
 defaults:
   - tag_gts_and_friends_default
 
