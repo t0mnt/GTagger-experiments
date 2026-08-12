@@ -1102,16 +1102,22 @@ Two ways forward, in order of risk:
 >   **Which leaves the campaign posture UNRESOLVED, and leaning the other way.** Because
 >   the Function is eager-only, the compiled sparse path today is byte-for-byte the code
 >   the H100 OOM search measured -- so that finding is untouched: sparse peaked at 15.2 GB
->   by batch 16 and was sized to 32 where einsum and matmul got 64. ("i.e. half the jets/s"
->   is what this line used to say, and that was an ASSUMPTION, not a measurement: it holds
->   only if it/s is unchanged by batch size, i.e. only if the card is nowhere near
->   saturated. If it is saturated, halving the batch nearly doubles it/s and jets/s barely
->   moves. `find_lr` now times every rung it probes and prints the jets/s curve, so the
->   next run of it settles this instead of assuming it.)
+>   by batch 16 and was sized to 32 where einsum and matmul got 64.
 >   `gp_impl: sparse` therefore now rests on lgatr's default plus a CPU timing inside a 9%
 >   noise floor, against a direct measurement of OUR code on the target hardware saying the
 >   opposite. That is the wrong way round for this repo. Either rerun beta-PERF for the
 >   CGENN rows (with `--bs-safety 1.0`, since the sizes are the finding) or ship `einsum`.
+>
+>   > **ANSWERED THE NEXT DAY, AND THE MEMORY HALF INVERTED.** β-PERF was rerun on
+>   > 2026-08-12 (§"β-PERF, CGENN rows — the memory inversion"). The "15.2 GB at bs 16 /
+>   > half the batch" numbers in the paragraph above are SUPERSEDED, not merely uncertain:
+>   > they predate the Function, and the eager probe now reads sparse **6.0 GB against
+>   > einsum's 10.1** at bs 16 and **47.6 vs 80.2** at bs 128, with all three impls sizing
+>   > to the same 128. So sparse no longer loses on memory, eager, and the "half the jets/s"
+>   > clause this paragraph used to end on has no premise left. What DID survive the rerun
+>   > is the opposite of what is written here: compiled, einsum is the FASTEST of the three
+>   > (1.41 vs matmul 1.36 vs sparse 1.25 it/s at the shared batch). Read the later section,
+>   > not this one, and see there for why that still does not settle the posture.
 > - *"NOT attempted here"* — it was attempted and shipped. The d/dy scatter that this
 >   paragraph calls the fiddly part is not a scatter at all in the end: for a fixed left
 >   blade the map j -> k(i, j) is a bijection, so it inverts into a gather, which is also
@@ -1125,6 +1131,7 @@ Two ways forward, in order of risk:
 > The current state is the "L-GATr 2.0 trick census" section at the end of this document.
 > **The one number that has NOT been re-measured is the H100 peak** that motivated all of
 > this — no GPU here — so the OOM search is the first thing the next β-PERF run should redo.
+> *(It was redone, 2026-08-12. See the inversion note above.)*
 
 *Mixed precision, where we differ from upstream by omission.* The paper: "the baseline
 transformer and ParT can be used with mixed precision without performance drop", while "For
@@ -1797,3 +1804,78 @@ two mechanisms that survive, and between them they cover both postures. There is
 Nothing to implement. Recorded at this length because measurement (1) is genuinely
 attractive and someone who stops there will reach the wrong conclusion -- as this document
 did, for one commit, before (2), (3) and (4) were run.
+
+---
+
+## Compiled PEAK per gp_impl — the number the posture decision was waiting on (2026-08-12)
+
+The plan for choosing `gp_impl` was: *"compiled peaks are lower than eager ones, and sparse
+starts 1.68x lower, so sparse may well take a larger batch than einsum can. jets/s at each
+impl's OWN batch is what decides, and no one has measured that."* That plan has a premise —
+that sparse's eager memory advantage survives compilation — and the CORRECTION block above
+already says the opposite for RETENTION. Retention is not peak, though, and it is peak that
+sets the batch size, so the premise was open. Measured now.
+
+Model level, tag_cgenn fixtures, fp64, CPU, three warm-up steps before any read. Retention
+via `saved_tensors_hooks`; peak via the profiler's allocation records (a proxy — see the
+caveat below).
+
+| gp_impl | retained eager | retained compiled | peak eager | peak compiled |
+|---|---|---|---|---|
+| einsum | 293.44 MB | 253.63 MB | 2941 MB | 852.15 MB |
+| matmul | 293.44 MB | 253.63 MB | 1901 MB | 852.15 MB |
+| sparse | 84.84 MB | 252.76 MB | 3626 MB | 849.61 MB |
+| **spread max/min** | **3.459x** | **1.0034x** | **1.907x** | **1.0030x** |
+
+**Compiled, the impls are indistinguishable in BOTH retention and peak — 0.3% apart.** The
+eager spread is 3.5x in retention and 1.9x in peak; compilation erases both.
+
+*Why this is trustworthy where the eager peak column is not:* this harness reproduces two
+independently recorded numbers to the decimal — the eager retention pair (293.4 -> 84.8,
+3.46x, from the sparse-GP Function work) and the compiled retention row (253.6 / 253.6 /
+252.8, from the CORRECTION). Both were measured months apart by different code. So the
+instrument is calibrated against known answers before being read for a new one.
+
+*The caveat, stated plainly:* the eager PEAK column disagrees in DIRECTION with the H100
+(which measured eager sparse at 47.6 GB against einsum's 80.2, i.e. 0.59x, where this reads
+1.23x). Do not trust the eager peak column. The disagreement is probably scale, not
+instrument: these fixtures are batch 4 in fp64 against the H100's batch 128 in fp32, and the
+Function trades retention for transients — its backward RECOMPUTES the two (B, N, 16, 16)
+tensors it declined to save. At batch 4 one layer's transient dominates; at batch 128 the
+retained activations of every layer dominate and the trade pays. Both measurements can be
+right at their own scale. The compiled columns are the ones this section is for, and there
+the two metrics agree with each other and with the prior retention measurement.
+
+**What it means for `gp_impl`.** If compiled peaks are equal, every impl sizes to the SAME
+batch, and "jets/s at each impl's own batch" collapses to "it/s at a shared batch" — which
+beta-PERF has already measured on the H100: **einsum 1.41, matmul 1.36, sparse 1.25**, einsum
+ahead by 12.8%, far outside the 3% margin. On that reading the campaign posture is `einsum`,
+not `sparse`, and the memory argument that has protected `sparse` through three revisions of
+this document does not survive `compile: true`.
+
+**NOT FLIPPED, and the reason is not caution for its own sake.** This is CPU inductor; the
+campaign is Triton on an H100. The partitioner's min-cut is shared between backends and is
+what drives retention (hence the exact reproduction), but peak also depends on inductor's
+buffer reuse and scheduling, which are backend-specific. One GPU command closes it, and it
+is the same command either way:
+
+    for i in einsum matmul sparse; do PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+      python utils/find_lr.py -cp config -cn toptagging model=tag_cgenn \
+      model.net.gp_impl=$i save=false +lr_find.find_batch_size=true; done
+
+`find_lr` sizes on the SHIPPED (compiled) config, unlike beta-PERF which forces the knob off,
+and it now prints peak AND jets/s per rung. Three outcomes and what each means:
+
+- *Same batch for all three* — confirms this table on GPU. Ship `einsum`; it is 12.8% faster
+  at that batch. Update `gp_impl` in the three CGENN configs and the pin in
+  `tests/experiments/test_lgatr_migration_parity.py`, which asserts `sparse` deliberately.
+- *sparse sizes larger* — the CPU result does not transfer; compare jets/s at each own batch.
+- *jets/s flat across the top rungs for all three* — the card is saturated, batch size is not
+  the lever, and the decision is 12.8% of throughput on the einsum row alone.
+
+Worth noting what is NOT in doubt: `gp_impl=sparse` is not "rejected for compiled CGENN". It
+is what ships, it runs compiled, and the eager-only branch inside
+`experiments/baselines/cgenn/sparse_gp.py` is about the autograd FUNCTION wrapper, not the
+sparse contraction. What this table questions is narrower and older — whether sparse is the
+right *choice* among three working impls, once compilation has erased the memory difference
+that was its whole case.

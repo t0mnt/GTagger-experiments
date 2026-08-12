@@ -22,9 +22,20 @@ net:
  n_layers: 4
  dropout: 0.2
  # einsum (BIT-reference path) | matmul (dense GEMM) | sparse (quasigroup gather).
- # sparse mirrors lgatr 2.0's sparse_gp=True default posture (fastest under compile on
- # GPU); CPU-measured ranking is matmul > einsum > sparse, so quick/CPU work may prefer
- # matmul. β-PERF GPU matrix can overturn this with a one-line change. docs/cgenn-compile.md
+ # sparse mirrors lgatr 2.0's sparse_gp=True default posture. "(fastest under compile on
+ # GPU)" stood here and is FALSE as measured: β-PERF ran on 2026-08-12 and compiled it/s at
+ # a shared batch is einsum 1.41 > matmul 1.36 > sparse 1.25, i.e. sparse is the SLOWEST of
+ # the three by 12.8%, outside the 3% margin.
+ #
+ # NOT flipped to einsum on that alone, deliberately. The shared batch was sized EAGER,
+ # where sparse peaks 0.59x einsum (47.6 vs 80.2 GB at bs 128) -- and einsum then OOM'd ten
+ # steps into its own eager run at that batch. Compiled, each impl will size its own batch,
+ # and jets/s at each impl's OWN batch is the question. Nobody has measured it.
+ #   for i in einsum matmul sparse; do PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+ #     python utils/find_lr.py -cp config -cn toptagging model=tag_cgenn \
+ #     model.net.gp_impl=$i save=false +lr_find.find_batch_size=true; done
+ # find_lr sizes on the SHIPPED (compiled) config and now prints jets/s per rung, so that
+ # loop answers it directly. Flip this line if einsum still leads. docs/cgenn-compile.md
  gp_impl: sparse
 
 defaults:
