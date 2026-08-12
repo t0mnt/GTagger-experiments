@@ -437,3 +437,107 @@ def test_probe_lengths_and_collate_on_the_real_dataset(tmp_path):
     assert batch.label.shape == (bs,)
     assert batch.x.shape == (int(got[idx].sum()), 4)
     assert torch.diff(batch.ptr).max().item() == int(got.max())
+
+
+@pytest.mark.parametrize(
+    "dataset",
+    [
+        pytest.param(type("Raises", (), {"data_list": property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("absent")))})(), id="property-raises"),
+        pytest.param(type("BadLen", (), {"data_list": type(
+            "L", (), {"__len__": lambda self: (_ for _ in ()).throw(RuntimeError())})()})(),
+            id="len-raises"),
+        pytest.param(type("Ints", (), {"data_list": [1, 2, 3]})(), id="not-Data-objects"),
+        pytest.param(type("Str", (), {"data_list": "nope"})(), id="data_list-is-a-string"),
+        pytest.param(type("Empty", (), {"data_list": []})(), id="empty"),
+        pytest.param(object(), id="no-data_list"),
+        pytest.param(None, id="no-dataset"),
+    ],
+)
+def test_probe_lengths_never_raises(dataset):
+    """SOFTFAIL: the helper's whole contract is None-when-unavailable.
+
+    The caller's fallback is a random batch, so an exception here does not degrade the
+    probe — it kills the batch search, after a GPU has been allocated and the model built.
+    `getattr(x, "data_list", None)` suppresses only AttributeError, so a `data_list`
+    property raising anything else used to propagate. Not reachable for the two datasets
+    shipped here (TaggingDataset's is a plain attribute; the weaver iterable one has no such
+    attribute at all, which is why JetClass and TopTagXL take the random-batch path), but
+    this is the seam a third dataset arrives through.
+    """
+    assert _probe_lengths(dataset) is None
+
+
+class _IterableExp(_FakeExp):
+    """An experiment whose dataset STREAMS, as JetClass and TopTagXL do.
+
+    No `data_list`, so `_probe_lengths` returns None and nothing can be constructed; the
+    loader yields a fresh random batch each time it is iterated, and `_extract_batch`
+    exposes `ptr` the way both real experiments do.
+    """
+
+    def __init__(self, lengths, ceiling, seed=0):
+        super().__init__(lengths, ceiling)
+        self.data_train = object()  # streams: no data_list at all
+        self.rng = np.random.default_rng(seed)
+        self.drawn = []
+
+    class _Loader:
+        def __init__(self, outer):
+            self.outer, self.batch_size, self.collate_fn = outer, 16, None
+
+        def __iter__(self):
+            while True:
+                o = self.outer
+                yield o.lengths[o.rng.integers(0, o.lengths.size, size=self.batch_size)]
+
+    def _init_dataloader(self):
+        self.train_loader = self._Loader(self)
+        self.train_loader.batch_size = int(self.cfg.training.batchsize)
+
+    def _extract_batch(self, batch):
+        ptr = torch.cat([torch.zeros(1, dtype=torch.long),
+                         torch.as_tensor(np.cumsum(batch))])
+        self.drawn.append(float((np.asarray(batch, dtype=np.float64) ** 2).sum()))
+        return None, None, ptr, None
+
+
+def test_streaming_dataset_falls_back_and_says_so(monkeypatch, caplog):
+    """JetClass/TopTagXL: nothing to construct, and the log must not imply otherwise."""
+    _fake_cuda(monkeypatch)
+    exp = _IterableExp(LENGTHS, 1.5e6)
+    assert _probe_lengths(exp.data_train) is None
+    with caplog.at_level("INFO"):
+        find_max_batch_size(exp, 16, 8192, 1.0)
+    assert any("ONE RANDOM BATCH" in r.message for r in caplog.records)
+    assert any("streams" in r.message for r in caplog.records)
+
+
+def test_worst_of_n_picks_the_heaviest_drawn_batch(monkeypatch, caplog):
+    """The substitute: with draws>1 the probe must be the heaviest of what it drew."""
+    _fake_cuda(monkeypatch)
+    exp = _IterableExp(LENGTHS, 1.5e6)
+    with caplog.at_level("INFO"):
+        find_max_batch_size(exp, 16, 8192, 1.0, draws=8)
+    assert any("worst of 8 DRAWN batches" in r.message for r in caplog.records)
+    assert exp.drawn, "no batches were weighed"
+
+
+def test_worst_of_n_never_returns_a_lighter_probe_than_one_draw(monkeypatch):
+    """Sanity on the substitute's direction: more draws cannot choose a smaller batch."""
+    _fake_cuda(monkeypatch)
+    sizes = [
+        find_max_batch_size(_IterableExp(LENGTHS, 1.5e6, seed=s), 16, 8192, 1.0, draws=d)
+        for s in range(3)
+        for d in (1, 8)
+    ]
+    one, many = sizes[0::2], sizes[1::2]
+    assert all(m <= o for m, o in zip(many, one)), (many, one)
+
+
+def test_draws_is_ignored_where_construction_works(monkeypatch):
+    """Construction is deterministic and strictly better, so draws must not perturb it."""
+    _fake_cuda(monkeypatch)
+    plain = find_max_batch_size(_FakeExp(LENGTHS, 1.5e6), 16, 8192, 1.0)
+    with_draws = find_max_batch_size(_FakeExp(LENGTHS, 1.5e6), 16, 8192, 1.0, draws=8)
+    assert plain == with_draws

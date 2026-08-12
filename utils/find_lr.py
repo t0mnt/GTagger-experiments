@@ -72,6 +72,13 @@ On a GPU you can also auto-size the batch first, then sweep the lr at that size
                                     average -- more than the probe fix below is worth --
                                     but the campaign's convention is a round batch that
                                     is comparable across recipes, hence off by default)
+    +lr_find.bs_draws=8             ITERABLE datasets only (JetClass, TopTagXL): probe the
+                                    heaviest of N drawn batches (default 1). Those stream, so
+                                    no batch can be CONSTRUCTED -- worst-of-N is the only
+                                    substitute, and it is a weak one (N=8 buys roughly the
+                                    p87 batch where construction targets the run's worst).
+                                    Ignored where construction works. Costs N collates per
+                                    rung, not N training steps.
     +lr_find.bs_safety=1.0          fraction of the largest fit to use     (default 1.0,
                                     i.e. the largest fitting power of two; <1 adds
                                     headroom but breaks the power of two)
@@ -80,8 +87,9 @@ The probe batch is CONSTRUCTED from the dataset's own jet lengths, not drawn: it
 `bs_sigmas` sd above a typical batch's total size, with P_max at the dataset maximum.
 A random draw is a MEDIAN batch, and a long run meets the worst of ~10^5 draws, which
 is what used to make `bs_safety<1` necessary -- see PROBE_SIGMAS in this file for the
-measured gap. On datasets with no cheap per-item lengths (JetClass, TopTagXL) the probe
-falls back to one random batch and says so in the log; there `bs_safety` still applies.
+measured gap. JetClass and TopTagXL stream through an iterable dataset with no indexable
+items, so nothing can be constructed there: the probe falls back to a drawn batch (one, or
+the heaviest of `bs_draws`) and says which in the log. `bs_safety` still applies there.
 
 e.g.  python utils/find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \\
           save=false +lr_find.find_batch_size=true
@@ -145,6 +153,7 @@ DEFAULTS = dict(
     bs_start=16,  # smallest batchsize tried
     bs_max=16384,  # largest batchsize tried
     bs_sigmas=5.0,  # how heavy the constructed probe batch is, in sd of the batch total
+    bs_draws=1,  # iterable datasets only: probe the heaviest of N drawn batches
     bs_refine=False,  # bisect the octave the doubling search discards (3 more probes, no power of two)
     bs_safety=1.0,  # fraction of the largest fitting batchsize to use (1.0 keeps a power of two)
 )
@@ -226,14 +235,21 @@ def _probe_lengths(dataset):
     cached = getattr(dataset, "_probe_lengths", None)
     if cached is not None:
         return cached
-    data_list = getattr(dataset, "data_list", None)  # map-style TaggingDataset only
-    if data_list is None or len(data_list) == 0:
-        return None
+    # Whole lookup guarded, not just the scan. `getattr(..., None)` suppresses only
+    # AttributeError, so a `data_list` implemented as a property that raises anything else
+    # would propagate and kill the batch search -- which is the one thing this helper must
+    # never do, since its entire contract is "None when lengths are not cheaply available"
+    # and the caller's fallback is a random batch. Not reachable for the two datasets here
+    # (TaggingDataset's is a plain attribute, weaver's iterable one has none), but the next
+    # dataset is exactly where a soft-fail helper earns its keep.
     try:
+        data_list = getattr(dataset, "data_list", None)  # map-style TaggingDataset only
+        if data_list is None or len(data_list) == 0:
+            return None
         lengths = np.fromiter(
             (int(d.x.shape[0]) for d in data_list), dtype=np.int64, count=len(data_list)
         )
-    except (AttributeError, TypeError, ValueError, IndexError):
+    except Exception:
         return None
     try:
         dataset._probe_lengths = lengths
@@ -313,7 +329,48 @@ def _worst_case_batch(exp, bs, lengths, sigmas=PROBE_SIGMAS):
         return None
 
 
-def find_max_batch_size(exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine=False):
+def _heaviest_drawn_batch(exp, draws):
+    """Heaviest of `draws` batches from the loader -- the only probe an ITERABLE dataset allows.
+
+    JetClass and TopTagXL stream through `SimpleIterDataset`, which has no `data_list` and no
+    indexable items, so `_worst_case_indices` cannot apply: you cannot ASK for a heavy batch,
+    only take what the iterator yields. Their batches still vary, though -- weaver hands over
+    a dense `(B, 4, P)` tensor and `dense_to_sparse_jet` immediately collapses it to the same
+    `ptr` layout top-tagging uses, so `sum n` and `sum n^2` move batch to batch exactly as
+    they do there. A single draw is still a median batch.
+
+    Worst-of-K is the available substitute. The max of K draws approximates the (1 - 1/K)
+    quantile, so it is much weaker than construction (K=8 buys about p87, where construction
+    targets the worst batch of the whole run) -- but it is strictly better than K=1 and it
+    costs only K collates plus K extractions, not K training steps.
+
+    Weight is `sum n^2` read off `ptr`, which is uniform across both experiment types because
+    both go through `_extract_batch`. Returns None on any problem, leaving the caller's single
+    `next(iter(...))` in place.
+    """
+    if draws <= 1:
+        return None
+    best, best_weight = None, -1.0
+    try:
+        it = iter(exp.train_loader)
+        for _ in range(draws):
+            batch = next(it, None)
+            if batch is None:
+                break
+            *_, ptr, _ = exp._extract_batch(batch)
+            n = torch.diff(ptr).to(torch.float64)
+            weight = float((n**2).sum())
+            if weight > best_weight:
+                best, best_weight = batch, weight
+    except Exception as err:
+        LOGGER.warning(f"  worst-of-{draws} probe draw failed ({err}); using a single batch.")
+        return None
+    return best
+
+
+def find_max_batch_size(
+    exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine=False, draws=1
+):
     """Doubling search for the largest batchsize that survives a full training step.
 
     At each candidate it runs a real fwd + bwd + optimizer step (scaler + gradient
@@ -382,6 +439,8 @@ def find_max_batch_size(exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine
             exp._init_dataloader()
             data = None if lengths is None else _worst_case_batch(exp, bs, lengths, sigmas)
             if data is None:
+                data = _heaviest_drawn_batch(exp, draws)
+            if data is None:
                 if lengths is not None and not state["warned"]:
                     LOGGER.warning(
                         f"  batchsize {bs}: no worst-case batch constructible from "
@@ -426,8 +485,9 @@ def find_max_batch_size(exp, start, max_cap, safety, sigmas=PROBE_SIGMAS, refine
     LOGGER.info("Searching for the largest batchsize that fits a full training step:")
     if lengths is None:
         LOGGER.info(
-            "  probe batch: ONE RANDOM BATCH (this dataset does not expose per-item "
-            f"lengths) -- a median batch, so keep headroom via bs_safety (now {safety})."
+            f"  probe batch: {'worst of ' + str(draws) + ' DRAWN batches' if draws > 1 else 'ONE RANDOM BATCH'} "
+            f"(this dataset streams, so no batch can be constructed) -- keep headroom via "
+            f"bs_safety (now {safety})."
         )
     else:
         LOGGER.info(
@@ -718,6 +778,7 @@ def main(cfg):
             params["bs_safety"],
             sigmas=float(params["bs_sigmas"]),
             refine=bool(params["bs_refine"]),
+            draws=int(params["bs_draws"]),
         )
         with open_dict(cfg):
             cfg.training.batchsize = bs
