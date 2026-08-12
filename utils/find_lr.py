@@ -1,7 +1,7 @@
 """
-    python utils/find_lr.py -cp config -cn jctagging model=tag_transformer save=false
-    python utils/find_lr.py -cp config -cn toptagging model=tag_transformer save=false
-    python utils/find_lr.py -cp config -cn jctagging model=tag_transformer model/framesnet=learnedpd save=false
+    python utils/find_lr.py -cn jctagging model=tag_transformer save=false
+    python utils/find_lr.py -cn toptagging model=tag_transformer save=false
+    python utils/find_lr.py -cn jctagging model=tag_transformer model/framesnet=learnedpd save=false
 
 The task is selected with `-cn` (toptagging / jctagging / amplitudes / ttbar / ...)
 and the dataset within a task with the usual data overrides (e.g. `data.dataset=mini`
@@ -83,7 +83,7 @@ is what used to make `bs_safety<1` necessary -- see PROBE_SIGMAS in this file fo
 measured gap. On datasets with no cheap per-item lengths (JetClass, TopTagXL) the probe
 falls back to one random batch and says so in the log; there `bs_safety` still applies.
 
-e.g.  python utils/find_lr.py -cp config -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \\
+e.g.  python utils/find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \\
           save=false +lr_find.find_batch_size=true
 prints both the GPU-fit batchsize and the suggested lr. (On CPU the batch-size
 search is a no-op.) It still measures one step rather than a trajectory, so run it
