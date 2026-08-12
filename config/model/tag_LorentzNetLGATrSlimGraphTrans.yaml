@@ -1,7 +1,8 @@
 _target_: experiments.tagging.wrappers.LorentzNetLGATrSlimGraphTransWrapper
 out_channels: null              # init_physics -> num_outputs
+# no use_amp key: this wrapper has no autocast and does not accept one; the
+# GradScaler still reads cfg.model.use_amp, which defaults to False.
 compile: true  # torch.compile(net, dynamic=True); operator-adopted default; gates green
-use_amp: false  # NOT a speed choice: AMP destroys the equivariance this model exists for
 
 net:
   _target_: experiments.baselines.lorentznetlgatrslimgraphtrans.LorentzNetLGATrSlimGraphTrans

@@ -1,7 +1,8 @@
 _target_: experiments.tagging.wrappers.CGENNWrapper
 out_channels: null
+# no use_amp key: this wrapper has no autocast and does not accept one; the
+# GradScaler still reads cfg.model.use_amp, which defaults to False.
 compile: true  # torch.compile(net, dynamic=True); wrapper stays eager (docs/cgenn-compile.md; operator-adopted default)
-use_amp: false  # NOT a speed choice: AMP destroys the equivariance this model exists for
 activation_memory_budget: null  # OOM escape hatch only: fraction in (0,1] handed to
                                 # AOT's partitioner, buying peak activation memory with
                                 # backward recompute (lgatr 2.0's knob). null = torch
@@ -33,7 +34,7 @@ net:
  # steps into its own eager run at that batch. Compiled, each impl will size its own batch,
  # and jets/s at each impl's OWN batch is the question. Nobody has measured it.
  #   for i in einsum matmul sparse; do \
- #     python utils/find_lr.py -cp config -cn toptagging model=tag_cgenn \
+ #     python utils/find_lr.py -cn toptagging model=tag_cgenn \
  #     model.net.gp_impl=$i save=false +lr_find.find_batch_size=true; done
  # find_lr sizes on the SHIPPED (compiled) config and now prints jets/s per rung, so that
  # loop answers it directly. Flip this line if einsum still leads. docs/cgenn-compile.md

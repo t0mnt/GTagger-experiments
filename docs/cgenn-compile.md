@@ -1866,7 +1866,7 @@ buffer reuse and scheduling, which are backend-specific. One GPU command closes 
 is the same command either way:
 
     for i in einsum matmul sparse; do \
-      python utils/find_lr.py -cp config -cn toptagging model=tag_cgenn \
+      python utils/find_lr.py -cn toptagging model=tag_cgenn \
       model.net.gp_impl=$i save=false +lr_find.find_batch_size=true; done
 
 `find_lr` sizes on the SHIPPED (compiled) config, unlike beta-PERF which forces the knob off,

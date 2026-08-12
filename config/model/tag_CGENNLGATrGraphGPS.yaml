@@ -1,7 +1,8 @@
 _target_: experiments.tagging.wrappers.CGENNLGATrGraphGPSWrapper
 out_channels: null              # init_physics -> num_outputs
+# no use_amp key: this wrapper has no autocast and does not accept one; the
+# GradScaler still reads cfg.model.use_amp, which defaults to False.
 compile: true  # torch.compile(net, dynamic=True); edges hoisted eager (operator-adopted default)
-use_amp: false  # NOT a speed choice: AMP destroys the equivariance this model exists for
 activation_memory_budget: null  # OOM escape hatch only: fraction in (0,1] handed to
                                 # AOT's partitioner, buying peak activation memory with
                                 # backward recompute (lgatr 2.0's knob). null = torch

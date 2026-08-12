@@ -121,3 +121,38 @@ def test_sbatch_targets_are_created_before_first_use():
                 f"step that creates it above the first submission -- a reader pasting in order "
                 f"gets 'Unable to open file'."
             )
+
+
+# Widen the sweep past the four docs above: a broken command is just as costly when it
+# lives in a config comment or a module docstring, and that is where this one lived.
+SOURCES = DOCS + [
+    "utils/find_lr.py", "utils/bperf.py", "docs/cgenn-compile.md",
+    "config/model/tag_cgenn.yaml", "todo.md",
+]
+
+
+@pytest.mark.parametrize("src", SOURCES)
+def test_hydra_config_path_is_valid_for_the_script(src):
+    """`-cp X` is resolved by hydra RELATIVE TO THE SCRIPT, not the working directory.
+
+    `python utils/find_lr.py -cp config ...` therefore looks for `utils/config` and dies
+    with "Primary config directory not found" -- while the identical-looking
+    `python run.py -cp config ...` is correct, because run.py sits at the repo root. Six
+    such invocations shipped: four in find_lr.py's own usage header, one in
+    docs/cgenn-compile.md, and one in the tag_cgenn.yaml comment giving the command that
+    settles the gp_impl posture. find_lr.py already defaults to `../config`, so the fix is
+    to drop `-cp` entirely.
+
+    Static check, and it has to be: running each command costs minutes and a GPU.
+    """
+    text = (REPO / src).read_text()
+    bad = []
+    for script, cp in re.findall(r"python3? ([\w/]+\.py)\s+-cp\s+([\w./]+)", text):
+        script_dir = (REPO / script).parent
+        if not (script_dir / cp).is_dir():
+            bad.append(f"`python {script} -cp {cp}` -> {script_dir / cp} does not exist")
+    assert not bad, (
+        f"{src} documents a config path that hydra resolves relative to the SCRIPT:\n  "
+        + "\n  ".join(bad)
+        + f"\nDrop `-cp` if the script's own hydra.main already points at the right tree."
+    )
