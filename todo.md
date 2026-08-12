@@ -443,7 +443,13 @@ the split is not by importance, it is by whether the change can touch a number.
 
 **Should do — safe now, no arithmetic touched:**
 
-- [ ] **`torch.cuda.amp.autocast(...)` migration**, 4 live sites
+- [ ] **`torch.cuda.amp.autocast(...)` migration**, 4 live sites — and it is the MORE urgent
+      of the two deprecations, which inverts an earlier note here. Torch classes them
+      differently, checked: autocast raises **FutureWarning** ("this will change"), the
+      ParT-GPS mask raises only **UserWarning**. The earlier text had it backwards, saying
+      the mask "will become fatal" (no removal version is announced) while calling autocast
+      cosmetic. Autocast is also the noisy one: it fires per forward call — 940 warnings in a
+      29-second smoke run — which on a multi-day campaign is a lot of log. Sites:
       (`particlenetpartgraphgps.py:241`, `particlenettransformer.py:916`,
       `plaingraphgps.py:403`, `plaingraphtrans.py:350`; mipart's two are commented out).
       `torch.amp.autocast("cuda", enabled=X)` is exactly equivalent, and every model ships
