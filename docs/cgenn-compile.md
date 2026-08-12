@@ -1873,6 +1873,21 @@ and it now prints peak AND jets/s per rung. Three outcomes and what each means:
 - *jets/s flat across the top rungs for all three* — the card is saturated, batch size is not
   the lever, and the decision is 12.8% of throughput on the einsum row alone.
 
+**Do NOT answer this with another β-PERF run — it structurally cannot.** `find_batchsize`
+composes `f"{knob}=false"` (`utils/bperf.py`), so the OOM search ALWAYS runs eager and both
+states then share that one batch. That is deliberate and correct for what β-PERF reports (a
+paired eager-vs-compiled ratio needs one batch), but it means every β-PERF run, however many
+times it is repeated, hands the compiled rows a batch chosen by an eager probe. Compiled
+peaks are the lower ones, so the compiled batch is bigger than the eager-sized 128 the
+throughput table above was measured at — and a ranking at 128 is not guaranteed to hold
+there. `find_lr` is the tool that differs on exactly this point: it leaves the compile
+posture to the yaml, and 20 production configs ship `compile: true`, so it sizes the SHIPPED
+model.
+
+β-PERF is still worth one rerun for its OWN job, just not for this one: einsum's eager row is
+missing (it OOM'd at step ~10, so that row has no eager/compiled ratio), and the
+`evaluate=false` fix has cut its wall clock by roughly 20x since that table was produced.
+
 Worth noting what is NOT in doubt: `gp_impl=sparse` is not "rejected for compiled CGENN". It
 is what ships, it runs compiled, and the eager-only branch inside
 `experiments/baselines/cgenn/sparse_gp.py` is about the autograd FUNCTION wrapper, not the
