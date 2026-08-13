@@ -912,10 +912,12 @@ Once the recipes are filled, shake down the config axes before (or alongside) th
 runs, in this order — PlainGraphGPS PE/SE variants first (`model.net.use_edge_attr`,
 `model.net.use_rwse`, `model.net.norm=batch|layer` — confirm each trains), then every
 hybrid under both graph metrics (`model.net.knn_metric=deltaR|minkowski` — the eight
-hybrids only; no baseline exposes the knob, and the lloca `ParticleNet` baseline could not
-use it anyway since `ParticleNetWrapper` hands it (phi, eta) and never the four-momenta),
-then the
-LLoCa models (Plain / ParticleNet-ParT) under PD frames (`model/framesnet=learnedpd`).
+hybrids **and the `tag_particlenet` baseline**, which exposes the knob too: the wrapper
+passes the four-momenta as `v=` and `ParticleNet` ranks layer-0 on the Minkowski interval.
+Production tree only — `config_quick`'s copy of `tag_particlenet.yaml` has no `knn_metric`
+key, so a bare `run.py` override fails composition; via `train.sbatch` it is fine, that
+defaults to `-cp config`), then the LLoCa models (Plain / ParticleNet-ParT, **and
+`tag_particlenet`**) under PD frames (`model/framesnet=learnedpd`).
 See GUIDE §6's shakedown note for the reasoning.
 
 ```bash
@@ -926,6 +928,20 @@ sbatch -J PNParTGraphTrans-mink train.sbatch tag_ParticleNetParTGraphTrans model
 
 # the flip side: the four equivariant hybrids ship knn_metric=minkowski, so their deltaR arm is
 sbatch -J CGENNLGATrGraphGPS-dR train.sbatch tag_CGENNLGATrGraphGPS model.net.knn_metric=deltaR
+
+# the lloca ParticleNet baseline takes both axes. `toptagging` is the sbatch's default and can
+# be omitted; spelled out here because these two are the only baseline rows with variants.
+sbatch -J particlenet-mink train.sbatch tag_particlenet toptagging model.net.knn_metric=minkowski
+sbatch -J particlenet-pd   train.sbatch tag_particlenet toptagging model/framesnet=learnedpd
+# CAUTION on that second one: learnedpd also flips data.boost_jet false -> true, so it is NOT a
+# frames-only A/B against the shipped identity row -- the boost changes too, on top of the
+# framesnet's own added parameters. experiments/tagging/experiment.py:154 forces boost_jet=false
+# only for framesnets with no `equivectors` key (i.e. identity); the explicit force at :144
+# covers only SO3/SO2, and learnedpd is not stranded by the boost (audit-ledger.md). Add
+# data.boost_jet=false to isolate the frames -- that is a third config, not either shipped one.
+# LLoCa itself is sound on this backbone despite tag_particlenet being absent from
+# CANONICALIZED_MODELS in test_tag_equivariance.py: run on the quick tree under learnedpd,
+# float64 with spurions off, invariance is 4.0e-8 (rotation) / 1.2e-5 (lorentz), bound 2e-2.
 
 # whole family, both metrics (16 jobs -- check `squeue -u $USER` before pasting)
 for M in tag_{Plain,ParticleNetParT,CGENNLGATr,LorentzNetLGATrSlim}{GraphTrans,GraphGPS}; do
