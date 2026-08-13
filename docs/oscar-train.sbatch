@@ -20,19 +20,15 @@
 #SBATCH --mem=128G                # top tagging fits in 48GB easy but others do not, lots of RAM on the condo anyway, 
                                   # using this on all 4 GPUs is about a 1/3rd of the partitions RAM and avoids loading OOM errors on other datasets
 
-#SBATCH -t 168:00:00              # 1 week. No time is wasted by asking for more than you use --
-                                  # SLURM bills what you consume, and the job exits when training
-                                  # ends -- but a too-small -t kills a run mid-training, and some
-                                  # partitions default to minutes if you omit it. A week is not
-                                  # generous for JetClass on an H100, especially pre-2.0 or on
-                                  # slower hardware. Any per-model hour figure in these docs is an
-                                  # ESTIMATE; the run prints its own "training time estimate"
-                                  # within the first ~1000 steps -- size -t from that.
-                                  # (Check your partition's MaxTime: `scontrol show partition <p>`.)
-#SBATCH -o logs/%x-%j.out         # logs/ must exist BEFORE sbatch: SLURM opens this file
-                                  # before the script runs -- missing dir = job dies, no output.
-                                  # %x = job name: submit with `sbatch -J <Model> ...` and the
-                                  # log becomes logs/<Model>-<jobid>.out (see the run_dir link below)
+#SBATCH -t 168:00:00              # 1 week, and not generous for JetClass on an H100. Over-asking
+                                  # costs nothing (SLURM bills what you consume, and the job exits
+                                  # when training ends) but a too-small -t kills a run mid-training,
+                                  # and some partitions default to minutes if you omit it. Hour
+                                  # figures in these docs are ESTIMATES; the run prints its own
+                                  # within ~1000 steps -- size on that (MaxTime: `scontrol show partition <p>`).
+#SBATCH -o logs/%x-%j.out         # logs/ must exist BEFORE sbatch: SLURM opens this file before the
+                                  # script runs -- missing dir = job dies, no output. %x = job name:
+                                  # `sbatch -J <Model> ...` -> logs/<Model>-<jobid>.out (run_dir below)
 #SBATCH --export=NONE             # do NOT inherit the login env (post-9.6 it carries a stale
                                   # lmod `module` function that errors on compute nodes)
 # #SBATCH -C ampere               # optionally pin a GPU architecture/feature (--constraint)
@@ -47,12 +43,10 @@ export APPTAINER_BINDPATH="/oscar/home/$USER,/oscar/scratch/$USER,/oscar/data"
 export PYTHONUNBUFFERED=1         # live logs (batch jobs have no tty -> python buffers)
 export PYTHONNOUSERSITE=1         # never import from ~/.local (the docs/OSCAR.md leak class);
                                   # --export=NONE strips the .bashrc copy, so set it here too
-# NOTE: TRITON_LIBCUDA_PATH (needed by every compiled model -- inductor builds CUDA kernels
-# through Triton, which cannot find libcuda.so inside the NGC image) is NOT set here. It lives
-# in venv/bin/activate, added once by the docs/OSCAR.md §2 setup block, because the `source
-# venv/bin/activate` below is inside the container and so covers batch jobs, interactive
-# sessions and find_lr from one place. Setting it here too would be a second copy to drift.
-# A host-side export would not reach the container anyway (measured on gpu2703).
+# NOTE: TRITON_LIBCUDA_PATH (needed by every compiled model -- inductor builds CUDA kernels through
+# Triton, which cannot find libcuda.so inside the NGC image) is NOT set here. It lives in
+# venv/bin/activate (docs/OSCAR.md §2), so batch jobs, interactive sessions and find_lr share one
+# copy; a host-side export would not reach the container anyway (measured on gpu2703).
 
 [ $# -gt 0 ] || { echo "usage: sbatch train.sbatch tag_<Model> [task] [hydra overrides...]
    or: sbatch train.sbatch <any run.py argument list, verbatim>"; exit 1; }
