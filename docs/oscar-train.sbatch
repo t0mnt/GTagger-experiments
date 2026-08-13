@@ -18,9 +18,9 @@
                                   # If nvidia-smi shows the GPU idling, raise -n and
                                   # jc_params.num_workers together, for EVERY row (walltime is
                                   # a reported column).
-#SBATCH --mem=48G                 # top-tagging: full npz in RAM + fp64 momenta -> 48G safe.
-                                  # JetClass/TopTagXL (streaming, per-worker fetch buffers): 64G.
-                                  # After the first run, `myjobinfo` shows MaxRSS -- trim to fit.
+#SBATCH --mem=128G                # top tagging fits in 48GB easy but others do not, lots of RAM on the condo anyway, 
+                                  # using this on all 4 GPUs is about a 1/3rd of the partitions RAM and avoids loading OOM errors on other datasets
+
 #SBATCH -t 168:00:00              # 1 week. No time is wasted by asking for more than you use --
                                   # SLURM bills what you consume, and the job exits when training
                                   # ends -- but a too-small -t kills a run mid-training, and some
