@@ -12,12 +12,11 @@
 # #SBATCH --mail-type=FAIL,TIME_LIMIT   # FAIL = nonzero exit; TIME_LIMIT = killed by -t
 # ---- end fill-in -----------------------------------------------------------------
 #SBATCH --gres=gpu:1
-#SBATCH -n 8                      # cores. jc/xl ship num_workers=2 (the published setting): it
-                                  # fed the fastest published model at ~9.3k jets/s, and every
-                                  # model here is slower -- but off THEIR filesystem, not yours.
-                                  # If nvidia-smi shows the GPU idling, raise -n and
-                                  # jc_params.num_workers together, for EVERY row (walltime is
-                                  # a reported column).
+#SBATCH -n 16                     # cores: one per dataloader worker plus headroom for the main
+                                  # process. jc/xl keep UPSTREAM's num_workers=2, which fed the
+                                  # fastest reference model off THEIR filesystem; here dmon measured
+                                  # a STARVED GPU on JetClass (~72% sm), so the case block below
+                                  # pins 8 for those two tasks. Change it for EVERY row or none.
 #SBATCH --mem=128G                # top tagging fits in 48GB easy but others do not, lots of RAM on the condo anyway, 
                                   # using this on all 4 GPUs is about a 1/3rd of the partitions RAM and avoids loading OOM errors on other datasets
 
@@ -77,7 +76,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 TASK=${TASK:-toptagging}
-case "$TASK" in toptagging) P=top ;; jctagging) P=jc ;; toptagxl) P=xl ;; *) echo "unknown task $TASK"; exit 1 ;; esac
+case "$TASK" in toptagging) P=top ;; jctagging) P=jc; EXTRA="jc_params.num_workers=8 $EXTRA" ;; toptagxl) P=xl; EXTRA="topxl_params.num_workers=8 $EXTRA" ;; *) echo "unknown task $TASK"; exit 1 ;; esac
 [ -n "$MODEL" ] && MODELARG="model=$MODEL" || MODELARG=""
 # Derive the training recipe only when one EXISTS: the 8 hybrids ship top_/jc_/xl_ recipes,
 # but baselines like tag_MIParT-L do not and must fall back to the task config's default

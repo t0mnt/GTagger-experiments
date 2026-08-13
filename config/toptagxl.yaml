@@ -10,6 +10,10 @@ data:
  val_files_range: [625, 675]
 
 topxl_params:
+ # Kept at UPSTREAM's 2 (theirs, not ours) and overridden to 8 by the sbatch, as jctagging is (same
+ # weaver SimpleIterDataset, same scale: [0,500] is 500 files PER CLASS x 2 = 1000, as JetClass is
+ # 100 x 10). The starvation was measured on JetClass, not here -- check `nvidia-smi dmon -s u` on
+ # the first XL run and drop the sbatch override if the GPU is already saturated.
  num_workers: 2
  fetch_step: 0.01
  extra_selection: null

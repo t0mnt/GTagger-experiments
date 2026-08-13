@@ -182,9 +182,47 @@ ParticleNet 413M, LorentzNet 676M, L-GATr 2060M):
 | ParticleNet-ParT GraphTrans | 0.65 | | ParticleNet-ParT GraphGPS | 1.22 |
 | CGENN GraphTrans | 6.97 | | **CGENN GraphGPS** | **62.9** |
 
-**CGENN-GraphGPS alone is ~84% of the eight-model total.** Not a misconfiguration — both CGENN
-configs are identical (k=16, num_blocks=10, same widths); GPS runs the Clifford-algebra MPNN
-inside *every* block instead of once, which is what GraphGPS is.
+**CGENN-GraphGPS alone is ~84% of the eight-model total.** Not a misconfiguration, but *not* the
+"same model, run more often" it looks like either. The two rows differ on **layer count and width
+at once**, and the widths are not equal:
+
+| | CGENN layers | mv width | `phi_x` GP shape | all `phi_x`, GFLOPs/jet |
+|---|---|---|---|---|
+| GraphTrans | `cgenn_layers: 3`, once before the stack | `cgenn_hidden_x: 8` | 31 → 8 | 4.9 of 6.97 |
+| GraphGPS | 1 per block × `num_blocks: 10` | `hidden_mv_channels: 16` | 55 → 16 | 57.7 of 62.9 |
+
+**11.8×** on the CGENN stage = **3.33×** (10 layers vs 3) × **3.55×** (per layer). The per-layer
+factor is the width: the dense GP costs `out × 16 × in × 256`, `out` doubles 8→16, and `in`
+follows it because `message_x` concatenates `[x_i, x_j, x_i−x_j]` (3×8+7=31 → 3×16+7=55).
+GPS inherits its CGENN width from the block width and declares no `cgenn_hidden_x` at all.
+
+11.8× on the stage lands at 9.0× on the whole model (62.9/6.97) because the transformer half is
+common to both and does not grow. Two further facts worth keeping: **96%** of the CGENN stage is
+the *message* GP `phi_x`, which runs **per edge** (P×k = 800/jet) not per node (50) — a 16×
+site multiplier the attention branch does not pay; and the same GraphTrans→GPS change costs the
+other three hybrids only 1.9–2.8× (Plain 0.42→0.97, LorentzNet-slim 0.36→1.00, ParticleNet-ParT
+0.65→1.22), so the 9× is CGENN's per-site cost, not something about GraphGPS.
+
+**Is there headroom left inside `phi_x`?** Measured at the real GPS shape (6400 edges, 55→16,
+4 CPU threads), the layer is **95–97.5% the geometric product** — `linear_right` (55→55) and
+`linear_left` (55→16) are 1.3–2.8% each. So the standard MPNN trick of hoisting the linear
+maps out of the edge loop onto nodes (legitimate here: `linear(cat[x_i, x_j, x_i−x_j, e])`
+= `(L1+L3)x_i + (L2−L3)x_j + L4·e`, so both could run on 50 sites instead of 800) is worth
+~2% and is not worth doing. The GP itself is already at its efficient factorization: the
+`input ⊗ linear_right(input)` form is diagonal in the channel index, and expanding it to the
+full `(n,p)` bilinear form would cost 55× more. What is actually left, in order:
+- **bf16/AMP.** The GP is bandwidth-bound (the `(E, 55, 16, 16)` outer product is ~360 MB per
+  layer at B=8), so halving element size is close to a straight 2×. Blocked on CGENN autocast
+  guards — port lgatr 2.0's `@minimum_autocast_precision(torch.float32)` pattern, which keeps
+  the sensitive reductions in fp32 while the bulk runs bf16. **Biggest remaining exact lever.**
+- **Re-benchmark `gp_impl` on the H100 at this shape, not at model level.** Sparse cuts MACs
+  16× (3.60M → 239k per edge) but trades a GEMM for a gather-reduce; on 4 CPU threads it comes
+  out **2× slower than einsum** here. That is a locality result, not a GPU result — but it says
+  the 16×-fewer-FLOPs argument is not self-evidently winning, and `matmul` hits TF32 tensor
+  cores while `sparse` does not. All three ship behind the knob, so this is a cheap check.
+- Everything else is architecture, and draws the same objection as `k` and `cgenn_hidden_x`
+  below: width 16→8 (3.5×), dropping the `x_i−x_j` channel block (1.4×), `fc`→`gpmlp`
+  (channel-wise GP, ~55×). Ablations, not faster implementations of this row.
 
 Calibrating against that table's own h/GFLOP (61–210, median ~83; L-GATr improves 81 → 28 under
 lgatr 2.0), CGENN-GraphGPS lands at **~2000–5000 GPU-h** for a full-JetClass-equivalent run —

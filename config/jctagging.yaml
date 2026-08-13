@@ -10,7 +10,15 @@ data:
  val_files_range: [120,121]
 
 jc_params:
+ # UPSTREAM's value, kept -- what the reference JetClass/weaver setup ships, not a number this
+ # repo measured or recommends. dmon measured a starved GPU with it (~72% sm) on this cluster, so
+ # docs/oscar-train.sbatch overrides it to 8; machine-specific tuning belongs in the job script.
+ # Raising it costs no extra fetch-buffer memory (workers SPLIT the filelist,
+ # miniweaver/dataset.py:207) but it does feed the file split and each worker's seed, so change it
+ # for EVERY row or none: JetClass runs ONE trial per model and nothing absorbs the difference.
  num_workers: 2
+ # Memory term is this x n_files. [0,100] is 100 files PER CLASS = 1000 files = the full 100M
+ # train set, so a fetch buffers ~1M events, doubled by async_load -- that is what needs 128G.
  fetch_step: 0.01
  extra_selection: null
  extra-test-selection: null
