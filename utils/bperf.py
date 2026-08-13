@@ -97,6 +97,11 @@ MATRIX = [
 
 ITER_RE = re.compile(r"Finished iteration (\d+) after ([0-9.]+)s")
 
+# What `training.batchsize` resolves to for a recipe nobody has swept: the value inherited
+# from the parent config, NOT a value anyone chose for the model. Named here because the
+# --find-batchsize failure path has to be able to say what it is refusing to run at.
+UNSWEPT_FALLBACK_BS = 512
+
 # The iterations base_experiment logs a timing line for, absent a validation pass:
 # `step in [0, 9, 99, 999, 9999, 99999]`. run_once() pushes validate_every_n_steps past
 # the end of the run, so these are the ONLY marks available -- see the module docstring.
@@ -294,15 +299,28 @@ def main():
     for name, base, knob, yaml_path in rows:
         row_base = list(base)
         if args.find_batchsize:
+            # FATAL, not a fallback. This used to print a warning and continue at the yaml
+            # value -- which is the unswept 512 -- and that has now cost two runs:
+            # a ModuleNotFoundError (see the sys.path note at the top of this file) and an
+            # IndexError in the probe, each turning a 30-second failure into hours of H100
+            # time that OOM'd row by row. There is no useful "continue" here: --find-batchsize
+            # is an explicit request to SIZE the rows, and a size the driver could not measure
+            # is not a size. Wanting the yaml value is spelled by omitting the flag.
             try:
                 bs = find_batchsize(row_base, knob, args.config_path,
                                     args.bs_start, args.bs_max, args.bs_safety)
-                row_base = row_base + [f"training.batchsize={bs}"]
-                print(f"[bperf] {name} batchsize={bs} (sized once eager, used for both "
-                      f"states)", flush=True)
             except Exception as e:
-                print(f"[bperf] {name} batchsize search FAILED ({type(e).__name__}: {e}); "
-                      f"falling back to the config value", flush=True)
+                import traceback
+                traceback.print_exc()
+                raise SystemExit(
+                    f"[bperf] {name}: --find-batchsize failed ({type(e).__name__}: {e}).\n"
+                    f"Stopping instead of running the matrix at the config batchsize -- for "
+                    f"an unswept recipe that is {UNSWEPT_FALLBACK_BS}, which OOMs the CGENN "
+                    f"rows on a 93 GB H100. Fix the search, or drop --find-batchsize to "
+                    f"accept the yaml value deliberately.") from e
+            row_base = row_base + [f"training.batchsize={bs}"]
+            print(f"[bperf] {name} batchsize={bs} (sized once eager, used for both "
+                  f"states)", flush=True)
         pair = {}
         for state in ("false", "true"):
             print(f"[bperf] {name} {knob}={state} ...", flush=True)

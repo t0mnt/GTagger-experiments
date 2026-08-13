@@ -500,11 +500,46 @@ Audited every other repeat-call site for the same class — clean: `gp_memory_pr
 `_rebuild` (clones every field), the FLOPs counter clones, `init_standardization` embeds once,
 and the train/val/lr-sweep loops all draw fresh batches.
 
+**The bigger bug was β-PERF's, and it is fixed too.** `--find-batchsize` caught every exception,
+printed a warning and ran the matrix at the config value anyway. That is what converted a
+30-second failure into hours of H100 time — and it had already done it once, to a
+`ModuleNotFoundError` (the `sys.path` note at the top of `bperf.py` records it). A sizing search
+that fails is now **fatal**: `--find-batchsize` is a request to size the rows, and wanting the
+yaml value is spelled by omitting the flag. New `tests/internal/test_bperf_driver.py` (11 gates,
+none needing a GPU) covers the fail-fast, the window check, the `--models` filter documented in
+this file, and the `--apply` regex against all 17 rows' production yamls.
+
 - [ ] **Post-campaign: make the class impossible.** `ptr = ptr.clone()` at the top of
       `embed_tagging_data` removes the side effect for every caller, present and future, and is
       bit-identical arithmetic (only the caller's tensor is spared). NOT done now: it is a
       per-step path and the campaign has started. The comment at `embedding.py:102-104` is the
       interim warning.
+
+      **The side effect is incidental, not designed** — measured, and this is the argument for
+      the fix as well as the evidence that it changes nothing anyone relies on. Which tensor
+      gets mutated moves with unrelated data keys:
+
+      | `config.data`                         | n_spurions | `ptr` mutated | `batch.x` mutated |
+      |---------------------------------------|-----------:|---------------|-------------------|
+      | SHIPPED (`max_particles: null`)        | 3          | **yes**       | no                |
+      | `max_particles: 128`                   | 3          | no            | no                |
+      | `beam_reference: null` (spurion ablation) | 0       | no            | **yes**           |
+      | `beam_reference: null`, `mass_reg: null` | 0        | no            | no                |
+
+      With `max_particles` set, line 60 rebinds `ptr` and the caller is spared; with spurions
+      off, `mass_reg` writes into `fourmomenta` instead — which IS `batch.x`, because
+      `_extract_batch`'s `.to(float64)` is a no-op on an already-float64 tensor. No designed
+      contract moves its side effect to a different argument when you toggle a beam setting.
+      Bounded: PyG's collate copies (`torch.cat` allocates), so nothing reaches `data_list` and
+      no dataset is corrupted across epochs — verified.
+
+- [ ] **Report upstream (`heidelberg-hepml/lloca-experiments`).** The mutating line is theirs
+      verbatim — fetched `experiments/tagging/embedding.py` from their `main`, the statement is
+      their line 103 and the `max_particles` rebind their line 60; only our warning comment at
+      102-104 is local. Worth a short issue: the two-line fix is `ptr = ptr.clone()`, and the
+      `beam_reference: null` row above is the one that bites them silently (no exception, the
+      caller's four-momenta are rewritten by the mass regulator). Pairs with the LLoCa issue
+      already drafted.
 
 ## 4e. Release gate — the pre-publication list, triaged
 
