@@ -28,11 +28,14 @@ as one that under-shoots leaves the job to die at step 10.
 
 import logging
 from collections import Counter
+from pathlib import Path
 
 import numpy as np
 import pytest
 import torch
 from omegaconf import OmegaConf
+
+REPO = Path(__file__).resolve().parents[2]
 
 from utils.find_lr import (
     PROBE_SIGMAS,
@@ -181,11 +184,26 @@ class _FakeExp:
         self.optimizer, self.scaler = _FakeOptimizer(), _FakeScaler()
         self.cfg = OmegaConf.create({"training": {"batchsize": 16, "clip_grad_norm": None}})
         self.calls = []
+        self.embedded = []  # batch objects already consumed -- see _batch_loss
 
     def _init_dataloader(self):
         self.train_loader.batch_size = int(self.cfg.training.batchsize)
 
     def _batch_loss(self, data):
+        # The real `_batch_loss` CONSUMES its batch: `embed_tagging_data` adds the spurion
+        # offsets to the caller's `ptr` IN PLACE, so a second pass over the same object
+        # double-counts them and dies downstream with an IndexError whose two shapes differ
+        # by exactly n_spurions*batchsize. The first version of the two-step probe hoisted
+        # ONE batch out of `step()` and reused it, which broke every rung of a real beta-PERF
+        # run; the fake had no embedding step, so nothing here caught it. It does now.
+        # `test_a_probe_batch_can_only_be_embedded_once` pins this against the real function.
+        if any(data is seen for seen in self.embedded):
+            raise IndexError(
+                "The shape of the mask [N] at index 0 does not match the shape of the "
+                "indexed tensor [N + n_spurions*B] at index 0 (simulated: batch embedded "
+                "twice, spurion offsets double-counted). Build a FRESH batch per step."
+            )
+        self.embedded.append(data)
         data = np.asarray(data)
         self.peak = float((data**2).sum())
         repeat = bool(self.calls) and self.calls[-1] == len(data)
@@ -409,13 +427,12 @@ def test_search_honours_bs_safety_on_top(monkeypatch):
     assert half == max(16, full // 2)
 
 
-def test_probe_lengths_and_collate_on_the_real_dataset(tmp_path):
-    """COLLATE: the constructed index list must survive the real dataset + real collater."""
-    pyg = pytest.importorskip("torch_geometric")
+def _real_dataset(tmp_path, n_jets=4000, seed=2):
+    """A real `TopTaggingDataset` over a synthetic npz, plus the true per-jet lengths."""
     from experiments.tagging.dataset import TopTaggingDataset
 
-    rng = np.random.default_rng(2)
-    n_jets, pad = 4000, 200
+    rng = np.random.default_rng(seed)
+    pad = 200
     kin = np.zeros((n_jets, pad, 4), dtype=np.float32)
     lengths = np.clip(rng.gamma(8.2, 6.0, size=n_jets), 4, 135).astype(int)
     for i, n in enumerate(lengths):
@@ -425,6 +442,13 @@ def test_probe_lengths_and_collate_on_the_real_dataset(tmp_path):
 
     ds = TopTaggingDataset()
     ds.load_data(str(path), "train")
+    return ds, lengths
+
+
+def test_probe_lengths_and_collate_on_the_real_dataset(tmp_path):
+    """COLLATE: the constructed index list must survive the real dataset + real collater."""
+    pyg = pytest.importorskip("torch_geometric")
+    ds, lengths = _real_dataset(tmp_path)
 
     got = _probe_lengths(ds)
     assert got is not None and np.array_equal(got, lengths)
@@ -437,6 +461,67 @@ def test_probe_lengths_and_collate_on_the_real_dataset(tmp_path):
     assert batch.label.shape == (bs,)
     assert batch.x.shape == (int(got[idx].sum()), 4)
     assert torch.diff(batch.ptr).max().item() == int(got.max())
+
+
+def test_a_probe_batch_can_only_be_embedded_once(tmp_path):
+    """CONSUMED: the premise the two-step probe rests on, pinned against the REAL embedding.
+
+    `embed_tagging_data` prepends spurions and pays for them by adding the offsets to the
+    caller's `ptr` IN PLACE (embedding.py: "Safe since each batch is embedded once; embedding
+    twice double-counts spurions -- clone first"). So a batch is CONSUMED by a training step,
+    and the probe's two steps need two batches, not one object used twice.
+
+    They did not. The first two-step probe hoisted one `data` out of `step()`, and every rung
+    of every model in a real beta-PERF run died at
+    `IndexError: The shape of the mask [1235] ... does not match ... the indexed tensor [1283]`
+    -- 1283-1235 = 48 = 3 spurions x 16 jets, the signature of this bug. It is pre-model and
+    deterministic, so it hits identically on every row.
+
+    This gate is deliberately on the real function rather than on the fake: `_FakeExp` now
+    refuses a repeated batch object too, but a fake can only be trusted while it still matches
+    what it stands in for, and THAT is what is checked here.
+    """
+    pytest.importorskip("torch_geometric")
+    from torch_geometric.loader import DataLoader
+
+    from experiments.tagging.embedding import embed_tagging_data, get_spurion
+
+    cfg_data = OmegaConf.load(REPO / "config" / "tagging.yaml").data
+    n_spurions = get_spurion(
+        cfg_data.beam_reference, cfg_data.add_time_reference, cfg_data.two_beams,
+        torch.device("cpu"), torch.float64,
+    ).shape[0]
+    if n_spurions == 0:
+        pytest.skip("no spurions configured -> ptr is never mutated and reuse is harmless")
+
+    bs = 16
+    ds, lengths = _real_dataset(tmp_path, n_jets=600)
+    idx = _worst_case_indices(lengths, bs)  # the batch the probe actually builds
+    collate = DataLoader(ds, batch_size=bs).collate_fn
+
+    def extract(batch):  # experiments/tagging/experiment.py::_extract_batch, on CPU
+        return batch.x.to(torch.float64), batch.scalars.to(torch.float32), batch.ptr
+
+    first = collate([ds[int(i)] for i in idx])
+    before = first.ptr.clone()
+    # snapshot: the returned dict ALIASES the batch's own ptr, and the second embed below
+    # shifts it again before it raises, so a live reference would not survive to be compared
+    emb = {key: value.clone() if torch.is_tensor(value) else value
+           for key, value in embed_tagging_data(*extract(first), cfg_data).items()}
+
+    # the mutation itself, and its exact size -- this is where the +48 comes from
+    assert int(first.ptr[-1] - before[-1]) == n_spurions * bs
+    with pytest.raises(IndexError):
+        embed_tagging_data(*extract(first), cfg_data)
+
+    # and the fix: re-collating from the same items gives a batch that embeds cleanly AND
+    # identically, so the probe's timed second step measures the same work as its warm-up.
+    second = collate([ds[int(i)] for i in idx])
+    assert torch.equal(second.ptr, before)
+    again = embed_tagging_data(*extract(second), cfg_data)
+    assert set(again) == set(emb)
+    for key, value in emb.items():
+        assert torch.equal(value, again[key]) if torch.is_tensor(value) else value == again[key], key
 
 
 @pytest.mark.parametrize(

@@ -428,8 +428,13 @@ def find_max_batch_size(
         Two, not one, for two reasons. The second is TIMED -- the first pays for allocator
         growth, cudnn/inductor autotune and lazily-created optimizer state, so it says
         nothing about steady-state speed. And running a second step is itself a better
-        memory probe: a rung that survives one step and dies on an identical repeat is a
-        rung that does not fit, and the old single-step probe would have called it OK.
+        memory probe: a rung that survives one step and dies on the repeat is a rung that
+        does not fit, and the old single-step probe would have called it OK.
+
+        Each step gets its OWN batch -- see `make_batch`. On the constructed path the two are
+        identical, so the timed step measures the same work as the warm-up; on the drawn path
+        (JetClass/TopTagXL) they are two independent worst-of-`draws` samples, which is a
+        slightly noisier timing and a slightly stronger memory probe.
         """
         try:
             torch.cuda.empty_cache()
@@ -437,20 +442,36 @@ def find_max_batch_size(
             with open_dict(exp.cfg):
                 exp.cfg.training.batchsize = bs
             exp._init_dataloader()
-            data = None if lengths is None else _worst_case_batch(exp, bs, lengths, sigmas)
-            if data is None:
-                data = _heaviest_drawn_batch(exp, draws)
-            if data is None:
-                if lengths is not None and not state["warned"]:
-                    LOGGER.warning(
-                        f"  batchsize {bs}: no worst-case batch constructible from "
-                        f"{lengths.size} jets -> falling back to a random batch."
-                    )
-                    state["warned"] = True
-                data = next(iter(exp.train_loader))
+
+            def make_batch():
+                """A FRESH batch object per step -- never reuse one across two steps.
+
+                `embed_tagging_data` MUTATES the caller's `ptr` in place, adding the spurion
+                offsets (embedding.py: "Safe since each batch is embedded once; embedding
+                twice double-counts spurions -- clone first"). Two steps on one object hits
+                exactly that: the second embed sees a ptr already shifted by n_spurions*B and
+                everything downstream is off by that much -- `IndexError: shape of the mask
+                [N] does not match the shape of the indexed tensor [N + n_spurions*B]`.
+
+                Constructing again rather than cloning: `_worst_case_indices` is
+                deterministic, so both steps get an identical batch, and this works for the
+                drawn path and the weaver tuple layout too, neither of which has `.clone()`.
+                """
+                batch = None if lengths is None else _worst_case_batch(exp, bs, lengths, sigmas)
+                if batch is None:
+                    batch = _heaviest_drawn_batch(exp, draws)
+                if batch is None:
+                    if lengths is not None and not state["warned"]:
+                        LOGGER.warning(
+                            f"  batchsize {bs}: no worst-case batch constructible from "
+                            f"{lengths.size} jets -> falling back to a random batch."
+                        )
+                        state["warned"] = True
+                    batch = next(iter(exp.train_loader))
+                return batch
 
             def step():
-                loss, _ = exp._batch_loss(data)
+                loss, _ = exp._batch_loss(make_batch())
                 exp.optimizer.zero_grad(set_to_none=True)
                 exp.scaler.scale(loss).backward()
                 exp.scaler.unscale_(exp.optimizer)

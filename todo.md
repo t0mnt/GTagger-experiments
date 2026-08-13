@@ -472,6 +472,39 @@ Confirmed clean:
 - Deprecation ranking corrected: `torch.cuda.amp.autocast` is a **FutureWarning** (940 of them
   in a 29 s run), the ParT-GPS mask only a **UserWarning** — the reverse of an earlier note.
 
+## 4d-ter. What the two-step probe cost, and the gate that now covers it (2026-08-13)
+
+The audit above shipped a SECOND training step per rung in `find_max_batch_size` (timing, plus
+a stricter memory probe). It hoisted **one** batch object out of the step and used it twice.
+That is exactly the thing `embed_tagging_data` forbids: it adds the spurion offsets to the
+caller's `ptr` **in place**, so the second embed double-counts them and dies pre-model at
+`embedding.py:120` (`batch[~is_spurion]`) with
+
+    IndexError: The shape of the mask [1235] ... does not match ... the indexed tensor [1283]
+
+1283 − 1235 = 48 = 3 spurions × 16 jets. Deterministic and pre-model, so it took out **all five
+rows** of a real β-PERF run, each with the identical message, and each then fell back to the
+config `batchsize: 512` and OOM'd. Reproduced on CPU against the real dataset/collate/embedding
+and fixed: `make_batch()` constructs a fresh batch per step (construct, not clone — the drawn
+path and the weaver tuple layout have no `.clone()`, and `_worst_case_indices` is deterministic
+so both steps still get an identical batch).
+
+Why the ~55 gates missed it: `_FakeExp._batch_loss` had **no embedding step**, so reuse was
+free in the fake and fatal in reality. Both halves of that gap are now closed —
+`_FakeExp` refuses a batch object it has already consumed (17 of the 56 gates fail on the
+pre-fix code), and `test_a_probe_batch_can_only_be_embedded_once` pins the premise against the
+real `embed_tagging_data` so the fake cannot drift from what it stands in for.
+
+Audited every other repeat-call site for the same class — clean: `gp_memory_probe` goes through
+`_rebuild` (clones every field), the FLOPs counter clones, `init_standardization` embeds once,
+and the train/val/lr-sweep loops all draw fresh batches.
+
+- [ ] **Post-campaign: make the class impossible.** `ptr = ptr.clone()` at the top of
+      `embed_tagging_data` removes the side effect for every caller, present and future, and is
+      bit-identical arithmetic (only the caller's tensor is spared). NOT done now: it is a
+      per-step path and the campaign has started. The comment at `embedding.py:102-104` is the
+      interim warning.
+
 ## 4e. Release gate — the pre-publication list, triaged
 
 The campaign has STARTED, which sets the rule for everything below: **anything that changes
