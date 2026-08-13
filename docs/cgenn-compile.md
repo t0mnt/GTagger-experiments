@@ -57,8 +57,9 @@ the largest and the safest item. Do them first; they were already first in §2, 
 2071 `copy_` calls in one forward at B=4 also says the GPU path is launch-bound, so compile's
 fusion should pay more here than on any other model in the repo.
 
-The actual geometric-product math (`mul` + `bmm` ≈ 46%) is what the sparse-GP rewrite below
-targets. The two are independent and multiply.
+The actual geometric-product math (`mul` + `bmm` ≈ 46% **self-time**, that profile's shape and
+impl — not a stable property; see the caveat at the matmul-mapping section) is what the sparse-GP
+rewrite below targets. The two are independent and multiply.
 
 ### Upstream's own numbers (arXiv:2608.02735, *Virtues and Vices of Equivariant Transformers*)
 
@@ -178,8 +179,17 @@ the eager-level rewrite is a strict subset of the compile win") stands as the re
 eager AND compiled numbers per impl, not an argument. See the Log for the profile table.
 
 The mapping is `M[(i, k), j] = cayley[i, j, k]`, i.e. `cayley.permute(0, 2, 1).reshape(256, 16)`,
-precomputed once at init. The geometric product is `mul` + `bmm` ≈ 46% of CGENN's runtime, so a 5×
-there is ~1.6–1.8× on the whole model, before compile and before sparse-GP.
+precomputed once at init. ~~The geometric product is `mul` + `bmm` ≈ 46% of CGENN's runtime, so a
+5× there is ~1.6–1.8× on the whole model, before compile and before sparse-GP.~~
+**Measured, and the prediction did not hold.** The model-level table in the Log has einsum
+628.9 ms → matmul 603.5 ms: **0.960×, a 4% whole-model gain, not 1.6–1.8×.** Inverting Amdahl on
+that (`f(1 − 1/5.2) = 1 − 0.960`) puts the fraction the rewrite actually accelerated at **~5%**.
+The two are reconcilable and the reconciliation is the useful part: 46% is the `mul` + `bmm`
+**self-time** share, while the correction below measures the einsum *call tree* at ~91% with
+~50% `copy_` marshalling inside it. The matmul form replaces the arithmetic and leaves the
+marshalling, so it can only ever collect a slice of the 46%. **Do not quote a runtime share for
+the GP as a stable property** — it moves with shape, `gp_impl`, device and whether the figure is
+self-time or call-tree. Read it off the profile you are optimising.
 
 ~~**This does NOT explain the 38% `copy_`** — the einsum benchmark shows a 0.1% copy/permute share,
 so einsum is not marshalling operands here. The `copy_` is the §2 patterns, independently.~~
