@@ -230,7 +230,8 @@ weeks to months on one H100, and still weeks on four. **This needs a decision be
 campaign, not during it** — but the fix is implementation, not architecture. Measured levers, all
 of which leave the model identical (details in `docs/cgenn-compile.md`, dev branch): replace the
 `einsum` geometric product with lgatr 2.0's outer-product + matmul form (**5.2× on the GP, verified
-bit-identical**, and the GP is ~46% of runtime); the data-movement rewrites (`copy_` is **38%** of
+bit-identical**; the GP's share of runtime varies with shape, impl and device, so read it off the
+profile you are optimising, not off a number quoted here); the data-movement rewrites (`copy_` is **38%** of
 runtime, 2071 calls per forward); sparse-GP (the Cayley table is 6.2% dense); `torch.compile`.
 Shrinking the model — striding the local branch, cutting `k` or `cgenn_hidden_x` — is **not** on
 this list: it makes the row a smaller model racing full-depth rivals, which is an ablation, not a
