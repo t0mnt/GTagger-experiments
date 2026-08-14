@@ -47,8 +47,13 @@ posture is the thing to profile.
 import os
 import sys
 import time
+import warnings
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# dynamo re-warns this once per traced lru_cache call site; on the CGENN hybrids that is
+# ~100 identical lines drowning the tables this tool exists to print
+warnings.filterwarnings("ignore", message=".*functools.lru_cache.*")
 
 import hydra
 import torch

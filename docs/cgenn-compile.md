@@ -2075,3 +2075,47 @@ Upstream posture, checked against the installed package: lgatr 2.0.0's `compile_
 also ships `activation_memory_budget=None` (torch's save-everything default) — an escape
 hatch there too, not a tuned value. Its two other memory levers are not wired here at all:
 `checkpoint_blocks` (block-level gradient checkpointing) and `naive_amp`.
+
+---
+
+## First GPU sync-hunt results (2026-08-14, H100 NVL, bs=64, full set, shipped postures)
+
+`utils/profile_sync.py`, three models. Caveats that bound every number below: `with_stack`
+inflates host-side times (per-op observer cost x thousands of ops), and bs=64 is below the
+campaign regime, so host-side fixed costs are OVER-represented relative to a real run.
+
+**tag_PlainGraphTrans — both queued sync fixes are NOT WORTH APPLYING, measured.** All
+explicit stalls together — 2110 `aten::item` + 250 `cudaMemcpyAsync` + 220
+`cudaStreamSynchronize` (jet_frames' among them) — cost ~1.3 ms of a 136 ms step, ~1%.
+The `jet_frames` hoist (§"his step 1" above) and the driver-read consolidation are hereby
+measured into irrelevance at this batch; the verdict flips only if a real-batch profile
+says otherwise. The actual profile shape: CUDA busy ~12.5 ms of the 136 ms step — at THIS
+batch the model is host-bound (dynamo wrapper + ~1,200 launches + cudnn heuristics), which
+amortizes at campaign batch sizes and says: profile at the real batch before drawing
+walltime conclusions for this row.
+
+**tag_cgenn (sparse, compiled) — GPU-bound at ~92% (393 of 428 ms/step), and the CUDA
+split confirms the kernel census's shortlist as the cost, on the card:** blade `bmm` 49.5%
+of CUDA (177 calls/step), `index_put/new_zeros` scatter backwards ~17%, elementwise/copy
+~14%, `clone` marshalling 6.5% — plus ~800/step `gemmk1`/`gemvx` calls (K=1-shaped
+micro-GEMMs, the literal "4x4 kernels" class) at ~20% combined. Step-2 rewriting (fold
+blade contractions into channel-batched GEMMs) has real headroom here: ~70% of GPU time
+sits in small-contraction shapes. Sync fixes are irrelevant on this row too — the 218
+ms/step of `cudaStreamSynchronize` is the CPU *waiting for a busy GPU*, not a stall to
+remove.
+
+**tag_CGENNLGATrGraphGPS — CRASHED in the compiled backward: a campaign blocker until
+rerun-verified.** Inductor's runtime stride guard, on a later batch of the warm-up:
+
+    assert_size_stride(permute_134, (s27*s77, 16, 1, 1), (1, 7168, 7168, 1))
+    AssertionError: expected size 16==16, stride 6656==7168 at dim=1
+
+A saved permuted multivector VIEW whose stride was specialized to one batch's width
+(7168 = 448*16) while its sizes stayed symbolic — the LNetSlimGraphGPS view-saving class,
+now observed as a batch-shape-dependent RUNTIME crash rather than a compile-time
+InductorError, on the exact path every CPU gate is documented blind to. The shipped
+`compile: true` row can die mid-training on an unlucky shape transition. CANDIDATE FIX
+shipped (wrappers.py: the scoped `recompute_views` patch mirrored from LNetSlim, eager
+default bit-identical, verified against the audit digests): rerun the profile compiled to
+verify; if it still crashes, the row ships `compile: false` until root-caused, per the
+BACKWARD_VERIFIED rule — CPU membership does not cover the GPU backend.

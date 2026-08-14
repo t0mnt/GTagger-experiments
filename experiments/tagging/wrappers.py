@@ -1150,6 +1150,20 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
         if compile:
             # compile the net only; edge building is hoisted in forward (data-dependent
             # nonzero, eager by design -- docs/cgenn-compile.md, Stage 3)
+            # CANDIDATE FIX, unverified on GPU (2026-08-14): the first multi-batch
+            # compiled TRAINING profile on the H100 died in this model's compiled
+            # backward on inductor's runtime stride guard --
+            #   assert_size_stride(permute_134, (s27*s77, 16, 1, 1), (1, 7168, 7168, 1))
+            #   AssertionError: expected size 16==16, stride 6656==7168 at dim=1
+            # -- a saved permuted multivector VIEW whose stride was specialized to one
+            # batch's width while its sizes stayed symbolic: the LNetSlimGraphGPS
+            # view-saving class, fixed there by the scoped recompute_views patch
+            # (numerics-preserving by construction -- a recomputed permute is the same
+            # permute). Mirrored here on that precedent; VERIFY by rerunning
+            # utils/profile_sync.py on this model compiled. If the crash persists, this
+            # flag is not the mechanism and the row ships compile: false until
+            # root-caused.
+            self._recompute_views = True
             self.net.compile(dynamic=True)
         self.budget = _activation_memory_budget(activation_memory_budget)
         self.framesnet = framesnet  # not actually used
@@ -1176,6 +1190,13 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
         # hoist the static kNN edges out of the (possibly compiled) net: identical values
         # in identical order eager -- the edges depend only on these inputs
         edges = self.net.build_edges(fourmomenta, mask, points)
+        if getattr(self, "_recompute_views", False):
+            # see __init__: candidate fix for the H100 stride-guard crash. Scoped per
+            # call like LorentzNetLGATrSlimGraphGPSWrapper's -- the smoke test and the
+            # FLOPs harness build many models in one process, so never set it globally.
+            import torch._functorch.config as _fc
+            with _fc.patch(recompute_views=True), self.budget:
+                return self.net(scalars, fourmomenta, mask, points, edges=edges), {}, None
         with self.budget:
             output = self.net(
                 scalars,
