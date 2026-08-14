@@ -2153,7 +2153,12 @@ expect a backport: PyTorch backports only critical fixes to the current release 
 and the campaign's torch is an NVIDIA-frozen NGC build — the fix channel is a container
 upgrade, not a patch to 2.8. (3) Reporting it upstream is still worth one issue with the
 assert signature and the `s27*s77`-symbolic/7168-concrete pair; it improves the version
-this repo migrates to next.
+this repo migrates to next. (4) Measured on 2.13: the same model, compiled `dynamic=True`
+with the `recompute_views` shield forced OFF, survived 25 varying-shape fwd+bwd steps —
+where the 2.8 build crashed within ~10. CPU inductor there vs Triton on the card, so this
+is strong-but-not-conclusive evidence the instance is fixed in newer torch; it is exactly
+the release-by-release pattern the public issue record shows, and it means the shield is a
+2.8-era measure with a natural retirement point at the next container upgrade.
 
 ### Phase 1 — CGENN core (both hybrids inherit via the package import)
 
