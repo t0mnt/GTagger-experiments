@@ -1967,18 +1967,43 @@ nothing" is not a number. Measure first, with the recipe below, then apply post-
 
 ### 3. The recipe for the GPU half
 
-    from torch.profiler import profile, ProfilerActivity
-    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
-        for _ in range(5):          # warm first -- step 1 is compilation, not steady state
-            loss, _ = exp._batch_loss(next(it)); loss.backward()
+**Corrected 2026-08-14 — the first version had three faults that would have produced the
+wrong list if followed as written.** (a) The loop sat INSIDE the `profile(...)` block, so
+the table it prints is dominated by compilation and autotune, not steady state — the
+comment said "warm first" but the code did not. (b) It sorted by `self_cuda_time_total`,
+which ranks hot KERNELS — the step-2 question — and can never surface a stall: syncs live
+in CPU-side rows (`cudaStreamSynchronize`, `Memcpy DtoH`, `aten::item`) and as gaps on the
+GPU timeline. (c) It profiled `_batch_loss` + `backward` only, which by construction cannot
+see the per-step DRIVER reads — and for a sync hunt the driver is in scope: `loss.item()`
+and the non-finite guard's `isfinite(grad_norm)` fire every step (base_experiment `_step`),
+the tracker metrics add per-key `.cpu().item()` reads on learned-frames rows, and the
+grad-norm histories append per-step DEVICE tensors to python lists (~0.5 GB at allocator
+granularity over a 330k-step run, plus a host read whenever they are consumed). The static
+census scoped the driver out deliberately for its own reasons; the PROFILER must not.
+
+    from torch.profiler import profile, schedule, ProfilerActivity
+    # scaffolding as in train(): metric lists, scheduler, model.train(); it = iter(loader)
+    for step in range(8):                # warm OUTSIDE the profiler: compilation,
+        exp._step(next(it), step)        # autotune, allocator growth, trimmer warm-up
+    with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+                 schedule=schedule(wait=1, warmup=2, active=5),
+                 with_stack=True) as prof:   # with_stack names the python line per stall
+        for step in range(8, 16):
+            exp._step(next(it), step)        # the REAL step -- driver reads included
+            prof.step()
+    # step-1 view (sync hunt): stalls are CPU-side rows and timeline gaps
+    print(prof.key_averages(group_by_stack_n=5)
+              .table(sort_by="self_cpu_time_total", row_limit=30))
+    prof.export_chrome_trace("trace.json")   # gaps between kernel spans = drained queue
+    # step-2 view (hot kernels), the ranking the old sort produced -- still wanted, second
     print(prof.key_averages().table(sort_by="self_cuda_time_total", row_limit=25))
-    prof.export_chrome_trace("trace.json")          # look for cudaStreamSynchronize and
-                                                    # Memcpy DtoH between kernel spans
 
 Read it for two things, in his order: `cudaStreamSynchronize` / `Memcpy DtoH` events between
 kernels (step 1), then the kernel-size histogram — many sub-10us kernels is the 4x4 problem
 (step 2). Do this on ONE model first; `tag_PlainGraphTrans` is the natural pick, since it is
-one of the two carrying the known sync.
+one of the two carrying the known sync. The driver reads listed above will appear in every
+model's table — they are known, not rediscoveries; the fix shape is ONE host read per step
+(stack loss + norms, a single `.cpu()`) and CPU-float histories, gated bit-identical.
 
 **Timing, and his own framing of it:** *"just a speedup thing … a small bonus you can also do
 later on."* That settles the order. Profiling is read-only and can be done any time; the

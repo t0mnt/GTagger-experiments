@@ -48,6 +48,9 @@ SCANNED = sorted(
 PATTERNS = [
     (re.compile(r"^\s*(?:if|elif|while|assert)\b.*\.\s*(?:any|all)\s*\(\s*\)"), "tensor truth value"),
     (re.compile(r"\.item\s*\(\s*\)"), "host read: .item()"),
+    (re.compile(r"\.cpu\s*\(\s*\)"), "host read: .cpu()"),  # promised by the docstring;
+    # was missing from this list (audit 2026-08-14) -- zero hits in model code today, so
+    # adding it is free and a future one no longer slips a gate that claims to catch it
     (re.compile(r"\.tolist\s*\(\s*\)"), "host read: .tolist()"),
     (re.compile(r"\.numpy\s*\(\s*\)"), "host read: .numpy()"),
 ]
