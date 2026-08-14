@@ -2224,10 +2224,19 @@ all but a table-wide decision — see item 4.
    pins re-recorded under the stated class change — only tag_cgenn and the Trans pin
    actually changed bits; GPS and both LNet pins came out byte-identical.
    *Still open for the GPU gate day:* walltime verdict (β-PERF); whether the shields
-   can retire (most saved permuted views are gone, which plausibly removes the
-   stride-guard trigger, but only a GPU soak proves it — `CGENN_SMOKE_STEPS=100`
-   soak per docs above); and a gp_impl re-race — the old "batching the GP alone gets
-   eaten by surrounding marshalling (matmul 0.960x)" result predates this rewrite, so
+   can retire — now MEASURED rather than presumed (audit refinement, same day): the
+   joint graph's stride-permuted saved tensors went **71 → 45**. Of the survivors,
+   29 are lgatr-package-internal (unchanged by Phase 1, and present in lgatr rows
+   that have run compiled on the card without this crash class), 12 are
+   weight-shaped/static (the wbd and `w` permutes — no symbolic dims for the guard
+   to specialize against), and **4 are activation-shaped with symbolic batch dims —
+   all inside `sparse_gp_expression`'s einsum**, the shipped GP. So the crash-class
+   candidate population fell ~8x and is concentrated in ONE function, but it is NOT
+   zero: the shield stays until the `CGENN_SMOKE_STEPS=100` shield-off soak passes
+   on the card. (If that soak ever fails, the fix target is known: spell
+   sparse_gp_expression's einsum as explicit mm, removing the last 4.) Also open: a
+   gp_impl re-race — the old "batching the GP alone gets eaten by surrounding
+   marshalling (matmul 0.960x)" result predates this rewrite, so
    einsum/matmul/sparse may reorder now that the surroundings are clean. The largest
    remaining CGENN-side marshalling site is `sparse_gp_expression` (48 permute + 12
    bmm nodes, unchanged by this pass — it is the shipped GP itself, per-path weights
@@ -2254,15 +2263,24 @@ all but a table-wide decision — see item 4.
 
 ### Phase 2 — CGENN-GPS specific (after Phase 1)
 
-1. **Block-glue layout — RE-SCOPED by the post-Phase-1 audit (2026-08-14).** The fx
-   census attributed the glue's (hybrid-file) nodes after the Phase-1 rewrites: 540
-   aten nodes, of which the "marshalling" bucket is dominated by nn.Linear weight
-   transposes and slice/select VIEWS — not activation copies — and the mv_bridge /
-   local-branch layout conversions already route through the rewritten MVLinear. The
-   hypothesized per-block layout interleave is largely not there to unify on the CPU
-   census evidence. Keep only as a gate-day check: if the GPU profile still shows
-   glue-attributed copy kernels, revisit; do not spend the BIT-class rewrite on it
-   blind. (The structural shield retirement moves with this to the gate-day soak.)
+1. **Block-glue layout — RE-SCOPED by the post-Phase-1 audit (2026-08-14; refined
+   same day with an honest copy/view split).** Post-Phase-1, the glue's (hybrid-file
+   + GPS-file) traced nodes split as: **244 view-class nodes (zero bytes moved — the
+   (B,P,C,16)↔(B·P,C,16) branch crossings are stride arithmetic), 24 gathers
+   (`x[i]`, `x[j]` — message-passing semantics), and 33 true copies, every one of
+   which is semantic**: message cats (`[h_i, h_j, h_i−h_j]` must materialize for
+   the MLP GEMM), aggregation scatters, invariant concat. **Zero layout-conversion
+   copies** — the mechanism item 1 hypothesized is absent from the traced program,
+   and mv_bridge already routes through the rewritten MVLinear.
+   **Scope of this evidence, stated precisely:** the census is a torch-2.13 fx
+   trace + CPU-inductor kernel count. Node-CLASS facts transfer to GPU (a view
+   allocates nothing on any device; the aten graph is backend-independent) —
+   kernel formation, Triton fusion splits, launch counts, walltime shares, NGC-2.8
+   decomposition drift, and library-internal transposes on non-contiguous operands
+   (invisible to fx) do NOT transfer. So this evidence kills the *mechanism*, not
+   the possibility of *any* GPU-side glue cost — which is exactly why the item
+   becomes a gate-day check (act if the post-Phase-1 GPU profile attributes copy
+   kernels to the glue) instead of either a blind rewrite or a deletion.
 2. **Static-edge plan reuse + deterministic aggregation** — edges are batch-static and
    hoisted once, but every block re-runs gather/scatter against them; the scatter
    backward is 17.8% of CUDA.
