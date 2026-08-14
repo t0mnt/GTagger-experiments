@@ -549,12 +549,16 @@ the kernel census; the sync fixes were measured OUT there, ~1% — do not resurr
 Sequencing is fixed: CGENN core → CGENN-GPS → LNetSlim-GPS *(only if its profile shows
 the marshalling/micro-GEMM signature)*. Checklist:
 
-- [ ] **Pre-req**: record the hybrid BIT pins in the suite's own env
+- [x] **Pre-req**: record the hybrid BIT pins in the suite's own env
       (`CGENN_COMPILE=record pytest tests/experiments/test_hybrid_bit_pin.py -q`) —
-      BIT-class rewrites have no machine check until this runs.
-- [ ] **Phase 1.1** layout unification (BIT; kills ~20% marshalling + retires both
-      `recompute_views` shields at the source).
-- [ ] **Phase 1.2** blade-contraction batching (TOL vs einsum ref; prerequisite 1.1).
+      BIT-class rewrites have no machine check until this runs. *(Recorded 4030dd9.)*
+- [x] **Phase 1.1 + 1.2** — DONE 2026-08-14 as two TOL-class rewrites (operator relaxed
+      BIT→TOL that day): `b()`/`q()` diagonal collapse + `MVLinear` block-diagonal flat
+      GEMM. Marshalling nodes at the sites 547→92, bmm 116→54; fp64 model-level diffs
+      inside the repo bars; all gates green; fixtures + Trans pin re-recorded with the
+      class change stated (GPS/LNet pins byte-identical). Full record in
+      docs/cgenn-compile.md "The improvement program". GPU walltime verdict + gp_impl
+      re-race + shield-retirement soak → gate day.
 - [ ] **Phase 1.3** `activation_memory_budget` adoption (compiled posture; vram matrix +
       β-PERF judge it; CPU priors recorded).
 - [ ] **Phase 2** CGENN-GPS: block-glue layout; static-edge segment plan + deterministic

@@ -2048,6 +2048,14 @@ histogram, by fused-op signature:
 
 Everything else in the two graphs is unremarkable (norms, activations, plain GEMMs).
 
+*Post-rewrite recount (2026-08-14, after the Phase-1 executed items below):* 64 fwd + 62
+bwd kernels. The forward's marshalling class shrank as predicted (75 → 64); the backward
+picked up small weight-side kernels (`diag_embed_threshold_backward`,
+`diagonal_index_add_new_zeros_*` — the block-diagonal weight's construction/gradient,
+(m·16, n·16) tensors, trivial traffic). Node-level: marshalling ops attributed to the two
+rewritten files 547 → 92, bmm 116 → 54, total aten nodes −24%. Launch-count parity on the
+card is a gate-day question; the activation-path work per launch is what dropped.
+
 ### Retention priors: `activation_memory_budget` brings the sparse-Function trick to the compiled path
 
 The 2026-08-13 VRAM finding (compiled GPS wants MORE than eager) has a mechanism already on
@@ -2166,19 +2174,53 @@ Ordering rule (operator, 2026-08-14): items that REMOVE WASTE at unchanged numer
 first; the one item that TRADES precision for speed comes last, and is not a CGENN item at
 all but a table-wide decision — see item 4.
 
-1. **Layout unification** — one multivector layout through the block, convert once at
-   entry/exit. *Posture:* BOTH. *Class:* BIT (pure data movement). *Gates:* the restored
-   tag_cgenn BIT gate + the NEW `test_hybrid_bit_pin.py` (record pins BEFORE the first
-   rewrite, in the suite's own environment — bit pins do not transfer across torch
-   versions). *Pays twice:* removes the ~20% copy/clone marshalling AND retires the
-   saved-permuted-view crash class at the source (both `recompute_views` shields become
-   removable).
-2. **Blade-contraction batching** — fold the blade dim into channel GEMMs so 532 bmm +
-   1,834 micro-GEMMs per step become a handful of large GEMMs. *Posture:* BOTH. *Class:*
-   TOL vs the einsum reference (contraction order changes). *Gates:* the impl-TOL pattern
-   in test_cgenn_compile + BACKWARD-TOL; re-record hybrid pins afterwards with the class
-   change stated. *Prerequisite:* item 1 — the `matmul` gp_impl already proved (0.960x)
-   that batching the GP alone gets eaten by surrounding marshalling.
+1+2. **EXECUTED 2026-08-14 as two TOL-class rewrites** (operator relaxed the original
+   BIT constraint the same day: "doesn't have to be perfectly bit accurate as long as
+   it's not a bug or accuracy reduction"). Items 1 (layout unification) and 2
+   (blade-contraction batching) collapsed into one move each at their two real sources,
+   found by fx-node attribution of the compiled GPS graph:
+
+   - **`CliffordAlgebra.b()`/`q()` diagonal collapse** (`cliffordalgebra.py`). The
+     scalar-output geometric product is a signed dot product — `cayley[:, 0, :]` is
+     exactly diagonal (asserted at `__init__`; the diagonal per grade is the metric
+     signature), so every `norms()`/`qs()` invariant is
+     `(x * _qb_diag * y).sum(-1)` with the beta signs fused into one ±1 buffer. This
+     retires the einsum chain, the per-call cayley subset gather, and two per-call
+     index-tensor allocations from the single hottest marshalling site (every
+     MVSiLU / MVLayerNorm / NormalizationLayer funnels through here).
+   - **`MVLinear` block-diagonal flat GEMM** (`linear.py`, rank-3 fast path, both
+     subspace variants). The einsum `"bmi,nmi->bni"` lowered to a per-blade bmm — 16
+     `(B,m)@(m,n)` micro-GEMMs *per call* plus permute-copies of the activation both
+     ways; that is the `gemvx`/`gemmk1` micro-GEMM swarm in the H100 profiles. The
+     weight is now `diag_embed`-ded into one `(m·16, n·16)` block-diagonal matrix and
+     the call is ONE flat GEMM with zero activation copies (16× zero-padding FLOP waste
+     is nothing at mv widths 1–16; weight layout / state_dict unchanged; `diag_embed`
+     backward is a diagonal gather — deterministic).
+
+   *Measured (CPU sandbox, torch 2.13):* fx census of compiled GPS fwd+bwd —
+   marshalling nodes at the two sites **547 → 92 (−83%**, remainder is weight-side
+   `(m,n,16,16)` tensors, not activations); bmm nodes **116 → 54**; total aten nodes
+   4730 → 3572 (−24%). Eager per-op wall at production-ish widths: grade-subset `b()`
+   **10.1×**, full `b()` 2.0×, MVLinear 1.7×. *Numerics:* lab fp64 rel ~3e-16
+   (grades 0/1/3/4 bit-equal; g2 + full call differ at ulp); model-level fp64
+   eval-forward rel vs pre-rewrite — tag_cgenn 2.5e-11, Trans hybrid 2.3e-15, GPS
+   hybrid **0.0 (bit-equal)**; worst grad (BACKWARD-TOL's `absdiff/(1+ref)` metric)
+   1.1e-9 / 5.4e-16 / 1.6e-16 — all inside the repo bars (fwd 1e-10, grad 1e-8).
+   *Gates:* all 17 non-BIT cgenn_compile gates green including env-gated
+   BREAKS/RECOMP (no graph breaks, no per-shape recompiles) and compiled backward;
+   sparse_gp + device-hygiene + no-sync suites green; 3-model eager training smoke
+   green (100% nonzero-grad params). *Fixtures:* cgenn_compile BIT fixtures + hybrid
+   pins re-recorded under the stated class change — only tag_cgenn and the Trans pin
+   actually changed bits; GPS and both LNet pins came out byte-identical.
+   *Still open for the GPU gate day:* walltime verdict (β-PERF); whether the shields
+   can retire (most saved permuted views are gone, which plausibly removes the
+   stride-guard trigger, but only a GPU soak proves it — `CGENN_SMOKE_STEPS=100`
+   soak per docs above); and a gp_impl re-race — the old "batching the GP alone gets
+   eaten by surrounding marshalling (matmul 0.960x)" result predates this rewrite, so
+   einsum/matmul/sparse may reorder now that the surroundings are clean. The largest
+   remaining CGENN-side marshalling site is `sparse_gp_expression` (48 permute + 12
+   bmm nodes, unchanged by this pass — it is the shipped GP itself, per-path weights
+   make its batching delicate): batch it only if the gate-day profile still ranks it.
 3. **`activation_memory_budget` adoption** — *Posture:* compiled-only by nature. *Class:*
    posture change, numerics untouched. *Gates:* the vram matrix (budget is one override
    per row) + β-PERF ratio; CPU priors above (0.5 → 29 MB vs 123 default at +9% CPU).

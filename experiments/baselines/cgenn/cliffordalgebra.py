@@ -102,6 +102,19 @@ class CliffordAlgebra(nn.Module):
                              torch.pow(-1, self.bbo_grades * (self.bbo_grades + 1) // 2),
                              persistent=False)
         self.register_buffer("cayley", cayley)
+        # <x y>_0 fast path: cayley[:, 0, :] is exactly diagonal for a non-degenerate
+        # metric (blade_i blade_k has a scalar component only at k == i, coefficient +-1),
+        # and the diagonal restricted to any grade is that grade's metric signature. Fused
+        # once with the beta involution signs, b()/q()/norm()/norms()/qs() all reduce to
+        # `(x * _qb_diag * y).sum(-1)` -- no cayley gather, no einsum, no per-call index
+        # tensors (see b()). Asserted rather than assumed: a degenerate metric would put
+        # mass off the diagonal, and the failure mode of a silently-wrong fast path is
+        # wrong physics, not a crash. Non-persistent: derived, state_dict unchanged.
+        _diag0 = cayley[:, 0, :].diagonal()
+        assert (cayley[:, 0, :] == torch.diag(_diag0)).all(), (
+            "cayley[:, 0, :] is not diagonal: the b()/q() scalar-product fast path is "
+            "invalid for this metric")
+        self.register_buffer("_qb_diag", self._beta_signs * _diag0, persistent=False)
         # blade index -> subspace(grade) index, e.g. [0,1,1,1,1,2,...,4]: index_select with
         # this replaces every tensor-valued repeat_interleave over the blade dimension
         # (pure data movement -> bit-identical; tensor-valued repeats are also a dynamo
@@ -269,25 +282,34 @@ class CliffordAlgebra(nn.Module):
         return mv[..., s]
 
     def b(self, x, y, blades=None):
-        if blades is not None:
-            assert len(blades) == 2
-            beta_blades = blades[0]
-            blades = (
-                blades[0].to(x.device, dtype=torch.long),
-                torch.tensor([0], device=x.device, dtype=torch.long),
-                blades[1].to(x.device, dtype=torch.long),
-            )
-        else:
-            blades = torch.tensor(range(self.n_blades), device=x.device, dtype=torch.long)
-            blades = (
-                blades,
-                torch.tensor([0], device=x.device, dtype=torch.long),
-                blades,
-            )
-            beta_blades = None
-
+        # The scalar-output geometric product IS a signed dot product (cayley[:, 0, :] is
+        # exactly diagonal -- asserted at __init__), so <beta(x) y>_0 collapses to an
+        # elementwise multiply-reduce against the fused sign vector _qb_diag. This retires
+        # the einsum chain + per-call cayley gather + two per-call index-tensor
+        # allocations that made b()/q() THE compiled-graph marshalling source: every
+        # MVSiLU / MVLayerNorm / NormalizationLayer invariant funnels through here
+        # (docs/cgenn-compile.md, Phase 1). Big eager win too (~10x on the grade-subset
+        # call at production widths, CPU).
+        #
+        # TOL-class rewrite, NOT bit-identical to the old einsum route: identical products,
+        # different reduction order (measured fp64 rel ~3e-16, fp32 ~2e-7; grades 0/1/3/4
+        # came out bit-equal in the lab, g2 and the full call differ at ulp level). Folding
+        # beta into the diagonal is exact: +-1 multiplies commute without rounding. The
+        # BIT fixtures were re-recorded for this change.
+        if blades is None:
+            return (x * self._qb_diag * y).sum(-1, keepdim=True)
+        assert len(blades) == 2
+        if blades[0] is blades[1]:
+            # every in-repo caller lands here: q() passes the SAME index object twice
+            return (x * self._qb_diag[blades[0]] * y).sum(-1, keepdim=True)
+        # distinct left/right blade sets (no in-repo caller): original general route
+        blades = (
+            blades[0].to(x.device, dtype=torch.long),
+            torch.tensor([0], device=x.device, dtype=torch.long),
+            blades[1].to(x.device, dtype=torch.long),
+        )
         return self.geometric_product(
-            self.beta(x, blades=beta_blades),
+            self.beta(x, blades=blades[0]),
             y,
             blades=blades,
         )

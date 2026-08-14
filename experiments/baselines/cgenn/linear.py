@@ -45,10 +45,35 @@ class MVLinear(nn.Module):
             torch.nn.init.zeros_(self.bias)
 
     def _forward(self, input):
+        # rank-3 (tokens, channels, blades): the einsum's permute -> mm -> permute
+        # round-trip copies the activation twice; matmul broadcasts (n, m) @ (B, m, i)
+        # with no data movement. TOL-class vs the einsum (GEMM reduction order only;
+        # fp64 rel ~4e-16 in the lab). Rank != 3 keeps the general einsum.
+        if input.ndim == 3:
+            return torch.matmul(self.weight, input)
         return torch.einsum("bm...i, nm->bn...i", input, self.weight)
 
     def _forward_subspaces(self, input):
         weight = self.weight.index_select(-1, self.algebra.blade_subspace_idx)
+        # rank-3 fast path. The einsum lowers "bmi,nmi->bni" to a PER-BLADE bmm: 16
+        # (B, m) @ (m, n) micro-GEMMs plus permute-copies of the activation both ways
+        # -- the gemvx/gemmk1 micro-GEMM swarm in the H100 profile, and a large share
+        # of the compiled graph's marshalling nodes (docs/cgenn-compile.md, Phase 1).
+        # Embedding the weight into a block-diagonal (m*16, n*16) matrix makes the call
+        # ONE flat GEMM with zero activation copies. The 16x zero-padding FLOP waste is
+        # irrelevant at these widths (mv channels are 1-16); diag_embed's backward is a
+        # diagonal gather, so weight gradients stay deterministic. TOL-class vs the
+        # einsum (reduction order + exactly-zero padding terms; fp64 rel ~3e-16). The
+        # padding zeros do turn a stray inf/nan blade into nan across that token's
+        # output row (0*inf), but any such input already fails the non-finite loss
+        # guard either way. Rank != 3 keeps the general einsum.
+        if input.ndim == 3:
+            nb = self.algebra.n_blades
+            wbd = (torch.diag_embed(weight.permute(1, 0, 2))  # (m, n, i, j) = w * d_ij
+                   .permute(0, 2, 1, 3)
+                   .reshape(self.in_features * nb, self.out_features * nb))
+            return (input.reshape(-1, self.in_features * nb) @ wbd).view(
+                -1, self.out_features, nb)
         return torch.einsum("bm...i, nmi->bn...i", input, weight)
 
     def forward(self, input):
