@@ -525,8 +525,17 @@ def find_max_batch_size(
         bs *= 2
 
     if last_ok is None:
-        LOGGER.warning(f"Even batchsize {start} does not fit; keeping {start}.")
-        return int(start)
+        # FATAL, not a fallback -- the same rule bperf's --find-batchsize handler enforces
+        # for exceptions. `start` was just MEASURED to OOM, so returning it dresses "this
+        # does not fit" as a sizing result: find_lr would then OOM at sweep step 1, and
+        # bperf -- whose fatal handler sees only EXCEPTIONS -- would time its whole matrix
+        # at a size known not to fit, the exact hours-for-nothing failure f200b22 closed.
+        raise RuntimeError(
+            f"Even batchsize {start} does not fit a full training step on this GPU "
+            f"(the probe stands in for the worst batch of a run, so a lighter median "
+            f"batch may fit and still OOM mid-run). There is no size to report; lower "
+            f"bs_start below {start} only if you genuinely intend to train there."
+        )
 
     refined = False
     if refine and oom_at is not None:

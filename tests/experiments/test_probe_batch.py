@@ -356,6 +356,19 @@ def test_search_falls_back_to_a_random_batch_without_lengths(monkeypatch, caplog
     assert fallback >= chosen  # a median probe is lighter, so it over-shoots
 
 
+def test_nothing_fits_raises_instead_of_returning_the_size_that_oomd(monkeypatch):
+    """When even `bs_start` OOMs, the search must RAISE, not return `bs_start`.
+
+    The old path warned and returned `start` -- a size it had just measured to fail --
+    as if it were a sizing result. find_lr then OOMs at sweep step 1 (loud but pointless);
+    bperf is worse: its --find-batchsize failure handling is exception-based (the f200b22
+    fatality), so a normal return walks straight past it and the driver times the whole
+    matrix at a size known not to fit. The failure must be an exception and must name the
+    size, so both callers stop before spending anything."""
+    with pytest.raises(RuntimeError, match=r"batchsize 16 does not fit"):
+        _run_search(monkeypatch, LENGTHS, ceiling=1.0)  # card smaller than any batch
+
+
 @pytest.mark.parametrize("ceiling", [0.9e6, 1.1e6, 1.5e6, 2.4e6, 3.9e6])
 def test_refine_recovers_the_octave_without_ever_overshooting(monkeypatch, ceiling):
     """REFINE: the discarded octave is the bigger number, so it must be exactly right.
