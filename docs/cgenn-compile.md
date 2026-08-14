@@ -2201,7 +2201,13 @@ all but a table-wide decision — see item 4.
    marshalling nodes at the two sites **547 → 92 (−83%**, remainder is weight-side
    `(m,n,16,16)` tensors, not activations); bmm nodes **116 → 54**; total aten nodes
    4730 → 3572 (−24%). Eager per-op wall at production-ish widths: grade-subset `b()`
-   **10.1×**, full `b()` 2.0×, MVLinear 1.7×. *Numerics:* lab fp64 rel ~3e-16
+   **10.1×**, full `b()` 2.0×, MVLinear 1.7×. Model-level EAGER step (CPU, quick tree,
+   bs=64, old worktree vs new): tag_cgenn 47.5 → 43.3 s/step (**1.10×**), Trans hybrid
+   5.26 → 4.33 s/step (**1.22×**) — the modest eager dividend expected of a rewrite
+   whose target is marshalling and launch count, not arithmetic volume (eager CPU cost
+   at these batch sizes is dominated by the edge-tensor gp/segment work the rewrite
+   leaves alone). The compiled-GPU launch path is where the −83% node cut should pay;
+   that verdict belongs to the gate day. *Numerics:* lab fp64 rel ~3e-16
    (grades 0/1/3/4 bit-equal; g2 + full call differ at ulp); model-level fp64
    eval-forward rel vs pre-rewrite — tag_cgenn 2.5e-11, Trans hybrid 2.3e-15, GPS
    hybrid **0.0 (bit-equal)**; worst grad (BACKWARD-TOL's `absdiff/(1+ref)` metric)
