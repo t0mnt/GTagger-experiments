@@ -169,7 +169,8 @@ def find_batchsize(row_overrides, knob, config_path, bs_start, bs_max, safety):
 
     ``knob=false`` IS PASSED EXPLICITLY, not left to the yaml. EVERY model config that carries
     a ``compile`` key ships it TRUE (20 of the 36 in ``config/model``: 18 tag_, 2 amp_; the
-    other 16 have no such key and none anywhere says false), so a bare ``model=tag_ParT``
+    other 16 have no such key, and the only ``compile: false`` in the tree is the framesnet
+    sub-configs, eager in every posture), so a bare ``model=tag_ParT``
     would size a COMPILED model -- which
     contradicts the paragraph above, spends an inductor build per row inside the driver
     process, and leaves dynamo cache entries holding those models alive for every

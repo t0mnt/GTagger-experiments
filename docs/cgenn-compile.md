@@ -1898,7 +1898,8 @@ peaks are the lower ones, so the compiled batch is bigger than the eager-sized 1
 throughput table above was measured at — and a ranking at 128 is not guaranteed to hold
 there. `find_lr` is the tool that differs on exactly this point: it leaves the compile
 posture to the yaml, and every model config carrying a `compile` key ships it TRUE (20 of the
-36 in `config/model`; none anywhere says false), so it sizes the SHIPPED model.
+36 in `config/model`; the only `compile: false` in the tree is the framesnet sub-configs,
+eager in every posture), so it sizes the SHIPPED model.
 
 β-PERF is still worth one rerun for its OWN job, just not for this one: einsum's eager row is
 missing (it OOM'd at step ~10, so that row has no eager/compiled ratio), and the

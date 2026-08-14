@@ -404,12 +404,15 @@ one working point (0.5) the paper doesn't report, with a coarser ruler.
    trains): `model.net.use_edge_attr=true|false` (ParT-pair edge features, ParticleNeXt-style),
    `model.net.use_rwse=true|false` (+ `model.net.rwse_k=K`), `model.net.norm=batch|layer`.
 2. **Then every HYBRID under both graph metrics**: `model.net.knn_metric=deltaR|minkowski`
-   (the eight hybrids only — no baseline config exposes the knob, and lloca's `ParticleNet`
-   is handed (phi, eta) rather than four-momenta, so minkowski is not available to it)
+   (the eight hybrids **and the `tag_particlenet` baseline** — its wrapper passes the local
+   four-momenta as `v=`, and lloca's `ParticleNet` ranks layer-0 on the Minkowski interval.
+   Production tree only: `config_quick`'s `tag_particlenet.yaml` has no `knn_metric` key, so
+   a bare `run.py` override fails composition there; via `train.sbatch` it is fine — that
+   defaults to `-cp config`. See docs/OSCAR.md §shakedown for the command forms)
    (minkowski is the Lorentz-invariant graph; deltaR the eta–phi one).
 3. **Then the LLoCa-canonicalized models under PD frames**: `model/framesnet=learnedpd`
-   on the Plain and ParticleNet-ParT hybrids (the internally-equivariant CGENN /
-   LorentzNet hybrids stay on `identity`).
+   on the Plain and ParticleNet-ParT hybrids and `tag_particlenet` (the
+   internally-equivariant CGENN / LorentzNet hybrids stay on `identity`).
 
 (The full knob catalogue lives in `todo.md` §3 and `docs/ablations.md`.)
 
