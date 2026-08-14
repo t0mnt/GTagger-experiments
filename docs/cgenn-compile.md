@@ -2215,7 +2215,12 @@ all but a table-wide decision — see item 4.
    *Gates:* all 17 non-BIT cgenn_compile gates green including env-gated
    BREAKS/RECOMP (no graph breaks, no per-shape recompiles) and compiled backward;
    sparse_gp + device-hygiene + no-sync suites green; 3-model eager training smoke
-   green (100% nonzero-grad params). *Fixtures:* cgenn_compile BIT fixtures + hybrid
+   green (100% nonzero-grad params). *Post-landing audit (same day):* eager-path
+   instrumentation of all three models, forward+backward — every `b()`/`q()` call
+   takes a diagonal path and every MVLinear call is rank-3; ZERO einsum fallbacks,
+   so the census numbers describe the whole production surface. The re-recorded
+   dynamo explain shows tag_cgenn's traced op count fell 223 → 155 at 1 graph /
+   0 breaks. *Fixtures:* cgenn_compile BIT fixtures + hybrid
    pins re-recorded under the stated class change — only tag_cgenn and the Trans pin
    actually changed bits; GPS and both LNet pins came out byte-identical.
    *Still open for the GPU gate day:* walltime verdict (β-PERF); whether the shields
@@ -2249,14 +2254,38 @@ all but a table-wide decision — see item 4.
 
 ### Phase 2 — CGENN-GPS specific (after Phase 1)
 
-1. **Block-glue layout** — the GPS interleave crosses CGENN-branch and attention layouts
-   per block x10; unify (this is Phase-1 item 2 extended to the glue, and the structural
-   retirement of the recompute_views shield here). BIT-class, hybrid pin judges it.
+1. **Block-glue layout — RE-SCOPED by the post-Phase-1 audit (2026-08-14).** The fx
+   census attributed the glue's (hybrid-file) nodes after the Phase-1 rewrites: 540
+   aten nodes, of which the "marshalling" bucket is dominated by nn.Linear weight
+   transposes and slice/select VIEWS — not activation copies — and the mv_bridge /
+   local-branch layout conversions already route through the rewritten MVLinear. The
+   hypothesized per-block layout interleave is largely not there to unify on the CPU
+   census evidence. Keep only as a gate-day check: if the GPU profile still shows
+   glue-attributed copy kernels, revisit; do not spend the BIT-class rewrite on it
+   blind. (The structural shield retirement moves with this to the gate-day soak.)
 2. **Static-edge plan reuse + deterministic aggregation** — edges are batch-static and
    hoisted once, but every block re-runs gather/scatter against them; the scatter
-   backward is 17.8% of CUDA. Precompute a sorted-edge segment plan once per batch and
-   aggregate via segment-sum: faster AND CUDA-deterministic (the index_put path is not).
-   TOL-class (summation order), gated like item 3 above.
+   backward is 17.8% of CUDA.
+   - **2a EXECUTED 2026-08-14 (BIT-class): receiver-degree hoist.** `mean` aggregation
+     (the live mode in all three models) rebuilt its per-node degree by scattering a
+     FULL (E, C) ones tensor inside every reduce call — 2 per CGL layer — for a value
+     that is channel-constant and depends only on the static edges. Now ONE (E, 1)
+     ones-scatter per CGENN(-block) entry (per GPS net for all its blocks), threaded
+     as `edge_counts` through `CGL.forward`/`reduce`/`unsorted_segment_mean` in the
+     package and both hybrid twins. Bit-identical — degrees are exact small integers
+     whatever the summation order, and the (N, 1) broadcast divides by the same
+     values — VERIFIED the strong way: the freshly recorded BIT fixtures and all four
+     hybrid pins pass UNCHANGED (no re-record), twin-parity suite green. This also
+     removes the degree count from the CUDA-nondeterminism surface for free.
+   - **2b (open, gate-day): sorted-segment main scatter.** Audit fact recorded here
+     because it makes 2b concrete: BOTH edge builders emit receivers ALREADY SORTED
+     (kNN: arange-expanded then order-preserving filter; fully-connected:
+     `pair.nonzero` row-major) — so a segment plan (boundaries) is computable once
+     per batch in the eager hoist, and the remaining `index_add_` message scatters
+     could become contiguous-range segment sums: deterministic on CUDA and
+     TOL-class (summation order). Do it only if the gate-day profile still ranks the
+     scatter after 2a; check `torch.segment_reduce` (or a manual boundaries form)
+     compiles break-free on the NGC build before adopting.
 3. **Attention-half re-check at production P_max** — invisible at mini shapes; before
    optimizing it, profile once at the full set's P_max=160 and the sized batch.
 4. **Shape bucketing + `reduce-overhead`** — only if still launch-bound after 1-2

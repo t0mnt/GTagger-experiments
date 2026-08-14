@@ -1,6 +1,6 @@
 Graph Count: 1
 Graph Break Count: 0
-Op Count: 155
+Op Count: 154
 Break Reasons:
 Ops per Graph:
   Ops 1:
@@ -9,6 +9,7 @@ Ops per Graph:
     <built-in method zeros of type object at 0x...>
     <built-in function setitem>
     <built-in function iadd>
+    <built-in function getitem>
     <built-in function getitem>
     <built-in function getitem>
     <built-in function getitem>
@@ -74,9 +75,7 @@ Ops per Graph:
     <built-in function linear>
     <built-in method sigmoid of type object at 0x...>
     <built-in function mul>
-    <built-in method ones_like of type object at 0x...>
     <built-in function truediv>
-    <built-in method ones_like of type object at 0x...>
     <built-in function truediv>
     <built-in method cat of type object at 0x...>
     <built-in method diag_embed of type object at 0x...>
@@ -641,6 +640,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 61:
+    Name: "L['edges']"
+    Source: local
+    Create Function: TENSOR_MATCH
+    Guard Types: ['TENSOR_MATCH']
+    Code List: ["hasattr(L['edges'], '_dynamo_dynamic_indices') == False", "hasattr(L['edges'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['edges'], '_dynamo_unbacked_indices') == False", "hasattr(L['edges'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['edges'], '_dynamo_static_indices') == False"]
+    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
+    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
+  Guard 62:
     Name: "G['__builtins_dict___N']['range']"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -648,7 +655,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__builtins_dict___N']['range'], ...), type=<class 'range'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
-  Guard 62:
+  Guard 63:
     Name: "L['self'].n_layers"
     Source: local_unspecialized_nn_module
     Create Function: EQUALS_MATCH
@@ -656,7 +663,7 @@ Out Guards:
     Code List: ["L['self'].n_layers == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 63:
+  Guard 64:
     Name: "L['self'].n_layers"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -664,7 +671,7 @@ Out Guards:
     Code List: ["L['self'].n_layers == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 64:
+  Guard 65:
     Name: "L['self']._modules['CGLs']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -672,7 +679,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs'], ...), type=<class 'torch.nn.modules.container.ModuleList'>"]
     Object Weakref: <weakref at 0x...; to 'ModuleList' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (ModuleList)>
-  Guard 65:
+  Guard 66:
     Name: "L['self']._modules['CGLs']"
     Source: local_unspecialized_nn_module
     Create Function: NOT_PRESENT_IN_GENERIC_DICT
@@ -680,7 +687,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 66:
+  Guard 67:
     Name: "G['__builtins_dict___N']['isinstance']"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -688,7 +695,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__builtins_dict___N']['isinstance'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 67:
+  Guard 68:
     Name: "G['__builtins_dict___N']['slice']"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -696,7 +703,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__builtins_dict___N']['slice'], ...), type=<class 'slice'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
-  Guard 68:
+  Guard 69:
     Name: "L['self']._modules['CGLs']"
     Source: local_unspecialized_nn_module
     Create Function: NOT_PRESENT_IN_GENERIC_DICT
@@ -704,7 +711,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 69:
+  Guard 70:
     Name: "G['__import_torch_dot_nn_dot_modules_dot_container']"
     Source: global
     Create Function: MODULE_MATCH
@@ -712,7 +719,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_container'], ...), type=<class 'module'>"]
     Object Weakref: <weakref at 0x...; to 'module' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
-  Guard 70:
+  Guard 71:
     Name: "G['__import_torch_dot_nn_dot_modules_dot_container'].operator"
     Source: global
     Create Function: MODULE_MATCH
@@ -720,7 +727,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_container'].operator, ...), type=<class 'module'>"]
     Object Weakref: <weakref at 0x...; to 'module' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
-  Guard 71:
+  Guard 72:
     Name: "G['__import_torch_dot_nn_dot_modules_dot_container'].operator.index"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -728,7 +735,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_container'].operator.index, ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 72:
+  Guard 73:
     Name: "G['__builtins_dict___N']['len']"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -736,14 +743,6 @@ Out Guards:
     Code List: ["___check_obj_id(G['__builtins_dict___N']['len'], ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 73:
-    Name: "L['self']._modules['CGLs']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
   Guard 74:
     Name: "L['self']._modules['CGLs']"
     Source: local_unspecialized_nn_module
@@ -753,22 +752,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 75:
-    Name: "L['self']._modules['CGLs']._modules"
-    Source: local_unspecialized_nn_module
-    Create Function: TYPE_MATCH
-    Guard Types: ['TYPE_MATCH']
-    Code List: ["___check_type_id(L['self']._modules['CGLs']._modules, ...), type=<class 'dict'>"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 76:
-    Name: "L['self']._modules['CGLs']._modules"
-    Source: local_unspecialized_nn_module
-    Create Function: DICT_KEYS_MATCH
-    Guard Types: ['SEQUENCE_LENGTH', 'DICT_KEYS_MATCH']
-    Code List: ["len(L['self']._modules['CGLs']._modules) == 1", "list(dict.keys(L['self']._modules['CGLs']._modules)) == ['0']"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 77:
     Name: "L['self']._modules['CGLs']"
     Source: local_unspecialized_nn_module
     Create Function: NOT_PRESENT_IN_GENERIC_DICT
@@ -776,6 +759,22 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
+  Guard 76:
+    Name: "L['self']._modules['CGLs']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: TYPE_MATCH
+    Guard Types: ['TYPE_MATCH']
+    Code List: ["___check_type_id(L['self']._modules['CGLs']._modules, ...), type=<class 'dict'>"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
+  Guard 77:
+    Name: "L['self']._modules['CGLs']._modules"
+    Source: local_unspecialized_nn_module
+    Create Function: DICT_KEYS_MATCH
+    Guard Types: ['SEQUENCE_LENGTH', 'DICT_KEYS_MATCH']
+    Code List: ["len(L['self']._modules['CGLs']._modules) == 1", "list(dict.keys(L['self']._modules['CGLs']._modules)) == ['0']"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
   Guard 78:
     Name: "L['self']._modules['CGLs']"
     Source: local_unspecialized_nn_module
@@ -785,6 +784,14 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 79:
+    Name: "L['self']._modules['CGLs']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 80:
     Name: "G['__builtins_dict___N']['str']"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -792,7 +799,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__builtins_dict___N']['str'], ...), type=<class 'str'>"]
     Object Weakref: <weakref at 0x...; to 'type' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (type)>
-  Guard 80:
+  Guard 81:
     Name: "L['self']._modules['CGLs']._modules['0']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -800,7 +807,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0'], ...), type=<class 'experiments.baselines.cgenn.cgenn.CGLayer'>"]
     Object Weakref: <weakref at 0x...; to 'CGLayer' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (CGLayer)>
-  Guard 81:
+  Guard 82:
     Name: "L['self']._modules['CGLs']._modules['0']._backward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -808,7 +815,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 82:
+  Guard 83:
     Name: "L['self']._modules['CGLs']._modules['0']._backward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -816,7 +823,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 83:
+  Guard 84:
     Name: "L['self']._modules['CGLs']._modules['0']._forward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -824,7 +831,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 84:
+  Guard 85:
     Name: "L['self']._modules['CGLs']._modules['0']._forward_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -832,7 +839,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 85:
+  Guard 86:
     Name: "L['self']._modules['CGLs']._modules['0']._forward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -840,18 +847,10 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 86:
+  Guard 87:
     Name: "L['self']._modules['CGLs']._modules['0']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 87:
-    Name: "L['self']._modules['CGLs']._modules['0']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -865,13 +864,13 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 89:
-    Name: "L['edges']"
-    Source: local
-    Create Function: TENSOR_MATCH
-    Guard Types: ['TENSOR_MATCH']
-    Code List: ["hasattr(L['edges'], '_dynamo_dynamic_indices') == False", "hasattr(L['edges'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['edges'], '_dynamo_unbacked_indices') == False", "hasattr(L['edges'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['edges'], '_dynamo_static_indices') == False"]
-    Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
-    Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
+    Name: "L['self']._modules['CGLs']._modules['0']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
   Guard 90:
     Name: "L['self']._modules['CGLs']._modules['0']"
     Source: local_unspecialized_nn_module
@@ -3569,14 +3568,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 427:
-    Name: "G['__import_experiments_dot_baselines_dot_cgenn_dot_linear'].torch.ones_like"
-    Source: global
-    Create Function: BUILTIN_MATCH
-    Guard Types: ['ID_MATCH']
-    Code List: ["___check_obj_id(G['__import_experiments_dot_baselines_dot_cgenn_dot_linear'].torch.ones_like, ...), type=<class 'builtin_function_or_method'>"]
-    Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 428:
     Name: "L['self']._modules['CGLs']._modules['0']"
     Source: local_unspecialized_nn_module
     Create Function: NOT_PRESENT_IN_GENERIC_DICT
@@ -3584,7 +3575,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 429:
+  Guard 428:
     Name: "L['self']._modules['CGLs']._modules['0'].aggregation"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -3592,7 +3583,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0'].aggregation == 'mean'"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
-  Guard 430:
+  Guard 429:
     Name: "L['self']._modules['CGLs']._modules['0']"
     Source: local_unspecialized_nn_module
     Create Function: NOT_PRESENT_IN_GENERIC_DICT
@@ -3600,7 +3591,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 431:
+  Guard 430:
     Name: "L['node_attr_x']"
     Source: local
     Create Function: TENSOR_MATCH
@@ -3608,7 +3599,7 @@ Out Guards:
     Code List: ["hasattr(L['node_attr_x'], '_dynamo_dynamic_indices') == False", "hasattr(L['node_attr_x'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['node_attr_x'], '_dynamo_unbacked_indices') == False", "hasattr(L['node_attr_x'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['node_attr_x'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 432:
+  Guard 431:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -3616,7 +3607,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x'], ...), type=<class 'torch.nn.modules.container.Sequential'>"]
     Object Weakref: <weakref at 0x...; to 'Sequential' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Sequential)>
-  Guard 433:
+  Guard 432:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._backward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3624,7 +3615,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 434:
+  Guard 433:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._backward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3632,7 +3623,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 435:
+  Guard 434:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._forward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3640,7 +3631,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 436:
+  Guard 435:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._forward_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3648,7 +3639,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 437:
+  Guard 436:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._forward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3656,10 +3647,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 438:
+  Guard 437:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 438:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -3689,14 +3688,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 442:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 443:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -3704,7 +3695,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 444:
+  Guard 443:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules"
     Source: local_unspecialized_nn_module
     Create Function: DICT_KEYS_MATCH
@@ -3712,7 +3703,7 @@ Out Guards:
     Code List: ["len(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules) == 2", "list(dict.keys(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules)) == ['0', '1']"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 445:
+  Guard 444:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -3720,7 +3711,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'], ...), type=<class 'experiments.baselines.cgenn.fcgp.FullyConnectedSteerableGeometricProductLayer'>"]
     Object Weakref: <weakref at 0x...; to 'FullyConnectedSteerableGeometricProductLayer' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (FullyConnectedSteerableGeometricProductLayer)>
-  Guard 446:
+  Guard 445:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._backward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3728,7 +3719,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 447:
+  Guard 446:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._backward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3736,7 +3727,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 448:
+  Guard 447:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._forward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3744,7 +3735,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 449:
+  Guard 448:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._forward_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3752,7 +3743,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 450:
+  Guard 449:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._forward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3760,10 +3751,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 451:
+  Guard 450:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 451:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -3777,14 +3776,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 453:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 454:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._parameters"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -3792,7 +3783,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 455:
+  Guard 454:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -3800,7 +3791,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 456:
+  Guard 455:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -3808,7 +3799,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'], ...), type=<class 'experiments.baselines.cgenn.linear.MVLinear'>"]
     Object Weakref: <weakref at 0x...; to 'MVLinear' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (MVLinear)>
-  Guard 457:
+  Guard 456:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._backward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3816,7 +3807,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 458:
+  Guard 457:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._backward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3824,7 +3815,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 459:
+  Guard 458:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._forward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3832,7 +3823,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 460:
+  Guard 459:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._forward_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3840,7 +3831,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 461:
+  Guard 460:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._forward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -3848,10 +3839,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 462:
+  Guard 461:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 462:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -3865,14 +3864,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 464:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 465:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._forward"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -3880,7 +3871,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._forward, ...), type=<class 'method'>"]
     Object Weakref: <weakref at 0x...; to 'method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (method)>
-  Guard 466:
+  Guard 465:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._forward.__func__"
     Source: local_unspecialized_nn_module
     Create Function: CLOSURE_MATCH
@@ -3888,7 +3879,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 467:
+  Guard 466:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._forward.__self__"
     Source: local_unspecialized_nn_module
     Create Function: DUPLICATE_INPUT
@@ -3896,7 +3887,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'] is L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._forward.__self__"]
     Object Weakref: <weakref at 0x...; to 'MVLinear' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (MVLinear)>
-  Guard 468:
+  Guard 467:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._parameters"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -3904,7 +3895,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 469:
+  Guard 468:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._parameters['weight']"
     Source: local_unspecialized_nn_module
     Create Function: TENSOR_MATCH
@@ -3912,7 +3903,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 470:
+  Guard 469:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._modules"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -3920,7 +3911,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 471:
+  Guard 470:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._modules['algebra']"
     Source: local_unspecialized_nn_module
     Create Function: DUPLICATE_INPUT
@@ -3928,7 +3919,7 @@ Out Guards:
     Code List: ["L['self']._modules['embedding_x']._modules['algebra'] is L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._modules['algebra']"]
     Object Weakref: <weakref at 0x...; to 'CliffordAlgebra' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (CliffordAlgebra)>
-  Guard 472:
+  Guard 471:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].in_features"
     Source: local_unspecialized_nn_module
     Create Function: EQUALS_MATCH
@@ -3936,7 +3927,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].in_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 473:
+  Guard 472:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].in_features"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -3944,7 +3935,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].in_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 474:
+  Guard 473:
     Name: "L['self']._modules['embedding_x']._modules['algebra'].n_blades"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -3952,7 +3943,7 @@ Out Guards:
     Code List: ["L['self']._modules['embedding_x']._modules['algebra'].n_blades == 16"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 475:
+  Guard 474:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].out_features"
     Source: local_unspecialized_nn_module
     Create Function: EQUALS_MATCH
@@ -3960,7 +3951,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].out_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 476:
+  Guard 475:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].out_features"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -3968,7 +3959,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].out_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 477:
+  Guard 476:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].in_features"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -3976,7 +3967,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].in_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 478:
+  Guard 477:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].out_features"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -3984,7 +3975,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right'].out_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 479:
+  Guard 478:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._parameters['bias']"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -3992,7 +3983,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_right']._parameters['bias'] is None"]
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 480:
+  Guard 479:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['normalization']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -4000,7 +3991,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['normalization'], ...), type=<class 'torch.nn.modules.linear.Identity'>"]
     Object Weakref: <weakref at 0x...; to 'Identity' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Identity)>
-  Guard 481:
+  Guard 480:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['normalization']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4008,7 +3999,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 482:
+  Guard 481:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['normalization']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4016,7 +4007,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 483:
+  Guard 482:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['normalization']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4024,7 +4015,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 484:
+  Guard 483:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['normalization']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4032,7 +4023,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 485:
+  Guard 484:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['normalization']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4040,10 +4031,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 486:
+  Guard 485:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['normalization']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 486:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['normalization']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -4057,13 +4056,13 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 488:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['normalization']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].gp_impl"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].gp_impl == 'einsum'"]
     Object Weakref: None
-    Guarded Class Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
   Guard 489:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].gp_impl"
     Source: local_unspecialized_nn_module
@@ -4073,14 +4072,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
   Guard 490:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].gp_impl"
-    Source: local_unspecialized_nn_module
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['EQUALS_MATCH']
-    Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].gp_impl == 'einsum'"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (str)>
-  Guard 491:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']"
     Source: local_unspecialized_nn_module
     Create Function: NOT_PRESENT_IN_GENERIC_DICT
@@ -4088,7 +4079,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 492:
+  Guard 491:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].product_paths"
     Source: local_unspecialized_nn_module
     Create Function: DUPLICATE_INPUT
@@ -4096,7 +4087,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['phi_x']._modules['0'].product_paths is L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].product_paths"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 493:
+  Guard 492:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._parameters['weight']"
     Source: local_unspecialized_nn_module
     Create Function: TENSOR_MATCH
@@ -4104,23 +4095,23 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 494:
+  Guard 493:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].out_features"
     Source: local_unspecialized_nn_module
     Create Function: EQUALS_MATCH
+    Guard Types: ['EQUALS_MATCH']
+    Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].out_features == 2"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
+  Guard 494:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].out_features"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
     Guard Types: ['EQUALS_MATCH']
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].out_features == 2"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
   Guard 495:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].out_features"
-    Source: local_unspecialized_nn_module
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['EQUALS_MATCH']
-    Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].out_features == 2"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 496:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].in_features"
     Source: local_unspecialized_nn_module
     Create Function: EQUALS_MATCH
@@ -4128,7 +4119,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].in_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 497:
+  Guard 496:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].in_features"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -4136,7 +4127,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].in_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 498:
+  Guard 497:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._buffers"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -4144,7 +4135,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._buffers, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 499:
+  Guard 498:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._buffers['_path_idx']"
     Source: local_unspecialized_nn_module
     Create Function: TENSOR_MATCH
@@ -4152,7 +4143,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._buffers['_path_idx'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._buffers['_path_idx'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._buffers['_path_idx'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._buffers['_path_idx'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._buffers['_path_idx'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 500:
+  Guard 499:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['algebra']"
     Source: local_unspecialized_nn_module
     Create Function: DUPLICATE_INPUT
@@ -4160,7 +4151,7 @@ Out Guards:
     Code List: ["L['self']._modules['embedding_x']._modules['algebra'] is L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['algebra']"]
     Object Weakref: <weakref at 0x...; to 'CliffordAlgebra' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (CliffordAlgebra)>
-  Guard 501:
+  Guard 500:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].include_first_order"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -4168,7 +4159,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0'].include_first_order == True"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
-  Guard 502:
+  Guard 501:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -4176,7 +4167,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'], ...), type=<class 'experiments.baselines.cgenn.linear.MVLinear'>"]
     Object Weakref: <weakref at 0x...; to 'MVLinear' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (MVLinear)>
-  Guard 503:
+  Guard 502:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._backward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4184,7 +4175,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 504:
+  Guard 503:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._backward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4192,7 +4183,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 505:
+  Guard 504:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._forward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4200,7 +4191,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 506:
+  Guard 505:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._forward_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4208,7 +4199,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 507:
+  Guard 506:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._forward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4216,10 +4207,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 508:
+  Guard 507:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 508:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -4233,14 +4232,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 510:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 511:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._forward"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -4248,7 +4239,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._forward, ...), type=<class 'method'>"]
     Object Weakref: <weakref at 0x...; to 'method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (method)>
-  Guard 512:
+  Guard 511:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._forward.__func__"
     Source: local_unspecialized_nn_module
     Create Function: CLOSURE_MATCH
@@ -4256,7 +4247,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 513:
+  Guard 512:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._forward.__self__"
     Source: local_unspecialized_nn_module
     Create Function: DUPLICATE_INPUT
@@ -4264,7 +4255,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'] is L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._forward.__self__"]
     Object Weakref: <weakref at 0x...; to 'MVLinear' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (MVLinear)>
-  Guard 514:
+  Guard 513:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -4272,7 +4263,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 515:
+  Guard 514:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['weight']"
     Source: local_unspecialized_nn_module
     Create Function: TENSOR_MATCH
@@ -4280,7 +4271,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 516:
+  Guard 515:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._modules"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -4288,7 +4279,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 517:
+  Guard 516:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._modules['algebra']"
     Source: local_unspecialized_nn_module
     Create Function: DUPLICATE_INPUT
@@ -4296,7 +4287,7 @@ Out Guards:
     Code List: ["L['self']._modules['embedding_x']._modules['algebra'] is L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._modules['algebra']"]
     Object Weakref: <weakref at 0x...; to 'CliffordAlgebra' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (CliffordAlgebra)>
-  Guard 518:
+  Guard 517:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].in_features"
     Source: local_unspecialized_nn_module
     Create Function: EQUALS_MATCH
@@ -4304,7 +4295,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].in_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 519:
+  Guard 518:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].in_features"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -4312,7 +4303,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].in_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 520:
+  Guard 519:
     Name: "L['self']._modules['embedding_x']._modules['algebra'].n_blades"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -4320,7 +4311,7 @@ Out Guards:
     Code List: ["L['self']._modules['embedding_x']._modules['algebra'].n_blades == 16"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 521:
+  Guard 520:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].out_features"
     Source: local_unspecialized_nn_module
     Create Function: EQUALS_MATCH
@@ -4328,7 +4319,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].out_features == 2"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 522:
+  Guard 521:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].out_features"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -4336,7 +4327,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].out_features == 2"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 523:
+  Guard 522:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].in_features"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -4344,7 +4335,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].in_features == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 524:
+  Guard 523:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].out_features"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -4352,7 +4343,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].out_features == 2"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 525:
+  Guard 524:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['bias']"
     Source: local_unspecialized_nn_module
     Create Function: TENSOR_MATCH
@@ -4360,7 +4351,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 526:
+  Guard 525:
     Name: "L['self']._modules['embedding_x']._modules['algebra']"
     Source: local_unspecialized_nn_module
     Create Function: NOT_PRESENT_IN_GENERIC_DICT
@@ -4368,7 +4359,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 527:
+  Guard 526:
     Name: "L['self']._modules['embedding_x']._modules['algebra'].n_blades"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -4376,7 +4367,7 @@ Out Guards:
     Code List: ["L['self']._modules['embedding_x']._modules['algebra'].n_blades == 16"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 528:
+  Guard 527:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].b_dims"
     Source: local_unspecialized_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -4384,7 +4375,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].b_dims, ...), type=<class 'tuple'>", "len(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].b_dims) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 529:
+  Guard 528:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].b_dims"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -4392,7 +4383,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['0']._modules['linear_left'].b_dims == (0,)"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 530:
+  Guard 529:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -4400,7 +4391,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1'], ...), type=<class 'experiments.baselines.cgenn.mvlayernorm.MVLayerNorm'>"]
     Object Weakref: <weakref at 0x...; to 'MVLayerNorm' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (MVLayerNorm)>
-  Guard 531:
+  Guard 530:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._backward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4408,7 +4399,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 532:
+  Guard 531:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._backward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4416,7 +4407,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 533:
+  Guard 532:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._forward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4424,7 +4415,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 534:
+  Guard 533:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._forward_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4432,7 +4423,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 535:
+  Guard 534:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._forward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4440,10 +4431,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 536:
+  Guard 535:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 536:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -4457,14 +4456,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 538:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 539:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._parameters"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -4472,7 +4463,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 540:
+  Guard 539:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._modules"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -4480,7 +4471,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 541:
+  Guard 540:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._modules['algebra']"
     Source: local_unspecialized_nn_module
     Create Function: DUPLICATE_INPUT
@@ -4488,7 +4479,7 @@ Out Guards:
     Code List: ["L['self']._modules['embedding_x']._modules['algebra'] is L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._modules['algebra']"]
     Object Weakref: <weakref at 0x...; to 'CliffordAlgebra' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (CliffordAlgebra)>
-  Guard 542:
+  Guard 541:
     Name: "L['self']._modules['embedding_x']._modules['algebra']"
     Source: local_unspecialized_nn_module
     Create Function: NOT_PRESENT_IN_GENERIC_DICT
@@ -4496,7 +4487,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 543:
+  Guard 542:
     Name: "dict(type(L['self']._modules['embedding_x']._modules['algebra']).__dict__)['norm'].__defaults__"
     Source: local_unspecialized_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -4504,6 +4495,14 @@ Out Guards:
     Code List: ["___check_type_id(dict(type(L['self']._modules['embedding_x']._modules['algebra']).__dict__)['norm'].__defaults__, ...), type=<class 'tuple'>", "len(dict(type(L['self']._modules['embedding_x']._modules['algebra']).__dict__)['norm'].__defaults__) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
+  Guard 543:
+    Name: "L['self']._modules['embedding_x']._modules['algebra']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
   Guard 544:
     Name: "L['self']._modules['embedding_x']._modules['algebra']"
     Source: local_unspecialized_nn_module
@@ -4521,14 +4520,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 546:
-    Name: "L['self']._modules['embedding_x']._modules['algebra']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 547:
     Name: "dict(type(L['self']._modules['embedding_x']._modules['algebra']).__dict__)['_smooth_abs_sqrt'].__defaults__"
     Source: local_unspecialized_nn_module
     Create Function: SEQUENCE_LENGTH
@@ -4536,7 +4527,7 @@ Out Guards:
     Code List: ["___check_type_id(dict(type(L['self']._modules['embedding_x']._modules['algebra']).__dict__)['_smooth_abs_sqrt'].__defaults__, ...), type=<class 'tuple'>", "len(dict(type(L['self']._modules['embedding_x']._modules['algebra']).__dict__)['_smooth_abs_sqrt'].__defaults__) == 1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (tuple)>
-  Guard 548:
+  Guard 547:
     Name: "dict(type(L['self']._modules['embedding_x']._modules['algebra']).__dict__)['_smooth_abs_sqrt'].__defaults__[0]"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -4544,7 +4535,7 @@ Out Guards:
     Code List: ["dict(type(L['self']._modules['embedding_x']._modules['algebra']).__dict__)['_smooth_abs_sqrt'].__defaults__[0] == 1e-16"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 549:
+  Guard 548:
     Name: "G['__import_experiments_dot_baselines_dot_cgenn_dot_mvlayernorm'].EPS"
     Source: global
     Create Function: CONSTANT_MATCH
@@ -4552,7 +4543,7 @@ Out Guards:
     Code List: ["G['__import_experiments_dot_baselines_dot_cgenn_dot_mvlayernorm'].EPS == 1e-06"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 550:
+  Guard 549:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._parameters['a']"
     Source: local_unspecialized_nn_module
     Create Function: TENSOR_MATCH
@@ -4560,6 +4551,14 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._parameters['a'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._parameters['a'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._parameters['a'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._parameters['a'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_x']._modules['1']._parameters['a'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
+  Guard 550:
+    Name: "L['self']._modules['embedding_x']._modules['algebra']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
   Guard 551:
     Name: "L['self']._modules['embedding_x']._modules['algebra']"
     Source: local_unspecialized_nn_module
@@ -4665,14 +4664,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 564:
-    Name: "L['self']._modules['embedding_x']._modules['algebra']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 565:
     Name: "L['self']._modules['CGLs']._modules['0']"
     Source: local_unspecialized_nn_module
     Create Function: NOT_PRESENT_IN_GENERIC_DICT
@@ -4680,7 +4671,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 566:
+  Guard 565:
     Name: "L['node_attr_h']"
     Source: local
     Create Function: DUPLICATE_INPUT
@@ -4688,7 +4679,7 @@ Out Guards:
     Code List: ["L['h'] is L['node_attr_h']"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 567:
+  Guard 566:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -4696,7 +4687,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h'], ...), type=<class 'torch.nn.modules.container.Sequential'>"]
     Object Weakref: <weakref at 0x...; to 'Sequential' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Sequential)>
-  Guard 568:
+  Guard 567:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._backward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4704,7 +4695,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 569:
+  Guard 568:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._backward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4712,7 +4703,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 570:
+  Guard 569:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._forward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4720,7 +4711,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 571:
+  Guard 570:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._forward_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4728,7 +4719,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 572:
+  Guard 571:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._forward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4736,10 +4727,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 573:
+  Guard 572:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 573:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -4769,14 +4768,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 577:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 578:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -4784,7 +4775,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 579:
+  Guard 578:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules"
     Source: local_unspecialized_nn_module
     Create Function: DICT_KEYS_MATCH
@@ -4792,7 +4783,7 @@ Out Guards:
     Code List: ["len(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules) == 4", "list(dict.keys(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules)) == ['0', '1', '2', '3']"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 580:
+  Guard 579:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -4800,7 +4791,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
     Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
-  Guard 581:
+  Guard 580:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4808,7 +4799,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 582:
+  Guard 581:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4816,7 +4807,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 583:
+  Guard 582:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4824,7 +4815,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 584:
+  Guard 583:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4832,7 +4823,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 585:
+  Guard 584:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4840,10 +4831,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 586:
+  Guard 585:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 586:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -4857,14 +4856,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 588:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 589:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -4872,7 +4863,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 590:
+  Guard 589:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -4880,7 +4871,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 591:
+  Guard 590:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -4888,7 +4879,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['0']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 592:
+  Guard 591:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -4896,7 +4887,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'], ...), type=<class 'torch.nn.modules.batchnorm.BatchNorm1d'>"]
     Object Weakref: <weakref at 0x...; to 'BatchNorm1d' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (BatchNorm1d)>
-  Guard 593:
+  Guard 592:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4904,7 +4895,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 594:
+  Guard 593:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4912,7 +4903,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 595:
+  Guard 594:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4920,7 +4911,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 596:
+  Guard 595:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4928,7 +4919,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 597:
+  Guard 596:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -4936,10 +4927,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 598:
+  Guard 597:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 598:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -4961,14 +4960,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 601:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 602:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -4976,6 +4967,14 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
+  Guard 602:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].training"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].training == False"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 603:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -4985,14 +4984,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 604:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].training"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['BOOL_MATCH']
-    Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].training == False"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
-  Guard 605:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5000,7 +4991,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 606:
+  Guard 605:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._modules"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5008,7 +4999,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 607:
+  Guard 606:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5016,7 +5007,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 608:
+  Guard 607:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_mean']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -5024,6 +5015,14 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_mean'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_mean'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_mean'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_mean'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_mean'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
+  Guard 608:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].training"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].training == False"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 609:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].training"
     Source: local_unspecialized_builtin_nn_module
@@ -5033,14 +5032,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 610:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].training"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['BOOL_MATCH']
-    Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].training == False"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
-  Guard 611:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_var']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -5048,7 +5039,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_var'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_var'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_var'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_var'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._buffers['running_var'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 612:
+  Guard 611:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -5056,7 +5047,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 613:
+  Guard 612:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -5064,7 +5055,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 614:
+  Guard 613:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].momentum"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -5072,7 +5063,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].momentum == 0.1"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 615:
+  Guard 614:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].eps"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -5080,7 +5071,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['1'].eps == 1e-05"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 616:
+  Guard 615:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5088,7 +5079,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2'], ...), type=<class 'torch.nn.modules.activation.ReLU'>"]
     Object Weakref: <weakref at 0x...; to 'ReLU' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (ReLU)>
-  Guard 617:
+  Guard 616:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5096,7 +5087,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 618:
+  Guard 617:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5104,7 +5095,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 619:
+  Guard 618:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5112,7 +5103,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 620:
+  Guard 619:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5120,7 +5111,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 621:
+  Guard 620:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5128,10 +5119,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 622:
+  Guard 621:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 622:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -5145,14 +5144,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 624:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 625:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2'].inplace"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -5160,7 +5151,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['2'].inplace == False"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
-  Guard 626:
+  Guard 625:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5168,7 +5159,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
     Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
-  Guard 627:
+  Guard 626:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5176,7 +5167,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 628:
+  Guard 627:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5184,7 +5175,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 629:
+  Guard 628:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5192,7 +5183,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 630:
+  Guard 629:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5200,7 +5191,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 631:
+  Guard 630:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5208,10 +5199,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 632:
+  Guard 631:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 632:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -5225,14 +5224,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 634:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 635:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5240,7 +5231,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 636:
+  Guard 635:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -5248,7 +5239,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 637:
+  Guard 636:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -5256,7 +5247,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['theta_h']._modules['3']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 638:
+  Guard 637:
     Name: "L['self']._modules['CGLs']._modules['0'].use_invariants_to_update"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -5264,7 +5255,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0'].use_invariants_to_update == True"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
-  Guard 639:
+  Guard 638:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -5272,7 +5263,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['chi_x'], ...), type=<class 'torch.nn.modules.container.Sequential'>"]
     Object Weakref: <weakref at 0x...; to 'Sequential' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Sequential)>
-  Guard 640:
+  Guard 639:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._backward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5280,7 +5271,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 641:
+  Guard 640:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._backward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5288,7 +5279,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 642:
+  Guard 641:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._forward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5296,7 +5287,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 643:
+  Guard 642:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._forward_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5304,7 +5295,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 644:
+  Guard 643:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._forward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5312,10 +5303,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 645:
+  Guard 644:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 645:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -5345,14 +5344,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 649:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 650:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -5360,7 +5351,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 651:
+  Guard 650:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules"
     Source: local_unspecialized_nn_module
     Create Function: DICT_KEYS_MATCH
@@ -5368,7 +5359,7 @@ Out Guards:
     Code List: ["len(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules) == 3", "list(dict.keys(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules)) == ['0', '1', '2']"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 652:
+  Guard 651:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5376,7 +5367,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
     Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
-  Guard 653:
+  Guard 652:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5384,7 +5375,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 654:
+  Guard 653:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5392,7 +5383,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 655:
+  Guard 654:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5400,7 +5391,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 656:
+  Guard 655:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5408,7 +5399,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 657:
+  Guard 656:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5416,10 +5407,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 658:
+  Guard 657:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 658:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -5433,14 +5432,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 660:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 661:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5448,7 +5439,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 662:
+  Guard 661:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -5456,7 +5447,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 663:
+  Guard 662:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -5464,7 +5455,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['0']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 664:
+  Guard 663:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5472,7 +5463,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1'], ...), type=<class 'torch.nn.modules.activation.ReLU'>"]
     Object Weakref: <weakref at 0x...; to 'ReLU' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (ReLU)>
-  Guard 665:
+  Guard 664:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5480,7 +5471,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 666:
+  Guard 665:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5488,7 +5479,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 667:
+  Guard 666:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5496,7 +5487,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 668:
+  Guard 667:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5504,7 +5495,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 669:
+  Guard 668:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5512,10 +5503,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 670:
+  Guard 669:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 670:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -5529,14 +5528,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 672:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 673:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1'].inplace"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -5544,7 +5535,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['1'].inplace == False"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
-  Guard 674:
+  Guard 673:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5552,7 +5543,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
     Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
-  Guard 675:
+  Guard 674:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5560,7 +5551,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 676:
+  Guard 675:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5568,7 +5559,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 677:
+  Guard 676:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5576,7 +5567,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 678:
+  Guard 677:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5584,7 +5575,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 679:
+  Guard 678:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5592,10 +5583,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 680:
+  Guard 679:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 680:
+    Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -5609,14 +5608,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 682:
-    Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 683:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5624,7 +5615,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 684:
+  Guard 683:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -5632,7 +5623,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 685:
+  Guard 684:
     Name: "L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -5640,7 +5631,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['CGLs']._modules['0']._modules['chi_x']._modules['2']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 686:
+  Guard 685:
     Name: "L['self']._modules['CGLs']._modules['0'].out_features_x"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -5648,7 +5639,7 @@ Out Guards:
     Code List: ["L['self']._modules['CGLs']._modules['0'].out_features_x == 2"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 687:
+  Guard 686:
     Name: "L['self']._modules['embedding_x']._modules['algebra'].n_subspaces"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -5656,6 +5647,14 @@ Out Guards:
     Code List: ["L['self']._modules['embedding_x']._modules['algebra'].n_subspaces == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
+  Guard 687:
+    Name: "L['self']._modules['CGLs']._modules['0'].residual"
+    Source: local_unspecialized_nn_module
+    Create Function: CONSTANT_MATCH
+    Guard Types: ['BOOL_MATCH']
+    Code List: ["L['self']._modules['CGLs']._modules['0'].residual == False"]
+    Object Weakref: None
+    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 688:
     Name: "L['self']._modules['CGLs']._modules['0'].residual"
     Source: local_unspecialized_nn_module
@@ -5665,14 +5664,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
   Guard 689:
-    Name: "L['self']._modules['CGLs']._modules['0'].residual"
-    Source: local_unspecialized_nn_module
-    Create Function: CONSTANT_MATCH
-    Guard Types: ['BOOL_MATCH']
-    Code List: ["L['self']._modules['CGLs']._modules['0'].residual == False"]
-    Object Weakref: None
-    Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
-  Guard 690:
     Name: "L['self']._modules['algebra']"
     Source: local_unspecialized_nn_module
     Create Function: DUPLICATE_INPUT
@@ -5680,6 +5671,14 @@ Out Guards:
     Code List: ["L['self']._modules['embedding_x']._modules['algebra'] is L['self']._modules['algebra']"]
     Object Weakref: <weakref at 0x...; to 'CliffordAlgebra' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (CliffordAlgebra)>
+  Guard 690:
+    Name: "L['self']._modules['embedding_x']._modules['algebra']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
   Guard 691:
     Name: "L['self']._modules['embedding_x']._modules['algebra']"
     Source: local_unspecialized_nn_module
@@ -5785,14 +5784,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 704:
-    Name: "L['self']._modules['embedding_x']._modules['algebra']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 705:
     Name: "L['node_mask']"
     Source: local
     Create Function: TENSOR_MATCH
@@ -5800,7 +5791,7 @@ Out Guards:
     Code List: ["hasattr(L['node_mask'], '_dynamo_dynamic_indices') == False", "hasattr(L['node_mask'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['node_mask'], '_dynamo_unbacked_indices') == False", "hasattr(L['node_mask'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['node_mask'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Tensor' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'torch._C._TensorMeta' at 0x... (Tensor)>
-  Guard 706:
+  Guard 705:
     Name: "L['self'].hidden_features_x"
     Source: local_unspecialized_nn_module
     Create Function: EQUALS_MATCH
@@ -5808,7 +5799,7 @@ Out Guards:
     Code List: ["L['self'].hidden_features_x == 2"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 707:
+  Guard 706:
     Name: "L['self'].hidden_features_x"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -5816,7 +5807,7 @@ Out Guards:
     Code List: ["L['self'].hidden_features_x == 2"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 708:
+  Guard 707:
     Name: "L['self']._modules['embedding_x']._modules['algebra'].n_subspaces"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -5824,7 +5815,7 @@ Out Guards:
     Code List: ["L['self']._modules['embedding_x']._modules['algebra'].n_subspaces == 5"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 709:
+  Guard 708:
     Name: "L['self'].hidden_features_h"
     Source: local_unspecialized_nn_module
     Create Function: EQUALS_MATCH
@@ -5832,7 +5823,7 @@ Out Guards:
     Code List: ["L['self'].hidden_features_h == 8"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 710:
+  Guard 709:
     Name: "L['self'].hidden_features_h"
     Source: local_unspecialized_nn_module
     Create Function: CONSTANT_MATCH
@@ -5840,7 +5831,7 @@ Out Guards:
     Code List: ["L['self'].hidden_features_h == 8"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (int)>
-  Guard 711:
+  Guard 710:
     Name: "G['__import_experiments_dot_baselines_dot_cgenn_dot_linear'].torch.mean"
     Source: global
     Create Function: BUILTIN_MATCH
@@ -5848,7 +5839,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__import_experiments_dot_baselines_dot_cgenn_dot_linear'].torch.mean, ...), type=<class 'builtin_function_or_method'>"]
     Object Weakref: <weakref at 0x...; to 'builtin_function_or_method' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (builtin_function_or_method)>
-  Guard 712:
+  Guard 711:
     Name: "L['self']._modules['graph_dec']"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -5856,7 +5847,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['graph_dec'], ...), type=<class 'torch.nn.modules.container.Sequential'>"]
     Object Weakref: <weakref at 0x...; to 'Sequential' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Sequential)>
-  Guard 713:
+  Guard 712:
     Name: "L['self']._modules['graph_dec']._backward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5864,7 +5855,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 714:
+  Guard 713:
     Name: "L['self']._modules['graph_dec']._backward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5872,7 +5863,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 715:
+  Guard 714:
     Name: "L['self']._modules['graph_dec']._forward_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5880,7 +5871,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 716:
+  Guard 715:
     Name: "L['self']._modules['graph_dec']._forward_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5888,7 +5879,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 717:
+  Guard 716:
     Name: "L['self']._modules['graph_dec']._forward_pre_hooks"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5896,10 +5887,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 718:
+  Guard 717:
     Name: "L['self']._modules['graph_dec']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 718:
+    Name: "L['self']._modules['graph_dec']"
+    Source: local_unspecialized_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -5929,14 +5928,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 722:
-    Name: "L['self']._modules['graph_dec']"
-    Source: local_unspecialized_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 723:
     Name: "L['self']._modules['graph_dec']._modules"
     Source: local_unspecialized_nn_module
     Create Function: TYPE_MATCH
@@ -5944,7 +5935,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['graph_dec']._modules, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 724:
+  Guard 723:
     Name: "L['self']._modules['graph_dec']._modules"
     Source: local_unspecialized_nn_module
     Create Function: DICT_KEYS_MATCH
@@ -5952,7 +5943,7 @@ Out Guards:
     Code List: ["len(L['self']._modules['graph_dec']._modules) == 4", "list(dict.keys(L['self']._modules['graph_dec']._modules)) == ['0', '1', '2', '3']"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 725:
+  Guard 724:
     Name: "L['self']._modules['graph_dec']._modules['0']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -5960,7 +5951,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['graph_dec']._modules['0'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
     Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
-  Guard 726:
+  Guard 725:
     Name: "L['self']._modules['graph_dec']._modules['0']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5968,7 +5959,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 727:
+  Guard 726:
     Name: "L['self']._modules['graph_dec']._modules['0']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5976,7 +5967,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 728:
+  Guard 727:
     Name: "L['self']._modules['graph_dec']._modules['0']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5984,7 +5975,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 729:
+  Guard 728:
     Name: "L['self']._modules['graph_dec']._modules['0']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -5992,7 +5983,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 730:
+  Guard 729:
     Name: "L['self']._modules['graph_dec']._modules['0']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6000,10 +5991,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 731:
+  Guard 730:
     Name: "L['self']._modules['graph_dec']._modules['0']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 731:
+    Name: "L['self']._modules['graph_dec']._modules['0']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -6017,14 +6016,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 733:
-    Name: "L['self']._modules['graph_dec']._modules['0']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 734:
     Name: "L['self']._modules['graph_dec']._modules['0']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -6032,7 +6023,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['graph_dec']._modules['0']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 735:
+  Guard 734:
     Name: "L['self']._modules['graph_dec']._modules['0']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -6040,7 +6031,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['graph_dec']._modules['0']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['0']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['0']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['0']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['0']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 736:
+  Guard 735:
     Name: "L['self']._modules['graph_dec']._modules['0']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -6048,7 +6039,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['graph_dec']._modules['0']._parameters['bias'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['0']._parameters['bias'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['0']._parameters['bias'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['0']._parameters['bias'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['0']._parameters['bias'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 737:
+  Guard 736:
     Name: "L['self']._modules['graph_dec']._modules['1']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -6056,7 +6047,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['graph_dec']._modules['1'], ...), type=<class 'torch.nn.modules.activation.ReLU'>"]
     Object Weakref: <weakref at 0x...; to 'ReLU' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (ReLU)>
-  Guard 738:
+  Guard 737:
     Name: "L['self']._modules['graph_dec']._modules['1']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6064,7 +6055,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 739:
+  Guard 738:
     Name: "L['self']._modules['graph_dec']._modules['1']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6072,7 +6063,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 740:
+  Guard 739:
     Name: "L['self']._modules['graph_dec']._modules['1']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6080,7 +6071,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 741:
+  Guard 740:
     Name: "L['self']._modules['graph_dec']._modules['1']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6088,7 +6079,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 742:
+  Guard 741:
     Name: "L['self']._modules['graph_dec']._modules['1']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6096,10 +6087,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 743:
+  Guard 742:
     Name: "L['self']._modules['graph_dec']._modules['1']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 743:
+    Name: "L['self']._modules['graph_dec']._modules['1']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -6113,14 +6112,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 745:
-    Name: "L['self']._modules['graph_dec']._modules['1']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 746:
     Name: "L['self']._modules['graph_dec']._modules['1'].inplace"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -6128,7 +6119,7 @@ Out Guards:
     Code List: ["L['self']._modules['graph_dec']._modules['1'].inplace == False"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
-  Guard 747:
+  Guard 746:
     Name: "L['self']._modules['graph_dec']._modules['2']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -6136,7 +6127,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['graph_dec']._modules['2'], ...), type=<class 'torch.nn.modules.dropout.Dropout'>"]
     Object Weakref: <weakref at 0x...; to 'Dropout' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Dropout)>
-  Guard 748:
+  Guard 747:
     Name: "L['self']._modules['graph_dec']._modules['2']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6144,7 +6135,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 749:
+  Guard 748:
     Name: "L['self']._modules['graph_dec']._modules['2']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6152,7 +6143,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 750:
+  Guard 749:
     Name: "L['self']._modules['graph_dec']._modules['2']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6160,7 +6151,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 751:
+  Guard 750:
     Name: "L['self']._modules['graph_dec']._modules['2']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6168,7 +6159,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 752:
+  Guard 751:
     Name: "L['self']._modules['graph_dec']._modules['2']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6176,10 +6167,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 753:
+  Guard 752:
     Name: "L['self']._modules['graph_dec']._modules['2']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 753:
+    Name: "L['self']._modules['graph_dec']._modules['2']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -6193,14 +6192,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 755:
-    Name: "L['self']._modules['graph_dec']._modules['2']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 756:
     Name: "G['__import_torch_dot_nn_dot_modules_dot_dropout']"
     Source: global
     Create Function: MODULE_MATCH
@@ -6208,7 +6199,7 @@ Out Guards:
     Code List: ["___check_obj_id(G['__import_torch_dot_nn_dot_modules_dot_dropout'], ...), type=<class 'module'>"]
     Object Weakref: <weakref at 0x...; to 'module' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
-  Guard 757:
+  Guard 756:
     Name: "G['__import_torch_dot_nn_dot_modules_dot_dropout'].F"
     Source: global
     Create Function: DUPLICATE_INPUT
@@ -6216,7 +6207,7 @@ Out Guards:
     Code List: ["G['__import_torch_dot_nn_dot_modules_dot_linear'].F is G['__import_torch_dot_nn_dot_modules_dot_dropout'].F"]
     Object Weakref: <weakref at 0x...; to 'module' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (module)>
-  Guard 758:
+  Guard 757:
     Name: "G['__import_torch_dot_nn_dot_modules_dot_linear'].F.dropout"
     Source: global
     Create Function: CLOSURE_MATCH
@@ -6224,7 +6215,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 759:
+  Guard 758:
     Name: "L['self']._modules['graph_dec']._modules['2'].p"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -6232,7 +6223,7 @@ Out Guards:
     Code List: ["L['self']._modules['graph_dec']._modules['2'].p == 0.0"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (float)>
-  Guard 760:
+  Guard 759:
     Name: "L['self']._modules['graph_dec']._modules['2'].training"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -6240,7 +6231,7 @@ Out Guards:
     Code List: ["L['self']._modules['graph_dec']._modules['2'].training == False"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
-  Guard 761:
+  Guard 760:
     Name: "L['self']._modules['graph_dec']._modules['2'].inplace"
     Source: local_unspecialized_builtin_nn_module
     Create Function: CONSTANT_MATCH
@@ -6248,7 +6239,7 @@ Out Guards:
     Code List: ["L['self']._modules['graph_dec']._modules['2'].inplace == False"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (bool)>
-  Guard 762:
+  Guard 761:
     Name: "L['self']._modules['graph_dec']._modules['3']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -6256,7 +6247,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['graph_dec']._modules['3'], ...), type=<class 'torch.nn.modules.linear.Linear'>"]
     Object Weakref: <weakref at 0x...; to 'Linear' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (Linear)>
-  Guard 763:
+  Guard 762:
     Name: "L['self']._modules['graph_dec']._modules['3']._backward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6264,7 +6255,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 764:
+  Guard 763:
     Name: "L['self']._modules['graph_dec']._modules['3']._backward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6272,7 +6263,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 765:
+  Guard 764:
     Name: "L['self']._modules['graph_dec']._modules['3']._forward_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6280,7 +6271,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 766:
+  Guard 765:
     Name: "L['self']._modules['graph_dec']._modules['3']._forward_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6288,7 +6279,7 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 767:
+  Guard 766:
     Name: "L['self']._modules['graph_dec']._modules['3']._forward_pre_hooks"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
@@ -6296,10 +6287,18 @@ Out Guards:
     Code List: None
     Object Weakref: None
     Guarded Class Weakref: None
-  Guard 768:
+  Guard 767:
     Name: "L['self']._modules['graph_dec']._modules['3']._forward_pre_hooks_with_kwargs"
     Source: local_unspecialized_builtin_nn_module
     Create Function: EMPTY_NN_MODULE_HOOKS_DICT
+    Guard Types: None
+    Code List: None
+    Object Weakref: None
+    Guarded Class Weakref: None
+  Guard 768:
+    Name: "L['self']._modules['graph_dec']._modules['3']"
+    Source: local_unspecialized_builtin_nn_module
+    Create Function: NOT_PRESENT_IN_GENERIC_DICT
     Guard Types: None
     Code List: None
     Object Weakref: None
@@ -6313,14 +6312,6 @@ Out Guards:
     Object Weakref: None
     Guarded Class Weakref: None
   Guard 770:
-    Name: "L['self']._modules['graph_dec']._modules['3']"
-    Source: local_unspecialized_builtin_nn_module
-    Create Function: NOT_PRESENT_IN_GENERIC_DICT
-    Guard Types: None
-    Code List: None
-    Object Weakref: None
-    Guarded Class Weakref: None
-  Guard 771:
     Name: "L['self']._modules['graph_dec']._modules['3']._parameters"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TYPE_MATCH
@@ -6328,7 +6319,7 @@ Out Guards:
     Code List: ["___check_type_id(L['self']._modules['graph_dec']._modules['3']._parameters, ...), type=<class 'dict'>"]
     Object Weakref: None
     Guarded Class Weakref: <weakref at 0x...; to 'type' at 0x... (dict)>
-  Guard 772:
+  Guard 771:
     Name: "L['self']._modules['graph_dec']._modules['3']._parameters['weight']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH
@@ -6336,7 +6327,7 @@ Out Guards:
     Code List: ["hasattr(L['self']._modules['graph_dec']._modules['3']._parameters['weight'], '_dynamo_dynamic_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['3']._parameters['weight'], '_dynamo_weak_dynamic_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['3']._parameters['weight'], '_dynamo_unbacked_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['3']._parameters['weight'], '_dynamo_strict_unbacked_indices') == False", "hasattr(L['self']._modules['graph_dec']._modules['3']._parameters['weight'], '_dynamo_static_indices') == False"]
     Object Weakref: <weakref at 0x...; to 'Parameter' at 0x...>
     Guarded Class Weakref: <weakref at 0x...; to '_ParameterMeta' at 0x... (Parameter)>
-  Guard 773:
+  Guard 772:
     Name: "L['self']._modules['graph_dec']._modules['3']._parameters['bias']"
     Source: local_unspecialized_builtin_nn_module
     Create Function: TENSOR_MATCH

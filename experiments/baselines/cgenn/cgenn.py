@@ -31,15 +31,25 @@ def unsorted_segment_sum(data, segment_ids, num_segments):
     return result
 
 
-def unsorted_segment_mean(data, segment_ids, num_segments):
+def unsorted_segment_mean(data, segment_ids, num_segments, counts=None):
     r"""Custom PyTorch op to replicate TensorFlow's `unsorted_segment_mean`.
     Adapted from https://github.com/vgsatorras/egnn.
+
+    `counts`: optional precomputed (num_segments, 1) receiver-degree tensor. The default
+    path rebuilds it here by scattering a full (E, C) tensor of ones -- but the degree is
+    identical across channels AND across every reduce call in the step (it depends only on
+    `edges`), so callers hoist it once per forward (see CGENN.forward). Bit-identical:
+    degrees are small exact integers whatever the summation order, and dividing by a
+    (num_segments, 1) broadcast applies the same divisor values elementwise that the
+    (num_segments, C) tensor did. The BIT gate + hybrid pins verify this against the
+    pre-hoist recordings.
     """
     result = data.new_zeros((num_segments, data.size(1)))
-    count = data.new_zeros((num_segments, data.size(1)))
     result.index_add_(0, segment_ids, data)
-    count.index_add_(0, segment_ids, torch.ones_like(data))
-    return result / count.clamp(min=1)
+    if counts is None:
+        counts = data.new_zeros((num_segments, data.size(1)))
+        counts.index_add_(0, segment_ids, torch.ones_like(data))
+    return result / counts.clamp(min=1)
 
 
 def cgenn_gain_and_bias_names(module):
@@ -202,9 +212,10 @@ class CGLayer(nn.Module):
 
         self.aggregation = aggregation
 
-    def reduce(self, input, segment_ids, num_segments):
+    def reduce(self, input, segment_ids, num_segments, counts=None):
         if self.aggregation == "mean":
-            red = unsorted_segment_mean(input, segment_ids, num_segments=num_segments)
+            red = unsorted_segment_mean(input, segment_ids, num_segments=num_segments,
+                                        counts=counts)
         elif self.aggregation == "sum":
             red = unsorted_segment_sum(input, segment_ids, num_segments=num_segments)
         else:
@@ -253,7 +264,8 @@ class CGLayer(nn.Module):
 
         return self.theta_h(input)
 
-    def forward(self, h, x, edges, node_attr_h, node_attr_x, edge_attr_h, edge_attr_x):
+    def forward(self, h, x, edges, node_attr_h, node_attr_x, edge_attr_h, edge_attr_x,
+                edge_counts=None):
         i, j = edges
         m_x = self.message_x(x[i], x[j], edge_attr_x)
         m_invariants = get_invariants(self.algebra, m_x).flatten(1)
@@ -268,10 +280,11 @@ class CGLayer(nn.Module):
             weights = weights.index_select(2, self.algebra.blade_subspace_idx)
             m_x = m_x * torch.sigmoid(weights)
 
-        x_red = self.reduce(m_x.flatten(1), i, num_segments=x.size(0)).view(len(x), *m_x.shape[1:])
+        x_red = self.reduce(m_x.flatten(1), i, num_segments=x.size(0),
+                            counts=edge_counts).view(len(x), *m_x.shape[1:])
 
         if m_h is not None:
-            h_red = self.reduce(m_h, i, num_segments=h.size(0))
+            h_red = self.reduce(m_h, i, num_segments=h.size(0), counts=edge_counts)
         else:
             h_red = None
 
@@ -406,6 +419,18 @@ class CGENN(nn.Module):
         if x is not None:
             x = self.embedding_x(x)
 
+        # Receiver degrees, once per forward: every CGL's mean aggregation divided by a
+        # count it rebuilt per call by scattering a full (E, C) ones tensor -- 2 scatters
+        # per layer for a value that depends only on `edges`. One (E, 1) scatter here
+        # replaces all of them. Bit-identical (exact small integers, then the same divisor
+        # values broadcast; see unsorted_segment_mean) -- the BIT gate verifies against
+        # the pre-hoist fixtures. Ones-summation order cannot change the result, so this
+        # is also degree-count determinism on CUDA for free.
+        ref = x if x is not None else h
+        i_recv = edges[0]
+        edge_counts = ref.new_zeros(ref.size(0), 1).index_add_(
+            0, i_recv, ref.new_ones(i_recv.size(0), 1))
+
         for i in range(self.n_layers):
             h, x = self.CGLs[i](
                 h,
@@ -415,6 +440,7 @@ class CGENN(nn.Module):
                 node_attr_h=node_attr_h,
                 edge_attr_x=edge_attr_x,
                 edge_attr_h=edge_attr_h,
+                edge_counts=edge_counts,
             )
 
         invariants = get_invariants(self.algebra, x).flatten(1)

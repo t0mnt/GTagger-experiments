@@ -561,9 +561,14 @@ the marshalling/micro-GEMM signature)*. Checklist:
       re-race + shield-retirement soak → gate day.
 - [ ] **Phase 1.3** `activation_memory_budget` adoption (compiled posture; vram matrix +
       β-PERF judge it; CPU priors recorded).
-- [ ] **Phase 2** CGENN-GPS: block-glue layout; static-edge segment plan + deterministic
-      aggregation (the 17.8% scatter); attention re-check at production P_max; bucketing
-      only if still launch-bound.
+- [ ] **Phase 2** CGENN-GPS — updated 2026-08-14 after the post-Phase-1 audit:
+      2.1 block-glue layout RE-SCOPED (census: glue "marshalling" is mostly views +
+      Linear weight transposes; mv_bridge already goes through the rewritten MVLinear
+      — gate-day check only, don't rewrite blind). 2.2a receiver-degree hoist DONE,
+      BIT-class, fixtures/pins passed UNCHANGED. 2.2b sorted-segment main scatter:
+      receivers are provably sorted from both edge builders (fact in the doc) — do
+      only if the gate-day profile still ranks the scatter after 2a. Then attention
+      re-check at P_max; bucketing last.
 - [ ] **Phase 3** LNetSlim-GPS: one `profile_sync` run = both its GPU soak and the
       is-there-anything answer.
 - [ ] **TF32: LAST resort, table-wide-or-not-at-all, operator decision** (accuracy-

@@ -104,15 +104,21 @@ def unsorted_segment_sum(data, segment_ids, num_segments):
     result.index_add_(0, segment_ids, data)
     return result
 
-def unsorted_segment_mean(data, segment_ids, num_segments):
+def unsorted_segment_mean(data, segment_ids, num_segments, counts=None):
     r"""Custom PyTorch op to replicate TensorFlow's `unsorted_segment_mean`.
     Adapted from https://github.com/vgsatorras/egnn.
+
+    `counts`: optional precomputed (num_segments, 1) receiver-degree tensor -- see the
+    package twin (experiments/baselines/cgenn/cgenn.py) for the full rationale. Hoisted
+    once per CGENN block instead of rebuilt here by a full (E, C) ones scatter per call;
+    bit-identical (exact small integers, same divisor values broadcast).
     """
     result = data.new_zeros((num_segments, data.size(1)))
-    count = data.new_zeros((num_segments, data.size(1)))
     result.index_add_(0, segment_ids, data)
-    count.index_add_(0, segment_ids, torch.ones_like(data))
-    return result / count.clamp(min=1)
+    if counts is None:
+        counts = data.new_zeros((num_segments, data.size(1)))
+        counts.index_add_(0, segment_ids, torch.ones_like(data))
+    return result / counts.clamp(min=1)
 
 def _pairwise_deltaR(points_part):
     """ΔR = sqrt(Δη² + Δφ²) with circular φ wrap."""
@@ -313,9 +319,10 @@ class CGLayer(nn.Module):
         )
         self.aggregation = aggregation
 
-    def reduce(self, input, segment_ids, num_segments):
+    def reduce(self, input, segment_ids, num_segments, counts=None):
         if self.aggregation == "mean":
-            red = unsorted_segment_mean(input, segment_ids, num_segments=num_segments)
+            red = unsorted_segment_mean(input, segment_ids, num_segments=num_segments,
+                                        counts=counts)
         elif self.aggregation == "sum":
             red = unsorted_segment_sum(input, segment_ids, num_segments=num_segments)
         else:
@@ -358,7 +365,8 @@ class CGLayer(nn.Module):
             )
         return self.theta_h(input)
 
-    def forward(self, h, x, edges, node_attr_h, node_attr_x, edge_attr_h, edge_attr_x):
+    def forward(self, h, x, edges, node_attr_h, node_attr_x, edge_attr_h, edge_attr_x,
+                edge_counts=None):
         i, j = edges
         m_x = self.message_x(x[i], x[j], edge_attr_x)
         m_invariants = get_invariants(self.algebra, m_x).flatten(1)
@@ -372,11 +380,12 @@ class CGLayer(nn.Module):
             )
             weights = weights.index_select(2, self.algebra.blade_subspace_idx)
             m_x = m_x * torch.sigmoid(weights)
-        x_red = self.reduce(m_x.flatten(1), i, num_segments=x.size(0)).view(
+        x_red = self.reduce(m_x.flatten(1), i, num_segments=x.size(0),
+                            counts=edge_counts).view(
             len(x), *m_x.shape[1:]
         )
         if m_h is not None:
-            h_red = self.reduce(m_h, i, num_segments=h.size(0))
+            h_red = self.reduce(m_h, i, num_segments=h.size(0), counts=edge_counts)
         else:
             h_red = None
         x_u = self.update_x(x, x_red, node_attr_x)
@@ -467,6 +476,12 @@ class CGENNBackbone(nn.Module):
     ):
         h = self.embedding_h(h)
         x = self.embedding_x(x)
+        # Receiver degrees once per block -- see the package twin (cgenn.py, CGENN.forward)
+        # for the full rationale. One (E, 1) scatter replacing a full (E, C) ones scatter
+        # inside every mean reduce; bit-identical, pins verify.
+        i_recv = edges[0]
+        edge_counts = x.new_zeros(x.size(0), 1).index_add_(
+            0, i_recv, x.new_ones(i_recv.size(0), 1))
         for i in range(self.n_layers):
             h, x = self.CGLs[i](
                 h,
@@ -476,6 +491,7 @@ class CGENNBackbone(nn.Module):
                 node_attr_h=node_attr_h,
                 edge_attr_x=edge_attr_x,
                 edge_attr_h=edge_attr_h,
+                edge_counts=edge_counts,
             )
         return h, x
 

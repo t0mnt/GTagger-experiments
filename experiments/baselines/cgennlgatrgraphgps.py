@@ -124,10 +124,12 @@ class CGENNLGATrGPSLayer(nn.Module):
         self.attn_dropout = attn_dropout
 
     def forward(self, mv, s, edges, attn_mask, edge_attr_x=None,
-                node_attr_x=None, node_attr_h=None):
+                node_attr_x=None, node_attr_h=None, edge_counts=None):
         # mv: (B, P, C_mv, 16); s: (B, P, C_s); edge_attr_x: (num_edges, E, 16) static
         # relative-momentum edge multivectors; node_attr_x/node_attr_h: the static raw mv /
-        # scalar inputs re-injected per node (or None when explicit edge features are off).
+        # scalar inputs re-injected per node (or None when explicit edge features are off);
+        # edge_counts: (B*P, 1) receiver degrees shared by every block (edges are static),
+        # so the mean aggregation stops rebuilding them by scatter per reduce call.
         B, P = mv.shape[0], mv.shape[1]
 
         # ---- local branch (Eq. 9): CGENN message passing on the static kNN graph. The
@@ -137,7 +139,7 @@ class CGENNLGATrGPSLayer(nn.Module):
         s_loc, mv_loc = self.cgenn(
             s.reshape(B * P, -1), mv.reshape(B * P, -1, 16), edges,
             node_attr_h=node_attr_h, node_attr_x=node_attr_x,
-            edge_attr_h=None, edge_attr_x=edge_attr_x,
+            edge_attr_h=None, edge_attr_x=edge_attr_x, edge_counts=edge_counts,
         )
         mv_loc = mv_loc.view(B, P, -1, 16)
         s_loc = s_loc.view(B, P, -1)
@@ -309,9 +311,18 @@ class CGENNLGATrGraphGPS(nn.Module):
 
         # Stage 4: interleaved equivariant GPS layers
         attn_mask = mask[:, None, None, :]               # (B, 1, 1, P) bool, True = real
+        # Receiver degrees ONCE for all blocks (the kNN graph is static): every block's
+        # mean aggregation divided by a count it rebuilt per reduce call by scattering a
+        # full (E, C) ones tensor. Bit-identical -- exact small integers, same divisor
+        # values broadcast (see the package twin's unsorted_segment_mean); the GPS hybrid
+        # pin verifies it.
+        i_recv = edges[0]
+        edge_counts = s.new_zeros(s.shape[0] * s.shape[1], 1).index_add_(
+            0, i_recv, s.new_ones(i_recv.size(0), 1))
         for layer in self.layers:
             mv, s = layer(mv, s, edges, attn_mask, edge_attr_x=edge_attr_x,
-                          node_attr_x=node_attr_x, node_attr_h=node_attr_h)
+                          node_attr_x=node_attr_x, node_attr_h=node_attr_h,
+                          edge_counts=edge_counts)
 
         # Stage 5: final norm + per-node invariants + masked mean pool + head.
         # get_invariants is applied PER NODE then mean-pooled (extract-then-pool), as in pure
