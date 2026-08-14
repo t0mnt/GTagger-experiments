@@ -2275,17 +2275,37 @@ all but a table-wide decision — see item 4.
      package and both hybrid twins. Bit-identical — degrees are exact small integers
      whatever the summation order, and the (N, 1) broadcast divides by the same
      values — VERIFIED the strong way: the freshly recorded BIT fixtures and all four
-     hybrid pins pass UNCHANGED (no re-record), twin-parity suite green. This also
-     removes the degree count from the CUDA-nondeterminism surface for free.
-   - **2b (open, gate-day): sorted-segment main scatter.** Audit fact recorded here
-     because it makes 2b concrete: BOTH edge builders emit receivers ALREADY SORTED
-     (kNN: arange-expanded then order-preserving filter; fully-connected:
-     `pair.nonzero` row-major) — so a segment plan (boundaries) is computable once
-     per batch in the eager hoist, and the remaining `index_add_` message scatters
-     could become contiguous-range segment sums: deterministic on CUDA and
-     TOL-class (summation order). Do it only if the gate-day profile still ranks the
-     scatter after 2a; check `torch.segment_reduce` (or a manual boundaries form)
-     compiles break-free on the NGC build before adopting.
+     hybrid pins pass UNCHANGED (no re-record), twin-parity suite green, and the
+     8-step training smoke reproduced the pre-hoist loss trajectories
+     digit-for-digit. This also removes the degree count from the
+     CUDA-nondeterminism surface for free. *Compiled-graph accounting (census, quick
+     GPS):* AOT had already CSE'd the cross-block duplicate count scatters (4
+     logical → 2 unique, one per stream width), so the compiled delta is those two
+     full-width (E, 128)/(E, 72) scatters collapsing to one (E, 1) — ~200x less
+     count-scatter traffic, kernels 126 → 125, dynamo op count 155 → 154. EAGER had
+     no such CSE: all 2·n_layers per-call ones-scatters ran every forward there
+     (8/step at production depth), so the eager dividend is larger.
+   - **2b (open, gate-day — prototype VERIFIED 2026-08-14): sorted-segment main
+     scatter.** The enabling facts are now measured, not inferred. (1) Receivers are
+     sorted on REAL batches from both builders — asserted over bs=64 mini batches:
+     fully-connected tag_cgenn (E=203,784) and kNN GPS (E=13,016), every batch
+     nondecreasing (structurally: kNN is arange-expanded then order-preserving
+     filtered; fully-connected is `pair.nonzero` row-major). (2)
+     `torch.segment_reduce(data, "sum", lengths=…)` vs the current `index_add_` on
+     sorted ids: **bit-equal forward AND backward** on CPU at fp32+fp64 (same
+     accumulation order when ids are sorted); on CUDA the swap REPLACES
+     nondeterministic atomics with a fixed-order reduction — that is the whole
+     point, and vs a CPU reference it is TOL at worst. (3) Compiles clean on torch
+     2.13: `dynamo.explain` = 1 graph / 0 breaks, compiled fwd+bwd runs with finite
+     grads, with `lengths` passed as a tensor input (in adoption, computed once in
+     the EAGER edge hoist as `bincount(recv)` — never in-graph). Lab:
+     scratchpad `seg22b_lab.py`. Adoption stays conditional on the gate-day profile
+     still ranking the data scatter after 2a, and on the same lab passing on the
+     NGC 2.8 build (segment_reduce's Triton lowering there is the one unknown).
+     Note for Phase 3: `lorentznet.py:157` carries the identical
+     rebuild-counts-per-call `unsorted_segment_mean` (one mean per LGEB x-stream),
+     so BOTH 2a and 2b transfer to the LorentzNet family verbatim if its profile
+     warrants Phase 3 work.
 3. **Attention-half re-check at production P_max** — invisible at mini shapes; before
    optimizing it, profile once at the full set's P_max=160 and the sized batch.
 4. **Shape bucketing + `reduce-overhead`** — only if still launch-bound after 1-2
