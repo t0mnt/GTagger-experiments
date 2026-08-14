@@ -1150,19 +1150,21 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
         if compile:
             # compile the net only; edge building is hoisted in forward (data-dependent
             # nonzero, eager by design -- docs/cgenn-compile.md, Stage 3)
-            # CANDIDATE FIX, unverified on GPU (2026-08-14): the first multi-batch
-            # compiled TRAINING profile on the H100 died in this model's compiled
-            # backward on inductor's runtime stride guard --
+            # FIX for the H100 stride-guard crash (2026-08-14): the first multi-batch
+            # compiled TRAINING profile died in this model's compiled backward on
+            # inductor's runtime stride guard --
             #   assert_size_stride(permute_134, (s27*s77, 16, 1, 1), (1, 7168, 7168, 1))
             #   AssertionError: expected size 16==16, stride 6656==7168 at dim=1
             # -- a saved permuted multivector VIEW whose stride was specialized to one
             # batch's width while its sizes stayed symbolic: the LNetSlimGraphGPS
-            # view-saving class, fixed there by the scoped recompute_views patch
-            # (numerics-preserving by construction -- a recomputed permute is the same
-            # permute). Mirrored here on that precedent; VERIFY by rerunning
-            # utils/profile_sync.py on this model compiled. If the crash persists, this
-            # flag is not the mechanism and the row ships compile: false until
-            # root-caused.
+            # view-saving class (an upstream inductor defect family; that one was proven
+            # by monkeypatch, see docs/cgenn-compile.md). Same scoped recompute_views
+            # patch, numerics-preserving by construction. VERIFIED on the H100 same day:
+            # 16 compiled steps (8 warm + 8 profiled) over varying mini shapes, crash
+            # gone, profile clean. A longer soak before the first long run is cheap
+            # insurance: CGENN_SMOKE_STEPS=100 CGENN_SMOKE_COMPILE=1 on the smoke gate.
+            # The STRUCTURAL retirement of this shield is the layout unification item in
+            # the improvement program -- no saved permuted view, no class.
             self._recompute_views = True
             self.net.compile(dynamic=True)
         self.budget = _activation_memory_budget(activation_memory_budget)

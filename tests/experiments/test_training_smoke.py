@@ -67,7 +67,12 @@ RUN = os.environ.get("CGENN_COMPILE_GATES") == "1"
 #         python -m pytest tests/experiments/test_training_smoke.py -q -s -k "tag_ParT"
 KEEP_COMPILE = os.environ.get("CGENN_SMOKE_COMPILE") == "1"
 
-STEPS = 8          # past ParT's warmup_steps=5, so the trimmer's post-warm-up path runs
+# Default 8: past ParT's warmup_steps=5, so the trimmer's post-warm-up path runs.
+# CGENN_SMOKE_STEPS raises it for GPU soak runs -- the CGENN-GPS stride-guard crash
+# (docs/cgenn-compile.md, 2026-08-14) was batch-SHAPE-dependent and fired on a later batch,
+# a class an 8-step smoke can miss; with CGENN_SMOKE_COMPILE=1 on the card, e.g.
+# CGENN_SMOKE_STEPS=100 turns this gate into the compiled-training soak per model.
+STEPS = int(os.environ.get("CGENN_SMOKE_STEPS", 8))
 MIN_GRAD_FRACTION = 0.5
 # Structurally-unused parameters are legitimate: a scalar readout never consumes the
 # vector half of the final lgatr linear, so those `weight_v` tensors are outside the

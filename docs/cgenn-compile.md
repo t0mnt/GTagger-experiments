@@ -2114,8 +2114,125 @@ A saved permuted multivector VIEW whose stride was specialized to one batch's wi
 (7168 = 448*16) while its sizes stayed symbolic — the LNetSlimGraphGPS view-saving class,
 now observed as a batch-shape-dependent RUNTIME crash rather than a compile-time
 InductorError, on the exact path every CPU gate is documented blind to. The shipped
-`compile: true` row can die mid-training on an unlucky shape transition. CANDIDATE FIX
-shipped (wrappers.py: the scoped `recompute_views` patch mirrored from LNetSlim, eager
-default bit-identical, verified against the audit digests): rerun the profile compiled to
-verify; if it still crashes, the row ships `compile: false` until root-caused, per the
-BACKWARD_VERIFIED rule — CPU membership does not cover the GPU backend.
+`compile: true` row can die mid-training on an unlucky shape transition. FIX shipped
+(wrappers.py: the scoped `recompute_views` patch mirrored from LNetSlim, eager default
+bit-identical, verified against the audit digests) and **VERIFIED the same day: the rerun
+survived all 16 compiled steps over varying shapes and produced the clean profile below.**
+Longer soak before the first long run: `CGENN_SMOKE_STEPS=100 CGENN_SMOKE_COMPILE=1` on
+the training-smoke gate, on the card.
+
+**The GPS profile (fix active, bs=64, mini).** Read no absolute walls — `with_stack` on
+~100k events/step inflates host time badly; unprofiled it/s belongs to β-PERF. The CUDA
+split (533 ms/step busy) is the tag_cgenn picture, amplified: blade `bmm` **43.9%** (532
+calls/step), scatter backwards (`index_put_new_zeros`) **17.8%**, copy/clone marshalling
+**~20%**, and **1,834 `gemmk1`/`gemvx` calls per step at 21.4%** — K=1-shaped micro-GEMMs.
+The L-GATr attention half does not crack the top-25 at mini shapes (re-check at production
+P_max). ~7,200 kernel launches per step. torch itself printed "TensorFloat32 ... available
+but not enabled" into the run log.
+
+---
+
+## The improvement program (operator sequencing: CGENN core → CGENN-GPS → LNetSlim-GPS)
+
+Grounded in the two GPU profiles above and the kernel census. Per item: which POSTURE it
+touches, its correctness CLASS, and the gate that judges it. The eager path is not exempt
+work — everything source-level below reaches eager and compiled alike (the hybrids import
+the shared package, so core fixes flow into both hybrids automatically), and the eager
+BIT/TOL discipline is what keeps the campaign's reference rows meaningful.
+
+### The stride crash is genuinely upstream, and what to expect from PyTorch
+
+Three facts. (1) The LNetSlim instance was PROVEN upstream by monkeypatch (`334be77`):
+`torch/_inductor/graph.py` calls `ir.get_stride_order(strides)` without the shape_env, so
+sympy expressions hit a bare Python comparison; passing the live shape_env fixed compile
+AND training. The runtime-guard variant seen here (concrete stride baked into
+`assert_size_stride` while sizes stay symbolic) is the same specialize-what-should-be-
+symbolic family, of which pytorch/pytorch has a long public record (e.g. issues #104653,
+#125641, #136837, #143121, #143579 — per-op fixes land release by release). (2) Do not
+expect a backport: PyTorch backports only critical fixes to the current release branch,
+and the campaign's torch is an NVIDIA-frozen NGC build — the fix channel is a container
+upgrade, not a patch to 2.8. (3) Reporting it upstream is still worth one issue with the
+assert signature and the `s27*s77`-symbolic/7168-concrete pair; it improves the version
+this repo migrates to next.
+
+### Phase 1 — CGENN core (both hybrids inherit via the package import)
+
+1. **TF32 experiment first** — hours of effort against the largest measured lever.
+   *Posture:* BOTH (one global knob). *Class:* TOL. *What it actually changes:* matmul/bmm
+   INPUTS rounded fp32→tf32 (23→10 mantissa bits) inside the kernel; accumulation stays
+   fp32; exponent range unchanged. Per-op relative error ~1e-3 vs fp32's ~1e-7 — a
+   strict precision reduction, NOT the bf16-AMP that upstream measured harmful for
+   equivariant models (that puts activations/weights in bf16 everywhere; TF32 touches
+   only matmul internals). Whether it changes trained ACCURACY is an empirical question
+   with a cheap protocol: (a) the equivariance/invariance suite under TF32 — the measured
+   per-frame floors must hold; (b) 2-3 seeds x ~2k-step seeded A/B curves within the
+   seed-noise band; (c) β-PERF ratio for the win. Two priors to carry: the `highest` pin's
+   stated reason (the sparse Function's exact-0/±1 `sel` GEMM) is EAGER-only and inactive
+   under the shipped compiled posture; and the K=1 `gemmk1`/`gemvx` swarm (~21% of CUDA)
+   gets NOTHING from TF32 — the realistic ceiling is on the bmm/mm ~50%, so expect a
+   model-level 1.2-1.5x if the bmm's speed up 2-4x, and measure rather than hope.
+2. **Layout unification** — one multivector layout through the block, convert once at
+   entry/exit. *Posture:* BOTH. *Class:* BIT (pure data movement). *Gates:* the restored
+   tag_cgenn BIT gate + the NEW `test_hybrid_bit_pin.py` (record pins BEFORE the first
+   rewrite, in the suite's own environment — bit pins do not transfer across torch
+   versions). *Pays twice:* removes the ~20% copy/clone marshalling AND retires the
+   saved-permuted-view crash class at the source (both `recompute_views` shields become
+   removable).
+3. **Blade-contraction batching** — fold the blade dim into channel GEMMs so 532 bmm +
+   1,834 micro-GEMMs per step become a handful of large GEMMs. *Posture:* BOTH. *Class:*
+   TOL vs the einsum reference (contraction order changes). *Gates:* the impl-TOL pattern
+   in test_cgenn_compile + BACKWARD-TOL; re-record hybrid pins afterwards with the class
+   change stated. *Prerequisite:* item 2 — the `matmul` gp_impl already proved (0.960x)
+   that batching the GP alone gets eaten by surrounding marshalling.
+4. **`activation_memory_budget` adoption** — *Posture:* compiled-only by nature. *Class:*
+   posture change, numerics untouched. *Gates:* the vram matrix (budget is one override
+   per row) + β-PERF ratio; CPU priors above (0.5 → 29 MB vs 123 default at +9% CPU).
+
+### Phase 2 — CGENN-GPS specific (after Phase 1)
+
+1. **Block-glue layout** — the GPS interleave crosses CGENN-branch and attention layouts
+   per block x10; unify (this is Phase-1 item 2 extended to the glue, and the structural
+   retirement of the recompute_views shield here). BIT-class, hybrid pin judges it.
+2. **Static-edge plan reuse + deterministic aggregation** — edges are batch-static and
+   hoisted once, but every block re-runs gather/scatter against them; the scatter
+   backward is 17.8% of CUDA. Precompute a sorted-edge segment plan once per batch and
+   aggregate via segment-sum: faster AND CUDA-deterministic (the index_put path is not).
+   TOL-class (summation order), gated like item 3 above.
+3. **Attention-half re-check at production P_max** — invisible at mini shapes; before
+   optimizing it, profile once at the full set's P_max=160 and the sized batch.
+4. **Shape bucketing + `reduce-overhead`** — only if still launch-bound after 1-2
+   (~7,200 launches/step today); biggest lift, RECOMP discipline applies, last.
+
+### Phase 3 — LNetSlim-GPS (conditional: "if there is anything to optimize")
+
+Status first: it is IN THE CLEAR for the known crash class — its `recompute_views` shield
+has been active since d1ef83b and covers every view in the net's scope, so the runtime
+variant seen on CGENN-GPS is suppressed there by the same mechanism. What it has NOT had
+is the same GPU soak (no multi-batch compiled-training run on the card is on record);
+give it the identical cheap verify — one `profile_sync` run — which doubles as the
+"is there anything to optimize" answer: if its profile shows the marshalling/micro-GEMM
+signature (it converts layouts twice per layer — the very trait that made it the first
+stride-crash victim), the Phase-1/2 items apply; if it profiles clean and GPU-bound in
+big GEMMs, it is done and Phase 3 is empty.
+
+### Workflow: are the gates a fair check for this program? Assessment and the additions
+
+What exists and suffices: the BIT/TOL/DET class taxonomy with gates per class; β-PERF for
+paired throughput verdicts; the vram matrix for peak; the measure-first discipline (which
+just correctly killed two queued "optimizations"); device hygiene; the posture gate.
+
+Three gaps, each now closed or defined:
+
+1. **No GPU tier existed** — every numerics/compile gate is CPU, and the stride crash
+   proved CPU-green ≠ GPU-safe. Defined: the GPU GATE DAY, run on the card before adopting
+   any compiled-posture change: `CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1
+   CGENN_SMOKE_STEPS=100 pytest tests/experiments/test_training_smoke.py -k <touched rows>`
+   (the smoke gained the soak knob for exactly this) + the vram matrix row + a
+   `profile_sync` run per touched row. ~15 min per row.
+2. **The hybrids' BIT pins were wiped** (da497a9) — BIT-class rewrites had no machine
+   check. Closed: `tests/experiments/test_hybrid_bit_pin.py` (skips until pins are
+   recorded; record with `CGENN_COMPILE=record` in the suite's own environment before the
+   first rewrite).
+3. **No accuracy protocol for TOL-class changes** — defined above (floors + seeded A/B +
+   ratio), operator sign-off per change. It is deliberately not a pytest gate: it costs
+   GPU-hours and judgment, and pretending otherwise would make it a gate nobody runs.
