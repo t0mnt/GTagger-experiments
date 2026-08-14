@@ -1967,6 +1967,11 @@ nothing" is not a number. Measure first, with the recipe below, then apply post-
 
 ### 3. The recipe for the GPU half
 
+**This recipe ships as a tool: `utils/profile_sync.py` — run that inside the GPU
+allocation rather than pasting the snippet** (same build path as `find_lr`, production
+tree, shipped compile posture, smoke-tested end-to-end on CPU). The snippet below stays as
+the specification of what the tool does and why.
+
 **Corrected 2026-08-14 — the first version had three faults that would have produced the
 wrong list if followed as written.** (a) The loop sat INSIDE the `profile(...)` block, so
 the table it prints is dominated by compilation and autotune, not steady state — the

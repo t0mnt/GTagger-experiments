@@ -47,3 +47,6 @@ logs/
 # table on every run; the runbook's flow is to paste the table into
 # docs/cgenn-compile.md and let this file stay local (cleanup.md step 6).
 bperf_results.md
+
+# profiler traces from utils/profile_sync.py (per-session artifacts, read in chrome://tracing)
+profiles/
