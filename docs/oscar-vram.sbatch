@@ -14,8 +14,9 @@
 #SBATCH -t 03:00:00               # DERIVED, from the 2026-08-13 beta-PERF log on gpu2703 --
                                   # not a round safe number. Per case: ~20 s interpreter +
                                   # torch import, ~91 s dataset load (that log's six loads:
-                                  # 94.6/90.3/91.5/90.9/92.7/90.7 s), ~10 s build, and 4
-                                  # steps at bs=64 (~1-4 s/step from the probe rungs).
+                                  # 94.6/90.3/91.5/90.9/92.7/90.7 s), ~10 s build, and 5
+                                  # steps at bs=64 (~1-4 s/step from the probe rungs;
+                                  # retention and peak are separate steps -- see measure()).
                                   # Compiled adds an inductor build, backed out of that log
                                   # by subtracting the measured it/s from each row's wall
                                   # clock: ~90 s for tag_cgenn, ~180 s for the GraphTrans

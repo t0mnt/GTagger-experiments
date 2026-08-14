@@ -3,8 +3,16 @@ workflow"): profile REAL training steps and print the two lists that section def
 
     python utils/profile_sync.py -cn toptagging model=tag_PlainGraphTrans save=false \
         training.batchsize=<sized>
+    python utils/profile_sync.py -cn toptagging model=tag_cgenn save=false \
+        training.batchsize=<sized>
     python utils/profile_sync.py -cn toptagging model=tag_CGENNLGATrGraphGPS save=false \
         training.batchsize=<sized>
+
+Tunables (absent from the base config, so the `+` prefix is REQUIRED):
+    +prof.warm=8      full training steps before the profiler (compile/autotune land here)
+    +prof.active=5    steady-state steps recorded (window = 1 wait + 2 warmup + active)
+    +prof.memory=true also record allocator events (adds overhead; off by default --
+                      the VRAM question belongs to utils/vram_compile_matrix.py)
 
 Run it INSIDE a GPU allocation (`interact -g 1`, then apptainer + venv as in
 docs/OSCAR.md); on a CPU-only node it still runs so the harness can be smoke-tested, but
@@ -51,7 +59,8 @@ from experiments.logger import LOGGER
 from utils.find_lr import CONSTRUCTORS, _cycle, build_experiment
 
 WARM_STEPS = 8            # compile + autotune + trimmer warm-up, all outside the window
-WAIT, WARMUP, ACTIVE = 1, 2, 5
+WAIT, WARMUP = 1, 2
+ACTIVE = 5
 
 # Explicit stall signatures for the step-1 shortlist. Substring match on the event key;
 # `_local_scalar_dense` is what `.item()` and a tensor-as-bool lower to.
@@ -92,25 +101,64 @@ def main(cfg):
     exp.model.train()
     it = iter(_cycle(exp.train_loader))
 
-    LOGGER.info(f"Warm-up: {WARM_STEPS} full training steps outside the profiler "
+    warm = int(OmegaConf.select(cfg, "prof.warm", default=WARM_STEPS))
+    active = int(OmegaConf.select(cfg, "prof.active", default=ACTIVE))
+    prof_memory = bool(OmegaConf.select(cfg, "prof.memory", default=False))
+
+    # provenance: which posture is actually being profiled (the row's own knobs)
+    knob = OmegaConf.select(cfg, "model.compile",
+                            default=OmegaConf.select(cfg, "model.net.compile", default=None))
+    gp_impl = OmegaConf.select(cfg, "model.net.gp_impl", default=None)
+    device = torch.cuda.get_device_name(0) if cuda else "cpu"
+    LOGGER.info(f"posture: batchsize={cfg.training.batchsize} compile={knob} "
+                + (f"gp_impl={gp_impl} " if gp_impl else "") + f"device={device}")
+
+    LOGGER.info(f"Warm-up: {warm} full training steps outside the profiler "
                 f"(compilation + autotune land here, not in the tables)")
-    for step in range(WARM_STEPS):
+    for step in range(warm):
         exp._step(next(it), step)
     if cuda:
         torch.cuda.synchronize()
+    try:  # recompile detector: a graph compiled INSIDE the window pollutes it
+        graphs_before = int(torch._dynamo.utils.counters["stats"]["unique_graphs"])
+    except Exception:
+        graphs_before = None
 
     activities = [ProfilerActivity.CPU] + ([ProfilerActivity.CUDA] if cuda else [])
-    n_profiled = WAIT + WARMUP + ACTIVE
-    t0 = time.perf_counter()
+    n_profiled = WAIT + WARMUP + active
+    walls = []
     with profile(activities=activities,
-                 schedule=schedule(wait=WAIT, warmup=WARMUP, active=ACTIVE),
-                 with_stack=True) as prof:
-        for step in range(WARM_STEPS, WARM_STEPS + n_profiled):
+                 schedule=schedule(wait=WAIT, warmup=WARMUP, active=active),
+                 with_stack=True, profile_memory=prof_memory) as prof:
+        for step in range(warm, warm + n_profiled):
+            t0 = time.perf_counter()
+            # no explicit synchronize here -- it would plant this tool's own sync in the
+            # very tables it prints. _step's loss.item() already drains the queue each
+            # step, so the wall is bounded, and a recompile/autotune spike is host-side
+            # work that shows in the wall regardless.
             exp._step(next(it), step)
+            walls.append(time.perf_counter() - t0)
             prof.step()
     if cuda:
         torch.cuda.synchronize()
-    dt = (time.perf_counter() - t0) / n_profiled
+    dt = sorted(walls)[len(walls) // 2]  # median profiled step
+
+    # A window with a recompile or an autotune spike in it answers nothing. Say so
+    # loudly instead of letting the tables be read as steady state.
+    if graphs_before is not None:
+        try:
+            graphs_after = int(torch._dynamo.utils.counters["stats"]["unique_graphs"])
+            if graphs_after > graphs_before:
+                LOGGER.warning(
+                    f"{graphs_after - graphs_before} new dynamo graph(s) compiled INSIDE "
+                    f"the profiled window -- the tables below are polluted; raise "
+                    f"+prof.warm and re-run.")
+        except Exception:
+            pass
+    if max(walls) > 2.5 * dt:
+        LOGGER.warning(
+            f"profiled step walls {['%.0f ms' % (w * 1e3) for w in walls]}: the outlier "
+            f"suggests a recompile/autotune landed in-window; raise +prof.warm and re-run.")
 
     model_name = (OmegaConf.select(cfg, "model.net._target_", default="")
                   or "model").rsplit(".", 1)[-1]
@@ -118,8 +166,8 @@ def main(cfg):
 
     # ---- STEP 1a: the explicit stall list -------------------------------------------
     LOGGER.info("=" * 78)
-    LOGGER.info(f"STEP 1 -- sync hunt ({model_name}, {ACTIVE} steady-state steps, "
-                f"~{dt * 1e3:.0f} ms/step wall)")
+    LOGGER.info(f"STEP 1 -- sync hunt ({model_name}, {active} steady-state steps, "
+                f"median {dt * 1e3:.0f} ms/step wall)")
     stalls = [e for e in prof.key_averages()  # ungrouped: one row per event kind
               if any(k in e.key for k in STALL_KEYS)]
     if stalls:
@@ -145,7 +193,8 @@ def main(cfg):
                                               row_limit=25))
 
     os.makedirs("profiles", exist_ok=True)
-    trace = os.path.join("profiles", f"sync_{model_name}.json.gz")
+    trace = os.path.join("profiles",
+                         f"sync_{model_name}_bs{cfg.training.batchsize}.json.gz")
     prof.export_chrome_trace(trace)
     LOGGER.info(f"chrome trace: {os.path.abspath(trace)} -- read the GPU row's gaps "
                 f"(drained queue between kernel spans = the launch-bound signature)")

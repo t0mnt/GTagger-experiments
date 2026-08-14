@@ -99,13 +99,22 @@ def measure(row_overrides, knob, state, bs, dataset):
     for _ in range(WARMUP):  # compilation, autotune, allocator growth, optimizer state
         step()
 
+    # Retention and peak on SEPARATE steps, deliberately. The retention step runs under
+    # saved_tensors_hooks, and whether ENTERING that context invalidates dynamo guards --
+    # recompiling inside the measured step and inflating a compiled peak with build-time
+    # allocations, in the exact direction this tool expects to find -- is a torch-version
+    # property: measured NO on 2.13 (unique_graphs flat across the context, hooks fire on
+    # the compiled path), unmeasured on the pinned 2.8 CUDA build. One extra step removes
+    # the question instead of depending on the answer, and the peak step is hook-free and
+    # one step more settled besides.
     held = {}
-    torch.cuda.synchronize()
-    torch.cuda.reset_peak_memory_stats()
     with torch.autograd.graph.saved_tensors_hooks(
         lambda t: (held.__setitem__(id(t), t.numel() * t.element_size()), t)[1], lambda t: t
     ):
         step()
+    torch.cuda.synchronize()
+    torch.cuda.reset_peak_memory_stats()
+    step()
     torch.cuda.synchronize()
     print(f"RESULT\t{state}\t{torch.cuda.max_memory_allocated()}\t{sum(held.values())}",
           flush=True)
