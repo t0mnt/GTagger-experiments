@@ -541,6 +541,36 @@ this file, and the `--apply` regex against all 17 rows' production yamls.
       caller's four-momenta are rewritten by the mass regulator). Pairs with the LLoCa issue
       already drafted.
 
+## 4d-quater. CGENN performance program (post-campaign; plan of record 2026-08-14)
+
+The full plan — per-item posture, correctness class, and judging gate — lives in
+**docs/cgenn-compile.md, "The improvement program"** (grounded in the H100 profiles and
+the kernel census; the sync fixes were measured OUT there, ~1% — do not resurrect them).
+Sequencing is fixed: CGENN core → CGENN-GPS → LNetSlim-GPS *(only if its profile shows
+the marshalling/micro-GEMM signature)*. Checklist:
+
+- [ ] **Pre-req**: record the hybrid BIT pins in the suite's own env
+      (`CGENN_COMPILE=record pytest tests/experiments/test_hybrid_bit_pin.py -q`) —
+      BIT-class rewrites have no machine check until this runs.
+- [ ] **Phase 1.1** layout unification (BIT; kills ~20% marshalling + retires both
+      `recompute_views` shields at the source).
+- [ ] **Phase 1.2** blade-contraction batching (TOL vs einsum ref; prerequisite 1.1).
+- [ ] **Phase 1.3** `activation_memory_budget` adoption (compiled posture; vram matrix +
+      β-PERF judge it; CPU priors recorded).
+- [ ] **Phase 2** CGENN-GPS: block-glue layout; static-edge segment plan + deterministic
+      aggregation (the 17.8% scatter); attention re-check at production P_max; bucketing
+      only if still launch-bound.
+- [ ] **Phase 3** LNetSlim-GPS: one `profile_sync` run = both its GPU soak and the
+      is-there-anything answer.
+- [ ] **TF32: LAST resort, table-wide-or-not-at-all, operator decision** (accuracy-
+      reducing knob; per-model use would be an unfair row — same rule as
+      expandable_segments). Protocol in the doc.
+- [ ] Per merged change: the GPU GATE DAY (soak smoke via `CGENN_SMOKE_STEPS`, vram row,
+      `profile_sync`) before the compiled posture ships.
+- [ ] File the inductor stride-guard issue upstream (draft in the 2026-08-14 session log;
+      signature + monkeypatch evidence in docs/cgenn-compile.md). Shield retires at the
+      next NGC container upgrade — re-test with the shield off, then delete it.
+
 ## 4e. Release gate — the pre-publication list, triaged
 
 The campaign has STARTED, which sets the rule for everything below: **anything that changes

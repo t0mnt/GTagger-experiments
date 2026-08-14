@@ -2162,36 +2162,42 @@ the release-by-release pattern the public issue record shows, and it means the s
 
 ### Phase 1 — CGENN core (both hybrids inherit via the package import)
 
-1. **TF32 experiment first** — hours of effort against the largest measured lever.
-   *Posture:* BOTH (one global knob). *Class:* TOL. *What it actually changes:* matmul/bmm
-   INPUTS rounded fp32→tf32 (23→10 mantissa bits) inside the kernel; accumulation stays
-   fp32; exponent range unchanged. Per-op relative error ~1e-3 vs fp32's ~1e-7 — a
-   strict precision reduction, NOT the bf16-AMP that upstream measured harmful for
-   equivariant models (that puts activations/weights in bf16 everywhere; TF32 touches
-   only matmul internals). Whether it changes trained ACCURACY is an empirical question
-   with a cheap protocol: (a) the equivariance/invariance suite under TF32 — the measured
-   per-frame floors must hold; (b) 2-3 seeds x ~2k-step seeded A/B curves within the
-   seed-noise band; (c) β-PERF ratio for the win. Two priors to carry: the `highest` pin's
-   stated reason (the sparse Function's exact-0/±1 `sel` GEMM) is EAGER-only and inactive
-   under the shipped compiled posture; and the K=1 `gemmk1`/`gemvx` swarm (~21% of CUDA)
-   gets NOTHING from TF32 — the realistic ceiling is on the bmm/mm ~50%, so expect a
-   model-level 1.2-1.5x if the bmm's speed up 2-4x, and measure rather than hope.
-2. **Layout unification** — one multivector layout through the block, convert once at
+Ordering rule (operator, 2026-08-14): items that REMOVE WASTE at unchanged numerics come
+first; the one item that TRADES precision for speed comes last, and is not a CGENN item at
+all but a table-wide decision — see item 4.
+
+1. **Layout unification** — one multivector layout through the block, convert once at
    entry/exit. *Posture:* BOTH. *Class:* BIT (pure data movement). *Gates:* the restored
    tag_cgenn BIT gate + the NEW `test_hybrid_bit_pin.py` (record pins BEFORE the first
    rewrite, in the suite's own environment — bit pins do not transfer across torch
    versions). *Pays twice:* removes the ~20% copy/clone marshalling AND retires the
    saved-permuted-view crash class at the source (both `recompute_views` shields become
    removable).
-3. **Blade-contraction batching** — fold the blade dim into channel GEMMs so 532 bmm +
+2. **Blade-contraction batching** — fold the blade dim into channel GEMMs so 532 bmm +
    1,834 micro-GEMMs per step become a handful of large GEMMs. *Posture:* BOTH. *Class:*
    TOL vs the einsum reference (contraction order changes). *Gates:* the impl-TOL pattern
    in test_cgenn_compile + BACKWARD-TOL; re-record hybrid pins afterwards with the class
-   change stated. *Prerequisite:* item 2 — the `matmul` gp_impl already proved (0.960x)
+   change stated. *Prerequisite:* item 1 — the `matmul` gp_impl already proved (0.960x)
    that batching the GP alone gets eaten by surrounding marshalling.
-4. **`activation_memory_budget` adoption** — *Posture:* compiled-only by nature. *Class:*
+3. **`activation_memory_budget` adoption** — *Posture:* compiled-only by nature. *Class:*
    posture change, numerics untouched. *Gates:* the vram matrix (budget is one override
    per row) + β-PERF ratio; CPU priors above (0.5 → 29 MB vs 123 default at +9% CPU).
+4. **TF32 — LAST RESORT, and table-wide or not at all.** Demoted from first on the
+   operator's rule, for two reasons that outrank its ceiling. It is the only item here
+   that DECREASES precision (matmul/bmm inputs rounded fp32→tf32, 23→10 mantissa bits;
+   accumulation stays fp32, range unchanged; ~1e-3 per-op relative error vs fp32's ~1e-7 —
+   not the bf16-AMP upstream measured harmful, but a strict reduction nonetheless). And
+   flipping it for one model family is an UNFAIR row in a cross-architecture table — the
+   same class as `expandable_segments` ("a walltime knob: campaign-uniform or absent, not
+   mid-flight"): every model's GEMMs would speed up under TF32, so granting it to CGENN
+   alone converts an architecture comparison into a knob comparison. If items 1-3 leave
+   CGENN still unacceptably slow, the decision is an OPERATOR one for the whole table,
+   judged by the protocol: (a) equivariance/invariance floors under TF32 for every
+   equivariant row; (b) 2-3 seeds x ~2k-step seeded A/B within seed noise, per family;
+   (c) β-PERF ratios. Priors to carry into that decision: the `highest` pin's stated
+   reason (the sparse Function's exact-0/±1 `sel` GEMM) is eager-only and inactive under
+   the shipped compiled posture, and the K=1 micro-GEMM swarm gains nothing from TF32 —
+   the ceiling is on the bmm/mm ~50% share only.
 
 ### Phase 2 — CGENN-GPS specific (after Phase 1)
 
