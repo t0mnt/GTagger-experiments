@@ -11,10 +11,26 @@
 #SBATCH -n 8                      # no dataloader pressure here: this measures ONE step per
                                   # case, it does not train
 #SBATCH --mem=128G                # the full top-tagging npz is loaded once PER CASE
-#SBATCH -t 06:00:00               # 34 cases (17 rows x 2 states). Each pays ~90 s of dataset
-                                  # load plus a compile build for the compiled state; the
-                                  # CGENN rows dominate. --dataset mini cuts the load ~30x if
-                                  # you only want the RATIO (its P_max is 135 vs full's 160).
+#SBATCH -t 03:00:00               # DERIVED, from the 2026-08-13 beta-PERF log on gpu2703 --
+                                  # not a round safe number. Per case: ~20 s interpreter +
+                                  # torch import, ~91 s dataset load (that log's six loads:
+                                  # 94.6/90.3/91.5/90.9/92.7/90.7 s), ~10 s build, and 4
+                                  # steps at bs=64 (~1-4 s/step from the probe rungs).
+                                  # Compiled adds an inductor build, backed out of that log
+                                  # by subtracting the measured it/s from each row's wall
+                                  # clock: ~90 s for tag_cgenn, ~180 s for the GraphTrans
+                                  # hybrid. So ~2.2 min eager + ~4.7 min compiled = ~7 min
+                                  # per row; 17 rows ~= 2 h, the 8 hybrids alone ~= 1 h.
+                                  # 3 h is that plus headroom, NOT a guess.
+                                  # Over-asking is NOT free here, whatever train.sbatch says:
+                                  # SLURM bills what you consume, but backfill favours short
+                                  # requests, so a fat -t buys queue time on a busy partition.
+                                  # 40% of the full-dataset runtime is the SAME npz loaded 34
+                                  # times -- one subprocess per case, to keep dynamo cache
+                                  # entries from holding each model alive into the next
+                                  # measurement. --dataset mini cuts that to seconds (P_max
+                                  # 135 vs full's 160) and the RATIO is the deliverable; use
+                                  # full only to confirm a row the ratio flags.
 #SBATCH -o logs/%x-%j.out         # logs/ must exist BEFORE sbatch: SLURM opens this file
                                   # before the script runs -- missing dir = job dies silently
 #SBATCH --export=NONE             # do NOT inherit the login env (post-9.6 it carries a stale

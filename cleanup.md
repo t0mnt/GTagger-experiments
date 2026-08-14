@@ -159,6 +159,17 @@ there is no longer any ordering constraint on the fixture deletion.
 - `bperf_results.md` — its append-log. NOT tracked (it is gitignored, since bperf
   appends to it on every run), so there is nothing to `git rm`: paste the table into
   `docs/cgenn-compile.md` and delete the local file.
+- `utils/vram_compile_matrix.py` + `docs/oscar-vram.sbatch` — one-shot instrument, same
+  disposal as bperf and for the same reason: it exists to answer ONE question (does
+  torch.compile cost or save VRAM, per model) and its value is the answer, not the tool.
+  Delete once the table is pasted into `docs/cgenn-compile.md`. It imports `MATRIX` from
+  `utils/bperf.py`, so it CANNOT outlive bperf — they go in the same commit or this one
+  goes first. Stow the *output table* plus the one-line mechanism note (AOT's partitioner
+  holds its whole cut simultaneously where eager's live set is a sawtooth over time, so
+  compiled can land either side of eager); that note is what makes a future reader able to
+  re-derive the table instead of re-running it.
+  KEEP whichever `activation_memory_budget:` values the table justifies — those are config,
+  not scaffolding.
 - `tests/fixtures/*/dynamo_explain*.txt` — large committed explain reports; every one is
   rewritten by its BREAKS gate on each gated run, so they are convenience diffs, not
   sources of truth. Go with the gate files below.
