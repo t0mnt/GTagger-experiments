@@ -2008,3 +2008,65 @@ model's table — they are known, not rediscoveries; the fix shape is ONE host r
 **Timing, and his own framing of it:** *"just a speedup thing … a small bonus you can also do
 later on."* That settles the order. Profiling is read-only and can be done any time; the
 rewrites change arithmetic or timing and therefore wait for the campaign to finish.
+
+---
+
+## Non-GPU half #2 executed, and CPU priors for the GPU verdicts (2026-08-14)
+
+The section above names two halves doable without a GPU. The first (static sync census) was
+done; the second — *"reading inductor's generated code to find the small-kernel sites"* —
+was claimed doable but never done. Done now, plus retention priors for two of the queued
+GPU verdicts. Environment caveat on all of it: **torch 2.13 CPU inductor** — the pinned NGC
+2.8 build dies on this path with the native `double free` that
+`utils/vram_compile_matrix.py` records (2.13 compiles it cleanly), and C++ codegen means
+the fusion GROUPING and per-kernel op mix transfer to Triton approximately, exact splits
+may not.
+
+### The kernel census (compiled tag_CGENNLGATrGraphGPS, quick tree, gp_impl=sparse, dynamic=True)
+
+**One forward graph (75 kernels) + one backward graph (54) — no breaks, no recompile
+across batches.** At quick's `num_blocks: 2` that is ~52 kernels per block, so the
+production `num_blocks: 10` model runs **~500-550 kernel launches per training step** —
+the launch-bound shape, counted rather than inferred. The shortlist for the step-2
+histogram, by fused-op signature:
+
+1. **Pure marshalling, no arithmetic**: `clone_permute_squeeze_view` (5 defs) and
+   `_unsafe_view_clone_permute_unsqueeze_view` (5 defs) — layout shuttling that survived
+   fusion as standalone kernels. Candidates for layout unification (keep one multivector
+   layout through the block so these fuse away entirely).
+2. **The blade contractions**: the `bmm_cat_index_mul_permute_[slice_unsqueeze_]view`
+   family (~9 defs fwd+bwd) — `bmm` over the 16-wide blade dim plus the path gather.
+   This is literally the *"4×4 or so kernels"* class from the quote; the batching
+   candidate is folding blades into channel GEMMs.
+3. **Their backwards**: `index_add_new_zeros_*` / `index_index_put_*` — scatter-shaped,
+   small, atomics-bound on CUDA.
+
+Everything else in the two graphs is unremarkable (norms, activations, plain GEMMs).
+
+### Retention priors: `activation_memory_budget` brings the sparse-Function trick to the compiled path
+
+The 2026-08-13 VRAM finding (compiled GPS wants MORE than eager) has a mechanism already on
+record — the partitioner flattens every impl to einsum-class retention — and a shipped but
+never-measured lever. Measured (quick tree, fp64, `saved_tensors_hooks`; retention is the
+partitioner's cut, so the RATIOS are backend-independent even though these are CPU numbers):
+
+| posture | retained for backward | step time (CPU, rough) |
+|---|---|---|
+| eager, sparse (the pre-compile default) | ~44 MB | — |
+| compiled, budget unset (= 1.0, ships) | 122.98 MB | 186 ms |
+| compiled, budget 0.5 | **29.38 MB** | 202 ms (+8.6%) |
+| compiled, budget 0.2 | 20.54 MB | 206 ms (+10.8%) |
+
+Budget 0.5 does not merely recover the eager-sparse profile — it undercuts it, at
+single-digit recompute cost on CPU. Combined with the throughput table (compiled einsum
+1.41 > sparse 1.25 it/s), the candidate posture is **`gp_impl: einsum` +
+`activation_memory_budget≈0.5`**: fastest kernels AND smaller-than-eager-sparse retention,
+i.e. the batch-size ceiling and the speed row stop trading against each other. The GPU
+check composes directly onto `utils/vram_compile_matrix.py`: the CGENN wrappers accept the
+knob in both trees, so the axis is one override — `model.activation_memory_budget=0.5` —
+per row; sweep {einsum, sparse} x budget {1.0, 0.7, 0.5}, then `find_lr` at the winner.
+
+Upstream posture, checked against the installed package: lgatr 2.0.0's `compile_model`
+also ships `activation_memory_budget=None` (torch's save-everything default) — an escape
+hatch there too, not a tuned value. Its two other memory levers are not wired here at all:
+`checkpoint_blocks` (block-level gradient checkpointing) and `naive_amp`.
