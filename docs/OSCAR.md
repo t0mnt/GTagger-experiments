@@ -667,7 +667,9 @@ have to transcribe:
 
 ```bash
 grep FIND_LR lr_sweep.log
-# FIND_LR  model=PlainGraphTrans  batchsize=2048  lr=3.10e-04  ->  config/training/top_PlainGraphTrans.yaml
+# FIND_LR  model=PlainGraphTrans  batchsize=512  lr=<lr at 512>  ->  config/training/top_PlainGraphTrans.yaml
+#   (512 because the sweep is bounded -- Plain fits far more. An lr found at 2048 is NOT valid
+#    at 512: the pair is measured together, so re-sweep rather than editing the batch down.)
 ```
 
 **Before you launch on the numbers this prints: `evaluation.batchsize` is NOT tuned by

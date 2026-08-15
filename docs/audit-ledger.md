@@ -171,7 +171,7 @@ frame-local jet, quick tree, float64, random-init framesnet):**
       `jc_gts_and_friends_default`. See GUIDE §5.1. (`jc_lgatr`'s broken `tag_gatr` base was
       fixed on `main` directly — merges in cleanly.)
 - [ ] **JetClass: fill the 8 `jc_<Hybrid>.yaml` `???` batchsize/lr** from
-      `utils/find_lr.py -cn jctagging model=tag_<hybrid> save=false +lr_find.find_batch_size=true`
+      `utils/find_lr.py -cn jctagging model=tag_<hybrid> save=false +lr_find.find_batch_size=true +lr_find.bs_max=512`
       before the JetClass campaign (don't copy top values — inputs are 7+10 channels; and note
       an unfilled `???` silently runs at the 512/1e-3 fallback instead of erroring).
 - [ ] **Rejection-metric convention differs between experiments** (pre-existing): top-tagging uses the

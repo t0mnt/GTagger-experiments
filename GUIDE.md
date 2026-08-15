@@ -267,7 +267,7 @@ With `+lr_find.find_batch_size=true` it doubles the batch size until CUDA OOM
 (running a full train step, so the probe includes optimizer-state memory) and keeps
 the largest fitting power of two (`bs_safety=1.0` default; set `<1` to trade the
 power of two for headroom), then prints the batch size and LR, e.g.
-`-> reuse with: training.batchsize=2048 training.lr=3.1e-04`, followed by a single greppable line naming the model and the recipe the pair belongs in (`FIND_LR model=X batchsize=N lr=L -> config/training/<prefix>_X.yaml`), so a chained sweep is transcribed with `grep FIND_LR`. Knobs:
+`-> reuse with: training.batchsize=512 training.lr=<lr at 512>` (512, not the unbounded fit, because of `bs_max` below -- and the pair is measured together, so an lr found at one batch does not transfer to another), followed by a single greppable line naming the model and the recipe the pair belongs in (`FIND_LR model=X batchsize=N lr=L -> config/training/<prefix>_X.yaml`), so a chained sweep is transcribed with `grep FIND_LR`. Knobs:
 `+lr_find.{bs_start,bs_max,bs_sigmas,bs_refine,bs_safety,num_iter,end_lr}` — keep `num_iter` short (~300;
 a longer sweep biases the suggestion lower, it doesn't sharpen it).
 

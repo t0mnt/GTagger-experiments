@@ -1879,6 +1879,12 @@ is the same command either way:
       python utils/find_lr.py -cn toptagging model=tag_cgenn \
       model.net.gp_impl=$i save=false +lr_find.find_batch_size=true; done
 
+Deliberately NOT bounded by `+lr_find.bs_max=512`, unlike the recipe-filling sweeps in
+GUIDE/OSCAR/SLURM: this one measures each impl's memory ceiling, and the ceiling IS the
+finding (the three impls sized 64/64/32 last time, which is why their throughputs were not
+comparable). A cap would hide exactly the number being asked for. Harmless in practice too —
+these OOM far below 512 — but do not "fix" it to match the others.
+
 `find_lr` sizes on the SHIPPED (compiled) config, unlike beta-PERF which forces the knob off,
 and it now prints peak AND jets/s per rung. Three outcomes and what each means:
 

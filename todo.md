@@ -22,7 +22,10 @@ only **`batchsize`, `lr`** remain `???` per model (optionally `weight_decay`):
 - [ ] **Reproduce a known result before the campaign**: one `save=false` ParticleNet run under
       its published recipe, checking test accuracy/AUC against the published numbers. It
       exercises data, loader, model and evaluation end to end against a known answer.
-- [ ] `batchsize` ← `utils/find_lr.py +lr_find.find_batch_size=true` (largest power-of-two that fits YOUR GPU -- the finder measures it, so the answer is per-machine, not a number to copy).
+- [ ] `batchsize` ← `utils/find_lr.py +lr_find.find_batch_size=true +lr_find.bs_max=512` (largest
+      power-of-two that fits YOUR GPU, bounded at 512 -- the finder measures it, so the answer is
+      per-machine, not a number to copy. The bound is the epoch-budget argument: a larger batch
+      buys FEWER optimizer steps for the same data exposure. GUIDE.md, under find_lr.)
 - [ ] `lr` ← `utils/find_lr.py` (reported loss-min / 10).
       (`weight_decay` tuning moved to `docs/ablations.md` "Training-side minor tunes" —
       the shared 0.01 ships as the decided default.)
