@@ -2572,6 +2572,48 @@ The corrected vary-batches soak did exactly what it was built for, in one round:
   `model.activation_memory_budget=0.5`; the operator flips (gp_impl matmul, CGENN
   bs=128/lr=5.57e-04, GT rows back under the ceiling with finder reruns).
 
+### What remains is measurement-gated or campaign-frozen — the in-campaign endgame
+
+Why no further model code follows round 3 (recorded because the operator rightly
+asked):
+
+1. **Phase 2.4 (bucketing / reduce-overhead) is CAMPAIGN-FROZEN, newly realized.**
+   Bucketing pads batches to a small set of widths so compiled graphs specialize —
+   but tag_cgenn and the CGENN hybrids run their `theta_h` BatchNorm over PADDED
+   nodes (dense B·P layout "as upstream"), and tag_cgenn's readout mean divides by
+   the padded width (the documented official-repo quirk). Changing the padded width
+   therefore CHANGES THOSE ROWS' ARITHMETIC, and the campaign rule ("anything that
+   changes model arithmetic is off the table until it finishes") applies. cudagraphs
+   / `reduce-overhead` need static shapes = the same freeze. The GPS-family host tax
+   (72-95% of the step) is real and measured — and it is a POST-CAMPAIGN project.
+2. **The sparse-GP respelling is measurement-gated BY DESIGN.** Unlike 2.2b it
+   carries no determinism win — speed is the only motive — so the shipped GP does
+   not change on a CPU hunch. The race is now a 2-minute standalone probe:
+   **`utils/sparse_gp_race.py`** (torch-only, runs in the container; einsum vs
+   ctg-bmm vs blockdiag at GPS-kNN and tag_cgenn-FC shapes, fwd+bwd CUDA-event
+   timing, prints an adopt/close verdict at a >10%-everywhere bar). CPU smoke:
+   blockdiag at 0.50-0.67x of einsum — promising, NOT the decision input.
+3. **Everything else open is an operator flip** (gp_impl matmul; CGENN bs=128 /
+   lr=5.57e-04; GT rows re-swept under the ceiling) or already flipped here
+   (`tag_CGENNLGATrGraphGPS.yaml` budget 0.5 — the escape-hatch condition fired in
+   round 2 and the knob's own comment defines exactly this trigger; numerics
+   untouched).
+
+**Round 4 — the last in-campaign GPU round (three commands):**
+
+    # 1. price 2.2b (the scatter kernel should be gone from both tables)
+    for M in tag_cgenn tag_CGENNLGATrGraphGPS; do
+      python utils/profile_sync.py -cn toptagging model=$M save=false data.dataset=mini training.batchsize=64
+    done
+    # 2. the un-blocked GPS beta-PERF row (budget 0.5 now in config)
+    python utils/bperf.py --models CGENNLGATrGraphGPS --find-batchsize
+    # 3. the sparse-GP race verdict
+    python utils/sparse_gp_race.py
+
+After round 4 the program's in-campaign scope closes: adopt-or-close on the race,
+revert-or-keep on 2.2b pricing, and the operator flips. Post-campaign (or at the
+container upgrade): bucketing/host-tax, shield re-test, TF32 table-wide protocol.
+
 ### Workflow: are the gates a fair check for this program? Assessment and the additions
 
 What exists and suffices: the BIT/TOL/DET class taxonomy with gates per class; β-PERF for

@@ -20,8 +20,14 @@ GraphTrans hybrids -- the mid-fall slope point barely moves right while the whol
 curve does), which combined with fixed-epoch budgets undertrained those rows. The
 BS_CEILING advice exists for this; under the ceiling, steepest carries the
 ParticleNet evidence. Sanity rule when transcribing: if steepest sits more than ~10x
-below the printed loss-min/10 bracket, distrust the pair and rerun at a smaller
-batch. The original loss-min/10 argument (steepest drifts low as num_iter grows,
+below the printed loss-min/10 bracket, distrust STEEPEST -- when the banner shows an
+interior minimum (no "NOT reliable" warning), transcribe the loss-min/10 bracket
+instead; only when there is no interior minimum rerun at a smaller batch. Live case
+(PlainGraphTrans, 2026-08-15): steepest read 3.08e-05 at bs=512 AND 4e-05 at bs=2048
+-- pinned by the curve's long shallow early descent, not tracking the stability edge
+at all -- while loss-min/10 read a plausible 4.52e-04 with an interior minimum; the
+bracket is the recipe there. The original loss-min/10 argument (steepest drifts low
+as num_iter grows,
 davidtvs/pytorch-lr-finder#68) is why `num_iter` stays 300 -- keep it short; if a
 suggestion looks unstable, lower it, don't raise it.
 

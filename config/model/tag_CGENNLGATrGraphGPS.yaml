@@ -3,12 +3,18 @@ out_channels: null              # init_physics -> num_outputs
 # no use_amp key: this wrapper has no autocast and does not accept one; the
 # GradScaler still reads cfg.model.use_amp, which defaults to False.
 compile: true  # torch.compile(net, dynamic=True); edges hoisted eager (operator-adopted default)
-activation_memory_budget: null  # OOM escape hatch only: fraction in (0,1] handed to
+activation_memory_budget: 0.5  # OOM escape hatch, ENGAGED 2026-08-15: the escape
+                                # condition fired -- beta-PERF's eager-sized bs=256
+                                # OOM'd under compile on the H100 (91.9 GB; the
+                                # 2.01-2.05x compiled-retention inversion, vram matrix
+                                # + gate-day round 2). Fraction in (0,1] handed to
                                 # AOT's partitioner, buying peak activation memory with
-                                # backward recompute (lgatr 2.0's knob). null = torch
-                                # default. NOTE the sparse gp_impl does NOT relieve this
-                                # under compile: AOT's partitioner equalizes retention
-                                # across all three impls (its 3.5x is eager-only --
+                                # backward recompute (lgatr 2.0's knob); numerics
+                                # untouched, walltime cost ~+9% in the CPU prior.
+                                # Verified composing with the 2.2b graph under compile.
+                                # NOTE the sparse gp_impl does NOT relieve this under
+                                # compile: AOT's partitioner equalizes retention across
+                                # all three impls (its 3.5x is eager-only --
                                 # docs/cgenn-compile.md, CORRECTION).
 
 net:
