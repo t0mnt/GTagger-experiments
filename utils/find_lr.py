@@ -8,14 +8,22 @@ and the dataset within a task with the usual data overrides (e.g. `data.dataset=
 for top tagging); the sweep simply cycles that task's training dataloader, so a
 larger `+lr_find.num_iter` samples more of the data.
 
-The recommended learning rate is reported as `loss-min / 10` (a robust peak lr for
-an annealed / one-cycle schedule); the steepest-descent point is also printed.
+The recommended learning rate is STEEPEST-DESCENT; `loss-min / 10` is printed as the
+upper bracket. (STALE-DOCSTRING FIX 2026-08-15: this paragraph long said the opposite
+of what the banner and the FIND_LR recipe line actually do -- the preference was
+deliberately reversed on nine ParticleNet reruns, see the RECOMMEND STEEPEST-DESCENT
+comment at the banner. Recipes have always transcribed steepest.)
 
-Prefer `loss-min / 10`: it is stable in `num_iter` because it tracks the
-edge-of-divergence lr that the loss landscape fixes. The steepest-descent point is
-NOT -- a longer sweep lets ordinary training progress (not the lr) dominate the loss
-drop and biases it toward low lr (davidtvs/pytorch-lr-finder#68). Keep `num_iter`
-short (300 is deliberate); if a suggestion looks unstable, lower it, don't raise it.
+Scope of that evidence, learned the hard way: it was measured at batch 512. At large
+batch (1024-2048) steepest collapses far below any workable lr (2-4e-5 on the
+GraphTrans hybrids -- the mid-fall slope point barely moves right while the whole
+curve does), which combined with fixed-epoch budgets undertrained those rows. The
+BS_CEILING advice exists for this; under the ceiling, steepest carries the
+ParticleNet evidence. Sanity rule when transcribing: if steepest sits more than ~10x
+below the printed loss-min/10 bracket, distrust the pair and rerun at a smaller
+batch. The original loss-min/10 argument (steepest drifts low as num_iter grows,
+davidtvs/pytorch-lr-finder#68) is why `num_iter` stays 300 -- keep it short; if a
+suggestion looks unstable, lower it, don't raise it.
 
 It reuses the experiment's own `_batch_loss`, optimizer, scaler and dataloader,
 so the measured loss-vs-lr curve reflects the lr-scale-determining setup: optimizer

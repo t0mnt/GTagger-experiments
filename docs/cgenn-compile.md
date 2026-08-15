@@ -2538,6 +2538,40 @@ Decisions taken and corrections found:
   replaced, revert this one commit — determinism was the primary motive, walltime
   the expected bonus.
 
+### Gate day, round 3 — H100, 2026-08-15: the fixed soak catches the crash; shield verdict FINAL
+
+The corrected vary-batches soak did exactly what it was built for, in one round:
+
+- **Shields ON, 100 varying-shape compiled steps: all three CGENN rows GREEN.** This
+  is the first genuine varying-shape compiled-training soak on the campaign card, and
+  it covers the full merged posture — Phase 1 rewrites + 2.2a degree hoist + 2.2b
+  segment_reduce (in-graph). The shielded posture is soak-stable. Loss traces drift
+  across batches (0.6899→0.5744 etc.), confirming the gate now varies data.
+- **Shields OFF: CGENN-GPS CRASHED**, with the classic runtime stride-guard
+  signature, at `assert_size_stride(slice_31, (4*s27, 16, 4), (1, 976, 244))` vs
+  actual strides (1184, 296) — 976 = 61·16 vs 1184 = 74·16: a saved activation VIEW
+  whose strides bake one batch's padded width. Two vacuous rounds "passed" this;
+  the fixed soak caught it within 100 varying steps. **Verdict: the CGENN-GPS shield
+  is PROVEN load-bearing on the NGC 2.8 build. Retirement REJECTED until the
+  container upgrade.** The knob stays (it is the retirement test's switch and just
+  demonstrated its value).
+- **Hazard-class CORRECTION (audit of my own census):** the live trigger is a
+  SLICE-defined save (grade-slice of an edge multivector in the invariants chain),
+  not one of the 4 permute-defined saves my census counted — the census's
+  "permute/transpose-defined" filter UNDERCOUNTED the class. The true class is
+  "saved views with padded-width-dependent strides, whatever op defines them"
+  (slices included). No code action — the scoped shield covers the whole class by
+  construction; the census methodology note stands corrected here.
+- **LNetSlim-GPS passed shields-off** over 100 varying steps — positive evidence,
+  but its shield STAYS: same defect family, near-zero cost, one 100-step sample
+  against a campaign of thousands. Both shields now sit untouched until the next
+  NGC container, where the 2.13 evidence says the family is fixed.
+- Still open for round 4 (GPU): profile_sync on tag_cgenn + GPS to PRICE 2.2b (the
+  27.3%/25.5% scatter kernel should be replaced by segment_reduce kernels — confirm
+  present and compare share); β-PERF GPS row rerun with
+  `model.activation_memory_budget=0.5`; the operator flips (gp_impl matmul, CGENN
+  bs=128/lr=5.57e-04, GT rows back under the ceiling with finder reruns).
+
 ### Workflow: are the gates a fair check for this program? Assessment and the additions
 
 What exists and suffices: the BIT/TOL/DET class taxonomy with gates per class; β-PERF for
