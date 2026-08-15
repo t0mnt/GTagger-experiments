@@ -37,7 +37,7 @@
 defaults:
   - tag_gts_and_friends_default
 
-# found using utils/find_lr.py
+# found using utils/find_lr.py (batch size capped at <=512)
 batchsize: ???
 lr: ???
 

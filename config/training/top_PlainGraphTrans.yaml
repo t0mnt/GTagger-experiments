@@ -13,7 +13,8 @@
 defaults:
   - tag_gts_and_friends_default
 
-# found using utils/find_lr.py
+# found using utils/find_lr.py (batch size cap is <=512; this row deliberately
+# exceeds it -- see the commit that set the value)
 batchsize: 2048
 lr: 4e-5
 
