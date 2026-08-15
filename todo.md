@@ -581,7 +581,17 @@ the marshalling/micro-GEMM signature)*. Checklist:
       reducing knob; per-model use would be an unfair row — same rule as
       expandable_segments). Protocol in the doc.
 - [ ] Per merged change: the GPU GATE DAY (soak smoke via `CGENN_SMOKE_STEPS`, vram row,
-      `profile_sync`) before the compiled posture ships.
+      `profile_sync`) before the compiled posture ships. STATUS 2026-08-15 after two
+      rounds (A6000 + H100): 2.2b ADOPTED on the H100 profile's 25-27% scatter share
+      (segment_reduce swap, CPU-bit-equal, CUDA-deterministic; sortedness
+      machine-checked in test_edge_builders.py); 2.1 CLOSED (no glue copy kernels on
+      H100); Phase 3 kernel-side EMPTY (LNetSlim ~5% GPU-bound — host tax is 2.4's);
+      2.4 bucketing = biggest remaining lever (GPS family 72-95% host). OPEN: shield
+      retirement (round soaks were single-batch = vacuous, my flaw, gate fixed —
+      rerun the shield-off soak after pulling); β-PERF GPS row (eager-sized batch
+      OOMs compiled → set activation_memory_budget=0.5 or bs<=128 and rerun);
+      OPERATOR: flip tag_cgenn gp_impl sparse→matmul (matmul 304 > einsum 296 >
+      sparse 284 jets/s own-batch; find_lr rungs agree) + adopt bs=128/lr=5.57e-04.
 - [ ] File the inductor stride-guard issue upstream (draft in the 2026-08-14 session log;
       signature + monkeypatch evidence in docs/cgenn-compile.md). Shield retires at the
       next NGC container upgrade — re-test with the shield off, then delete it.

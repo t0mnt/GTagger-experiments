@@ -44,11 +44,24 @@ def unsorted_segment_mean(data, segment_ids, num_segments, counts=None):
     (num_segments, C) tensor did. The BIT gate + hybrid pins verify this against the
     pre-hoist recordings.
     """
+    if counts is not None:
+        # Phase 2.2b (docs/cgenn-compile.md): receivers arrive SORTED from both edge
+        # builders (structural: arange-expansion / row-major nonzero; machine-checked by
+        # tests/experiments/test_edge_builders.py), so the aggregation is a contiguous
+        # segment sum -- torch.segment_reduce replaces the index_add_ scatter. Bit-equal
+        # to index_add_ on CPU for sorted ids INCLUDING empty segments (padded nodes),
+        # and deterministic on CUDA where index_add_'s atomics are not
+        # (utils/seg_reduce_probe.py: green on torch 2.13 CPU, public 2.8 CPU, and the
+        # NGC build on both A6000 and H100). Adopted after the H100 profile ranked this
+        # scatter at 25-27% of CUDA time post-2.2a. `counts` are the hoisted receiver
+        # degrees -- exact integers, so the cast is exact and sums to E.
+        lengths = counts.view(-1).to(torch.int64)
+        result = torch.segment_reduce(data, "sum", lengths=lengths, axis=0)
+        return result / counts.clamp(min=1)
     result = data.new_zeros((num_segments, data.size(1)))
     result.index_add_(0, segment_ids, data)
-    if counts is None:
-        counts = data.new_zeros((num_segments, data.size(1)))
-        counts.index_add_(0, segment_ids, torch.ones_like(data))
+    counts = data.new_zeros((num_segments, data.size(1)))
+    counts.index_add_(0, segment_ids, torch.ones_like(data))
     return result / counts.clamp(min=1)
 
 

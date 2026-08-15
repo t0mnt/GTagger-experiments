@@ -2407,7 +2407,9 @@ apptainer with `$IMG`, the venv, repo `main`.
 2. **Shield-OFF soak — the retirement test** (GPS rows):
    `CGENN_RECOMPUTE_VIEWS_SHIELD=0 CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1
    CGENN_SMOKE_STEPS=100 python -m pytest tests/experiments/test_training_smoke.py -q -s
-   -k "GraphGPS"` (covers the LNetSlim twin too — same knob). Survives 100
+   -k "GraphGPS"` (covers the LNetSlim twin too — same knob). NOTE: only meaningful
+   from 2026-08-15 onward — earlier the soak replayed one batch and could not
+   exercise the shape-guard class (round-2 correction below). Survives 100
    varying-shape steps → the shields retire (delete both wrapper blocks + the knob);
    crashes → keep them (4 recorded candidates, all in sparse_gp's einsum; respelling
    does NOT clear them — escalate via the partitioner knob, not a rewrite).
@@ -2427,6 +2429,108 @@ apptainer with `$IMG`, the venv, repo `main`.
    the 0.960x result is stale): the find_lr loop documented in `tag_cgenn.yaml`.
 6. **TF32 stays parked** — last resort, table-wide or not at all, operator protocol in
    Phase 1 item 4.
+
+### Gate day, round 1 — executed 2026-08-15 on an RTX A6000 (partition caveat)
+
+Steps 0-3 ran on `gpu1501` (Ampere A6000, sm86), not the H100 the campaign uses — the
+runbook's `interact` line didn't pin a partition. What transfers and what needs the
+H100 redo:
+
+- **Step 0 (seg_reduce probe) — VALID, transfers.** On the real NGC build
+  (`2.8.0a0+34c6371d24.nv25.08`): BIT-BWD pass, empties pass, **CUDA run-to-run
+  determinism of segment_reduce PASS**, compile 1 graph / 0 breaks with finite
+  compiled grads → "2.2b SAFE on this build". (BIT-FWD read "not bitwise, rel
+  4.5e-07" exactly as the probe predicts on CUDA — index_add_ is the
+  nondeterministic side there; the software properties are arch-independent.)
+- **Steps 1-2 (soaks) — POSITIVE, but do not retire the shields on this alone.**
+  All CGENN rows passed the 100-step shields-ON soak, and the shield-OFF soak
+  passed for all four GraphGPS rows (`-k "GraphGPS"` matched Plain/PNPT too — bonus
+  coverage; both shielded models ran unshielded, clean). The stride crash is a
+  host-side compile artifact so this is real evidence — but the original crash
+  fired ON the H100 within ~10 varying-shape steps, and autotune/kernel selection
+  differ per arch. Rerun steps 1-2 on the H100 partition (~30 min) before deleting
+  the shield blocks.
+- **Step 3 (profiles) — numbers are device-shaped; redo on H100 for decisions.**
+  What the A6000 profiles already establish qualitatively (bs=64, mini):
+  * **tag_cgenn (626 ms/step, GPU-bound):** the mean-aggregation DATA scatter
+    (`index_put_mul_new_zeros`, 17.1% CUDA) and the sparse-GP pair
+    clone+reduce (`fused_clone` 17.6% + `index_mul_sum` 9.4%) and bmm 33% own the
+    step. → 2.2b is still ranked after 2.2a, and `sparse_gp_expression` is now the
+    top CGENN-side kernel target (its TOL respellings are lab-verified; race them
+    if the H100 confirms the ranking).
+  * **CGENN-GPS (2535 ms/step, ~40% GPU):** same trio — scatter 17.5%, clone
+    14.6%, sparse reduce 8.3%, bmm 27%.
+  * **Trans hybrid and LNetSlim-GPS: wall >> Self-CUDA** (1876 vs ~247 ms/step;
+    1084 vs ~84) — the host/launch-bound signature (thousands of
+    cu/cudaLaunchKernel calls + dynamic-shape wrapper overhead), CAVEAT:
+    `with_stack` profiling inflates host time, so confirm via the chrome trace's
+    GPU-row gaps on the H100 before acting. If it holds, Phase 2.4
+    (bucketing/reduce-overhead) is the lever, and **Phase 3's answer is "LNetSlim
+    has no CGENN-style kernel problem"** — its scatters are ~3-6% and its CUDA
+    side is conv/GEMM; its cost is the same host tax as every GPS row.
+  * Pre-existing, noted: PlainGraphGPS hits an inductor backend failure
+    (`aten.nonzero` from the boolean-mask BatchNorm at plaingraphgps.py:191-192)
+    that dynamo converts to a tolerated graph break; model trains. Not from this
+    program's changes.
+
+### Gate day, round 2 — H100 NVL, 2026-08-15 (the decision round)
+
+Steps 0-3 redone on the campaign card, plus step 5 (β-PERF + gp_impl race + find_lr).
+Decisions taken and corrections found:
+
+- **Step 0 on H100: identical PASS** — 2.2b cleared on the exact campaign
+  card+build (segment_reduce deterministic run-to-run, compile clean).
+- **CORRECTION — the soaks were vacuous for the crash class, my flaw.** The smoke
+  gate replays ONE batch (`data = next(iter(loader))` before the loop — a deliberate
+  overfit/capacity signal), and the soak knob I added reused that loop: a "100-step
+  soak" ran 100 SAME-SHAPE steps, so the batch-shape-dependent stride-guard class it
+  exists to catch could never fire. Rounds 1-2's shield-off passes are therefore
+  weak evidence only. FIXED: with `CGENN_SMOKE_STEPS` set, the gate now draws a
+  fresh loader batch per step (default 8-step behavior unchanged). **The shields do
+  NOT retire yet.** The real retirement test, after pulling this commit:
+  `CGENN_RECOMPUTE_VIEWS_SHIELD=0 CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1
+  CGENN_SMOKE_STEPS=100 python -m pytest tests/experiments/test_training_smoke.py
+  -q -s -k "GraphGPS"` (~15 min; now genuinely varying widths).
+- **Step 3, H100 shares (bs=64, mini; the numbers that decide):**
+  * tag_cgenn — 229 ms/step, ~93% GPU-bound. Data scatter
+    `index_put_mul_new_zeros` **27.3%** of CUDA, bmm 24.9%, mm 18.9%, sparse-GP
+    pair clone 11.7% + reduce 6.5%. → **2.2b flip condition met → ADOPTED**
+    (see below). sparse_gp_expression (~18%) is the next kernel target; its TOL
+    respellings are lab-verified and can be raced.
+  * CGENN-GPS — 1306 ms/step, only ~28% GPU. Scatter **25.5%**, mm 26%, bmm 18%,
+    clone 12%, reduce 5.3%. The other ~72% of the step is HOST time in the
+    compiled wrappers (~3,100 launches/step + dynamic-shape size computation).
+  * Trans hybrid — 928 ms/step, ~10% GPU. LNetSlim-GPS — 539 ms/step, ~5% GPU
+    (optimizer is 21% of its tiny CUDA!). → **Phase 3 confirmed kernel-side EMPTY**;
+    the GPS/Trans family's dominant cost on the H100 is the HOST tax, i.e.
+    **Phase 2.4 (bucketing / reduce-overhead) is now the biggest remaining lever**,
+    with the usual caveat that `with_stack` profiling inflates host time — the
+    chrome-trace GPU-row gaps are the confirmatory read.
+  * 2.1 block-glue: **CLOSED** — no glue-attributed copy kernel appears in any
+    H100 top table (the clones are sparse-GP pair materializations, cgenn-side).
+- **Step 5, β-PERF + races (full dataset, own-batch sizing):** compiled wins
+  everywhere measured — einsum 4.62 it/s @ bs64, **matmul 4.75 @ 64**, sparse 2.22
+  @ 128 (own-batch jets/s: **matmul 304 > einsum 296 > sparse 284**); find_lr's
+  compiled rungs at bs128 agree (matmul 199 > einsum 193 > sparse 152 jets/s).
+  → **RECOMMENDATION: flip tag_cgenn `gp_impl: sparse` → `matmul`** (operator
+  flip; BIT fixtures re-record mechanically). The find_lr loop also converged on
+  **bs=128, lr=5.57e-04** for tag_cgenn across all three impls.
+  **CGENN-GPS β-PERF row INCOMPLETE:** the eager-sized bs=256 OOM'd under compile
+  (91.9 GB) — the documented compiled-retention inversion (user's pre-campaign vram
+  table: 2.01-2.05× for GPS). → **Phase 1.3 activates for this row:** set
+  `model.activation_memory_budget=0.5` for compiled GPS (CPU prior: 29.4 MB vs
+  123 default at +8.6% step) or rerun β-PERF at bs≤128; the budget knob exists on
+  the wrapper already.
+- **Phase 2.2b ADOPTED (this commit).** `unsorted_segment_mean`'s hoisted-counts
+  path now aggregates via `torch.segment_reduce` over the sorted receivers in both
+  twins — bit-equal on CPU (the pre-swap BIT fixtures + all hybrid pins pass
+  UNCHANGED, again the strong verification), deterministic on CUDA. The sortedness
+  invariant it depends on is machine-checked by the new
+  `tests/experiments/test_edge_builders.py` (kNN + fully-connected builders,
+  adversarial masks, plus degrees==bincount tying 2.2a to 2.2b). Revert condition:
+  if the next profile shows the segment kernel slower than the scatter it
+  replaced, revert this one commit — determinism was the primary motive, walltime
+  the expected bonus.
 
 ### Workflow: are the gates a fair check for this program? Assessment and the additions
 

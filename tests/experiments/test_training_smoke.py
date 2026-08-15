@@ -72,7 +72,16 @@ KEEP_COMPILE = os.environ.get("CGENN_SMOKE_COMPILE") == "1"
 # (docs/cgenn-compile.md, 2026-08-14) was batch-SHAPE-dependent and fired on a later batch,
 # a class an 8-step smoke can miss; with CGENN_SMOKE_COMPILE=1 on the card, e.g.
 # CGENN_SMOKE_STEPS=100 turns this gate into the compiled-training soak per model.
+#
+# SOAK MODE DRAWS FRESH BATCHES (2026-08-15 correction). The default gate deliberately
+# replays ONE batch (a clean capacity/overfit signal), but the first soak knob reused
+# that loop unchanged -- so a "100-step soak" ran 100 SAME-SHAPE steps and could never
+# exercise the batch-shape-dependent guard class it existed to catch (the round-1/2
+# shield-off soaks passed vacuously; docs/cgenn-compile.md, gate-day records). When
+# CGENN_SMOKE_STEPS is set, each step now draws the next loader batch, so padded widths
+# vary step to step and stride guards meet fresh shapes. Default behavior unchanged.
 STEPS = int(os.environ.get("CGENN_SMOKE_STEPS", 8))
+VARY_BATCHES = "CGENN_SMOKE_STEPS" in os.environ
 MIN_GRAD_FRACTION = 0.5
 # Structurally-unused parameters are legitimate: a scalar readout never consumes the
 # vector half of the final lgatr linear, so those `weight_v` tensors are outside the
@@ -134,12 +143,19 @@ def test_model_trains(model):
     exp = _build_production(model)
     exp.model.train()
     torch.manual_seed(1)
-    data = next(iter(exp.train_loader))
+    loader_it = iter(exp.train_loader)
+    data = next(loader_it)
     opt = torch.optim.AdamW(exp.model.parameters(), lr=1e-4)
 
     import gc
     losses, grad_fraction = [], 0.0
     for step in range(STEPS):
+        if VARY_BATCHES and step > 0:
+            try:
+                data = next(loader_it)  # soak mode: fresh batch = fresh padded width
+            except StopIteration:
+                loader_it = iter(exp.train_loader)
+                data = next(loader_it)
         opt.zero_grad(set_to_none=True)
         y_pred, label = exp._get_ypred_and_label(data.clone())[:2]
         loss = exp.loss(y_pred, label)

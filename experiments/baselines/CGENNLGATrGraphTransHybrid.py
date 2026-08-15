@@ -113,11 +113,18 @@ def unsorted_segment_mean(data, segment_ids, num_segments, counts=None):
     once per CGENN block instead of rebuilt here by a full (E, C) ones scatter per call;
     bit-identical (exact small integers, same divisor values broadcast).
     """
+    if counts is not None:
+        # Phase 2.2b segment-sum swap -- full rationale in the package twin
+        # (experiments/baselines/cgenn/cgenn.py). Sorted receivers (machine-checked by
+        # tests/experiments/test_edge_builders.py) make this bit-equal on CPU and
+        # deterministic on CUDA; adopted on the H100 profile's 25-27% scatter share.
+        lengths = counts.view(-1).to(torch.int64)
+        result = torch.segment_reduce(data, "sum", lengths=lengths, axis=0)
+        return result / counts.clamp(min=1)
     result = data.new_zeros((num_segments, data.size(1)))
     result.index_add_(0, segment_ids, data)
-    if counts is None:
-        counts = data.new_zeros((num_segments, data.size(1)))
-        counts.index_add_(0, segment_ids, torch.ones_like(data))
+    counts = data.new_zeros((num_segments, data.size(1)))
+    counts.index_add_(0, segment_ids, torch.ones_like(data))
     return result / counts.clamp(min=1)
 
 def _pairwise_deltaR(points_part):
