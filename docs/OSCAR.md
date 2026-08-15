@@ -587,8 +587,9 @@ recipe pins 512). For your own models, both numbers are `???`, so you need the f
 the reason before it starts: *"We recommend a ceiling of 512 as performance starts to
 deteriorate after that, particularly when iterations are limited by epoch."* The bound also
 covers both cases without your knowing which a model is in: 512 fits → 512; 512 OOMs
-(CGENN-GraphGPS most likely) → the largest power of two that did. Reasoning and the
-omit-it-for-the-unbounded-answer caveat: GUIDE.md, under find_lr.
+(CGENN-GraphGPS most likely) → the largest power of two that did. The batch and the lr are
+measured together, so capping a recipe after the fact means re-sweeping, not editing the
+number down. Reasoning and the omit-it caveat: GUIDE.md, under find_lr.
 
 ```bash
 # from a LOGIN shell (prompt loginXXX; echo $SLURM_JOB_ID prints nothing -- §0)
@@ -669,10 +670,6 @@ have to transcribe:
 grep FIND_LR lr_sweep.log
 # FIND_LR  model=PlainGraphTrans  batchsize=512  lr=<lr at 512>  ->  config/training/top_PlainGraphTrans.yaml
 ```
-
-512 rather than the unbounded fit (Plain holds far more) because of the `bs_max` bound above.
-The batch and the lr are measured together, so an lr found at 2048 is not valid at 512 —
-re-sweep, do not edit the batch down.
 
 **Before you launch on the numbers this prints: `evaluation.batchsize` is NOT tuned by
 this sweep and does not follow `training.batchsize`.** `config/tagging.yaml` pins it at 512
