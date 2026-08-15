@@ -13,10 +13,9 @@
 defaults:
   - tag_gts_and_friends_default
 
-# found using utils/find_lr.py (batch size cap is <=512; this row deliberately
-# exceeds it -- see the commit that set the value)
-batchsize: 1024
-lr: 2e-5
+# found using utils/find_lr.py (batch size cap is <=512) otherwise optimizer update starved and epochs aren't so fair
+batchsize: 512
+lr: 3e-5
 
 # weight_decay: 0.01          # AdamW: tune on val {0, 0.01, 0.05, 0.1}
 # optimizer: AdamW            # AdamW | Ranger | Lion | ...
