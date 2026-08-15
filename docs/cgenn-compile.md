@@ -2056,6 +2056,17 @@ picked up small weight-side kernels (`diag_embed_threshold_backward`,
 rewritten files 547 → 92, bmm 116 → 54, total aten nodes −24%. Launch-count parity on the
 card is a gate-day question; the activation-path work per launch is what dropped.
 
+**CORRECTION (2026-08-15, CPU-weakness audit):** the counts above — and the original
+"~500-550 launches per production step" extrapolation — counted only `cpp_fused_*`
+kernel definitions and MISSED `extern_kernels.*` calls (mm/addmm/bmm dispatched to
+ATen, one launch each). Full accounting: pre-Phase-1 **435 launch sites** (129 fused +
+306 extern) for the 2-block quick graphs → production extrapolation **~2,100-2,200
+per compiled fwd+bwd**, not 500-550 — which also reconciles far better with the
+H100-measured ~7,200 launches/step (the remainder being eager wrapper ops, optimizer,
+and memcpys outside the compiled graphs). Post-Phase-1+2.2a: **393 sites** (125 fused +
+268 extern; the −38 extern calls are the MVLinear per-blade bmm batches that became
+single flat GEMMs).
+
 ### Retention priors: `activation_memory_budget` brings the sparse-Function trick to the compiled path
 
 The 2026-08-13 VRAM finding (compiled GPS wants MORE than eager) has a mechanism already on
@@ -2220,7 +2231,21 @@ all but a table-wide decision — see item 4.
    takes a diagonal path and every MVLinear call is rank-3; ZERO einsum fallbacks,
    so the census numbers describe the whole production surface. The re-recorded
    dynamo explain shows tag_cgenn's traced op count fell 223 → 155 at 1 graph /
-   0 breaks. *Fixtures:* cgenn_compile BIT fixtures + hybrid
+   0 breaks. *(2026-08-15, CPU-weakness audit round: instrumentation REPEATED on the
+   PRODUCTION config tree — the quick-tree-only run was itself a coverage gap — same
+   verdict, zero fallbacks, and the call counts match design exactly: GPS runs 20
+   hoisted mean-reduces = 10 blocks × 2, 104 diagonal b() calls, 40 rank-3 MVLinear
+   calls per fwd+bwd. Model-level fp32 drift closed retroactively by diffing the
+   recorded fixtures themselves — recorded state_dict and batch verified
+   bit-identical first, so the y drift is pure computation: fp32 rel 4.4e-05, fp64
+   2.6e-11, the fp64 number independently cross-validating tol_dump's 2.46e-11 and
+   fp32 sitting ~50x under the ~2.5e-3 fp32 impl-vs-impl noise floor the
+   BACKWARD-TOL docstring records. And the 2.13-only gap: on a PUBLIC torch
+   2.8.0+cu128 CPU venv — the closest public cousin of the NGC campaign build — the
+   diagonal b() measures fp64 rel 1.5e-16 vs the old chain, and a CGL(fc, sparse,
+   edge_counts) toy compiles at 1 graph / 0 breaks through 4 varying-shape compiled
+   fwd+bwd steps. Residual version gap: the NVIDIA fork itself + Triton-vs-C++
+   codegen — gate day's soak still owns those.)* *Fixtures:* cgenn_compile BIT fixtures + hybrid
    pins re-recorded under the stated class change — only tag_cgenn and the Trans pin
    actually changed bits; GPS and both LNet pins came out byte-identical.
    *Still open for the GPU gate day:* walltime verdict (β-PERF); whether the shields
@@ -2330,9 +2355,17 @@ all but a table-wide decision — see item 4.
      2.13: `dynamo.explain` = 1 graph / 0 breaks, compiled fwd+bwd runs with finite
      grads, with `lengths` passed as a tensor input (in adoption, computed once in
      the EAGER edge hoist as `bincount(recv)` — never in-graph). Lab:
-     scratchpad `seg22b_lab.py`. Adoption stays conditional on the gate-day profile
-     still ranking the data scatter after 2a, and on the same lab passing on the
-     NGC 2.8 build (segment_reduce's Triton lowering there is the one unknown).
+     scratchpad `seg22b_lab.py`. **2.8 verification (2026-08-15): the "one unknown"
+     is substantially closed** — on a public torch 2.8.0+cu128 CPU venv,
+     segment_reduce is again BIT-equal to index_add_ forward+backward including 322
+     forced-empty segments, and compiles at 1 graph / 0 breaks with a working
+     compiled backward. Residual gap is only the NVIDIA fork delta + Triton codegen:
+     one `seg22b_lab.py` rerun inside the cluster container clears it. Adoption
+     stays conditional on the gate-day profile still ranking the data scatter
+     after 2a. The same 2.8 probe run also checked the partitioner's saved-view
+     behavior: the CGL toy saves 8 permute-defined tensors (2 symbolic-shaped) on
+     2.8 — same class as 2.13 — consistent with the shield staying until the
+     shield-off soak.
      Note for Phase 3: `lorentznet.py:157` carries the identical
      rebuild-counts-per-call `unsorted_segment_mean` (one mean per LGEB x-stream),
      so BOTH 2a and 2b transfer to the LorentzNet family verbatim if its profile
