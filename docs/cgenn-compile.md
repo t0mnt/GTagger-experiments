@@ -2233,8 +2233,17 @@ all but a table-wide decision — see item 4.
    all inside `sparse_gp_expression`'s einsum**, the shipped GP. So the crash-class
    candidate population fell ~8x and is concentrated in ONE function, but it is NOT
    zero: the shield stays until the `CGENN_SMOKE_STEPS=100` shield-off soak passes
-   on the card. (If that soak ever fails, the fix target is known: spell
-   sparse_gp_expression's einsum as explicit mm, removing the last 4.) Also open: a
+   on the card. **Contingency corrected by its own lab (2026-08-15,
+   `sparse_fix_probe.py`): respelling that einsum does NOT clear the hazard.** A
+   compiled toy probe counted permute-defined saves per surface form — einsum 2
+   (1 symbolic-shaped), explicit contiguous-bmm 3 (2 symbolic — WORSE: AOT saves
+   the pre-contiguous view and recomputes), blockdiag flat-GEMM 2 (1 symbolic —
+   neutral). The partitioner chooses the saves regardless of how the contraction
+   is spelled, so if the shield-off soak fails at this site the correct mechanism
+   remains the scoped `recompute_views` shield (already in place), with the
+   partitioner knob as the escalation path — NOT a source rewrite. (All three
+   respellings verified TOL ~1e-15 fp64 anyway, so the perf-motivated version can
+   still be raced on the card if the gate-day profile ranks this site.) Also open: a
    gp_impl re-race — the old "batching the GP alone gets eaten by surrounding
    marshalling (matmul 0.960x)" result predates this rewrite, so
    einsum/matmul/sparse may reorder now that the surroundings are clean. The largest
@@ -2311,7 +2320,11 @@ all but a table-wide decision — see item 4.
      filtered; fully-connected is `pair.nonzero` row-major). (2)
      `torch.segment_reduce(data, "sum", lengths=…)` vs the current `index_add_` on
      sorted ids: **bit-equal forward AND backward** on CPU at fp32+fp64 (same
-     accumulation order when ids are sorted); on CUDA the swap REPLACES
+     accumulation order when ids are sorted) — re-verified 2026-08-15 with 322
+     FORCED-empty segments (padded nodes receive zero edges in every real batch;
+     the first lab's random ids made empties astronomically unlikely, so the claim
+     was untested exactly where real data lives): still bit-equal, empty rows
+     exact 0.0, grads bit-equal; on CUDA the swap REPLACES
      nondeterministic atomics with a fixed-order reduction — that is the whole
      point, and vs a CPU reference it is TOL at worst. (3) Compiles clean on torch
      2.13: `dynamo.explain` = 1 graph / 0 breaks, compiled fwd+bwd runs with finite

@@ -566,9 +566,15 @@ the marshalling/micro-GEMM signature)*. Checklist:
       Linear weight transposes; mv_bridge already goes through the rewritten MVLinear
       — gate-day check only, don't rewrite blind). 2.2a receiver-degree hoist DONE,
       BIT-class, fixtures/pins passed UNCHANGED. 2.2b sorted-segment main scatter:
-      receivers are provably sorted from both edge builders (fact in the doc) — do
-      only if the gate-day profile still ranks the scatter after 2a. Then attention
-      re-check at P_max; bucketing last.
+      prototype VERIFIED READY (receivers provably sorted from both builders on
+      real batches; segment_reduce bit-equal to index_add fwd+bwd on CPU incl.
+      forced-empty segments; compiles 1 graph/0 breaks on 2.13) — flip only if the
+      gate-day profile still ranks the scatter after 2a AND the lab passes on the
+      NGC 2.8 build. Shield contingency CORRECTED by lab: respelling sparse_gp's
+      einsum does NOT clear its saved permuted views (partitioner's choice, not
+      the surface form) — if the shield-off soak fails, keep the scoped shield /
+      escalate via partitioner knob, not a rewrite. Then attention re-check at
+      P_max; bucketing last.
 - [ ] **Phase 3** LNetSlim-GPS: one `profile_sync` run = both its GPU soak and the
       is-there-anything answer.
 - [ ] **TF32: LAST resort, table-wide-or-not-at-all, operator decision** (accuracy-
