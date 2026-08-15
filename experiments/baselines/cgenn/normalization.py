@@ -1,6 +1,7 @@
 # from https://github.com/DavidRuhe/clifford-group-equivariant-neural-networks
 import torch
 from torch import nn
+from .autocast import minimum_autocast_precision
 
 EPS = 1e-6
 
@@ -13,6 +14,7 @@ class NormalizationLayer(nn.Module):
 
         self.a = nn.Parameter(torch.zeros(self.in_features, algebra.n_subspaces) + init)
 
+    @minimum_autocast_precision(torch.float32)
     def forward(self, input):
         assert input.shape[1] == self.in_features
 

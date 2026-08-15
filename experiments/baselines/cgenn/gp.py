@@ -8,6 +8,7 @@ from experiments.baselines.cgenn.cliffordalgebra import sparse_gp_tables
 from experiments.baselines.cgenn.linear import MVLinear
 from experiments.baselines.cgenn.normalization import NormalizationLayer
 from experiments.baselines.cgenn.sparse_gp import sparse_geometric_product
+from .autocast import minimum_autocast_precision
 
 
 class SteerableGeometricProductLayer(nn.Module):
@@ -55,6 +56,7 @@ class SteerableGeometricProductLayer(nn.Module):
         )
         return self.algebra.cayley * weight_repeated
 
+    @minimum_autocast_precision(torch.float32, output="high")
     def forward(self, input):
         input_right = self.linear_right(input)
         input_right = self.normalization(input_right)

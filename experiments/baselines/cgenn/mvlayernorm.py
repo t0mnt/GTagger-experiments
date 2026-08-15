@@ -3,6 +3,7 @@ import torch
 from torch import nn
 
 from experiments.baselines.cgenn.utils import unsqueeze_like
+from .autocast import minimum_autocast_precision
 
 EPS = 1e-6
 
@@ -19,6 +20,7 @@ class MVLayerNorm(nn.Module):
         # Broadcasting below is unchanged: we unsqueeze to (1, channels) before use.
         self.a = nn.Parameter(torch.ones(channels))
 
+    @minimum_autocast_precision(torch.float32)
     def forward(self, input):
         norm = self.algebra.norm(input)[..., :1].mean(dim=1, keepdim=True) + EPS
         a = unsqueeze_like(self.a.unsqueeze(0), norm, dim=2)

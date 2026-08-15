@@ -11,6 +11,8 @@ from experiments.baselines.cgenn.metric import (
     gmt_element,
 )
 
+from .autocast import minimum_autocast_precision
+
 
 def sparse_gp_tables(algebra, path_idx):
     """(_sp_path, _sp_val, _sp_sel) for the sparse gp_impl: for each (left blade i, output
@@ -187,6 +189,7 @@ class CliffordAlgebra(nn.Module):
         """Per-grade blade indices, read from the registered buffers so they follow `.to()`."""
         return [getattr(self, f"_grade_to_index_{g}") for g in range(len(self.grade_to_slice))]
 
+    @minimum_autocast_precision(torch.float32, output="high")
     def geometric_product(self, a, b, blades=None):
         cayley = self.cayley
 
@@ -281,6 +284,7 @@ class CliffordAlgebra(nn.Module):
         s = self.grade_to_slice[grade]
         return mv[..., s]
 
+    @minimum_autocast_precision(torch.float32)
     def b(self, x, y, blades=None):
         # The scalar-output geometric product IS a signed dot product (cayley[:, 0, :] is
         # exactly diagonal -- asserted at __init__), so <beta(x) y>_0 collapses to an
@@ -314,6 +318,7 @@ class CliffordAlgebra(nn.Module):
             blades=blades,
         )
 
+    @minimum_autocast_precision(torch.float32)
     def q(self, mv, blades=None):
         if blades is not None:
             blades = (blades, blades)

@@ -5,6 +5,7 @@ import torch
 from torch import nn
 
 from experiments.baselines.cgenn.utils import unsqueeze_like
+from .autocast import minimum_autocast_precision
 
 
 class MVLinear(nn.Module):
@@ -76,6 +77,7 @@ class MVLinear(nn.Module):
                 -1, self.out_features, nb)
         return torch.einsum("bm...i, nmi->bn...i", input, weight)
 
+    @minimum_autocast_precision(torch.float32, output="high")
     def forward(self, input):
         result = self._forward(input)
 
