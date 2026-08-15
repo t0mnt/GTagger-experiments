@@ -470,8 +470,8 @@ def find_max_batch_size(
                 """A FRESH batch object per step -- never reuse one across two steps.
 
                 `embed_tagging_data` MUTATES the caller's `ptr` in place, adding the spurion
-                offsets (embedding.py: "Safe since each batch is embedded once; embedding
-                twice double-counts spurions -- clone first"). Two steps on one object hits
+                offsets (embedding.py: \"Safe since each batch is embedded once; embedding
+                twice double-counts spurions -- clone first\"). Two steps on one object hits
                 exactly that: the second embed sees a ptr already shifted by n_spurions*B and
                 everything downstream is off by that much -- `IndexError: shape of the mask
                 [N] does not match the shape of the indexed tensor [N + n_spurions*B]`.
@@ -735,6 +735,38 @@ def suggest_lr(lrs, losses, skip_start, skip_end, beta=0.98):
     return steepest, min_loss_lr, lr_trim, loss_trim, interior_min
 
 
+def transcribe_lr(steepest, bracket, interior_min, ratio_bar=10.0):
+    """ONE number, ONE reason -- the banner applies the module-docstring rule so the
+    reader never has to (added 2026-08-15 after an operator transcribed under queue
+    pressure from a three-number banner; that ambiguity was the bug).
+
+    - Coherent pair (bracket/steepest <= ratio_bar): STEEPEST -- the default that
+      carries the nine-rerun ParticleNet evidence.
+      Live case: ParticleNetParTGraphTrans bs=512, 3.08e-05 vs 1.17e-04 (3.8x).
+    - Rule fires (> ratio_bar) WITH an interior minimum: the curve pinned steepest
+      in its long shallow early descent; transcribe the BRACKET (loss-min/10).
+      Live case: PlainGraphTrans bs=512, 3.08e-05 vs 4.52e-04 (14.7x) -> 4.52e-04.
+    - Rule fires WITHOUT an interior minimum: NEITHER number is a recipe -- the
+      sweep itself is suspect; rerun (and at a smaller batch if it reproduces).
+      Live case: ParticleNet 2026-08-15, 2.21e-04 vs 8.19e-03 (37x, no interior
+      minimum, and steepest 6-8x below its own nine-rerun envelope).
+
+    Returns (lr_or_None, reason_string). Pure function; unit-tested in
+    tests/internal/test_find_lr_transcribe.py.
+    """
+    ratio = (bracket / steepest) if steepest > 0 else float("inf")
+    if ratio <= ratio_bar:
+        return steepest, (
+            f"steepest [coherent pair: bracket/steepest = {ratio:.1f}x <= {ratio_bar:.0f}x]")
+    if interior_min:
+        return bracket, (
+            f"loss-min/10 [rule fired: {ratio:.1f}x > {ratio_bar:.0f}x with an interior "
+            f"minimum -- steepest is curve-pinned; module docstring]")
+    return None, (
+        f"NO RECIPE [rule fired: {ratio:.1f}x > {ratio_bar:.0f}x and NO interior minimum "
+        f"-- the sweep is suspect; rerun before transcribing; module docstring]")
+
+
 def make_plot(lrs, losses, steepest, min_loss_lr, output, title="LR range test"):
     import matplotlib
 
@@ -942,7 +974,7 @@ def main(cfg):
     # davidtvs/pytorch-lr-finder#68) predicts drift with SWEEP LENGTH; at the fixed
     # num_iter=300 used here steepest is the stable one. Revisit if a hybrid disagrees --
     # this is one model on one dataset, and flipping back is this block.
-    LOGGER.info(f"Suggested lr (steepest descent): {steepest:.2e}   [recommended]")
+    LOGGER.info(f"Suggested lr (steepest descent): {steepest:.2e}   [default]")
     if interior_min:
         LOGGER.info(f"Suggested lr (loss-min / 10):    {suggested:.2e}   [upper bracket]")
     else:
@@ -953,17 +985,29 @@ def main(cfg):
             "blow-up."
         )
         LOGGER.info(f"Suggested lr (loss-min / 10):    {suggested:.2e}   [NOT reliable here]")
-    suggested = steepest
+    # ONE directive line -- the banner applies the transcription rule so the reader
+    # never juggles the two diagnostics above under queue pressure (see transcribe_lr).
+    pick, why = transcribe_lr(steepest, suggested, interior_min)
+    untrusted = pick is None
+    if untrusted:
+        LOGGER.warning(f"TRANSCRIBE: nothing -- {why}")
+        pick = steepest  # keep the lines below greppable, but tagged
+    else:
+        LOGGER.info(f"TRANSCRIBE: {pick:.2e} -- {why}")
+    suggested = pick
+    tag = "  [UNTRUSTED: no-recipe rule fired, rerun first]" if untrusted else ""
     reuse = f"training.lr={suggested:.2e}"
     if params["find_batch_size"]:
         reuse = f"training.batchsize={bs} " + reuse
-    LOGGER.info(f"  ->  reuse with:  {reuse}")
+    LOGGER.info(f"  ->  reuse with:  {reuse}{tag}")
     LOGGER.info(f"  ->  plot:        {params['output']}")
     # One greppable line per model: `grep FIND_LR <log>` turns a chained family sweep into the
-    # table you actually have to transcribe, in order, without scrolling.
+    # table you actually have to transcribe, in order, without scrolling. lr= carries the
+    # TRANSCRIBE pick (rule-applied), not raw steepest, since 2026-08-15.
     LOGGER.info(
         f"FIND_LR  model={model_name}  batchsize={bs}  lr={suggested:.2e}"
         + (f"  ->  {recipe}" if recipe else "")
+        + tag
     )
     # Short by design: the reasoning was printed before the search (see BS_CEILING); this is
     # only the reminder, at the point where the number is about to be transcribed into a recipe.
