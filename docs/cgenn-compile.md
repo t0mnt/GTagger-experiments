@@ -2355,12 +2355,14 @@ all but a table-wide decision — see item 4.
      2.13: `dynamo.explain` = 1 graph / 0 breaks, compiled fwd+bwd runs with finite
      grads, with `lengths` passed as a tensor input (in adoption, computed once in
      the EAGER edge hoist as `bincount(recv)` — never in-graph). Lab:
-     scratchpad `seg22b_lab.py`. **2.8 verification (2026-08-15): the "one unknown"
+     **2.8 verification (2026-08-15): the "one unknown"
      is substantially closed** — on a public torch 2.8.0+cu128 CPU venv,
      segment_reduce is again BIT-equal to index_add_ forward+backward including 322
      forced-empty segments, and compiles at 1 graph / 0 breaks with a working
      compiled backward. Residual gap is only the NVIDIA fork delta + Triton codegen:
-     one `seg22b_lab.py` rerun inside the cluster container clears it. Adoption
+     the lab is ported into the repo as **`utils/seg_reduce_probe.py`** (torch-only,
+     zero repo imports — runs inside the container as-is, and on CUDA additionally
+     reports segment_reduce's own run-to-run determinism); one run there clears it. Adoption
      stays conditional on the gate-day profile still ranking the data scatter
      after 2a. The same 2.8 probe run also checked the partitioner's saved-view
      behavior: the CGL toy saves 8 permute-defined tensors (2 symbolic-shaped) on
@@ -2386,6 +2388,45 @@ give it the identical cheap verify — one `profile_sync` run — which doubles 
 signature (it converts layouts twice per layer — the very trait that made it the first
 stride-crash victim), the Phase-1/2 items apply; if it profiles clean and GPU-bound in
 big GEMMs, it is done and Phase 3 is empty.
+
+### GATE DAY — the runbook (2026-08-15; everything still open needs the card)
+
+Every CPU-closable question is closed; each command below answers a specific recorded
+one. Setup as in the profiling sessions: `interact -q gpu -g 1 -n 4 -m 32g -t 2:00:00`,
+apptainer with `$IMG`, the venv, repo `main`.
+
+0. **2.2b safety on the NGC build** (~2 min): `python utils/seg_reduce_probe.py` —
+   torch-only, runs as-is in the container. Expect the 4-PASS verdict it prints
+   (already green on 2.13 and public 2.8.0 CPU); on CUDA it also reports
+   segment_reduce's run-to-run determinism, which is 2.2b's whole point.
+1. **Compiled training soak, shields ON** (default; ~15 min for the three rows):
+   `CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 CGENN_SMOKE_STEPS=100 python -m pytest
+   tests/experiments/test_training_smoke.py -q -s -k "tag_cgenn or CGENNLGATr"`.
+   Gate: finite losses, 100% nonzero-grad params, no stride crash — this is the
+   Phase-1 + 2.2a merge check on real Triton.
+2. **Shield-OFF soak — the retirement test** (GPS rows):
+   `CGENN_RECOMPUTE_VIEWS_SHIELD=0 CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1
+   CGENN_SMOKE_STEPS=100 python -m pytest tests/experiments/test_training_smoke.py -q -s
+   -k "GraphGPS"` (covers the LNetSlim twin too — same knob). Survives 100
+   varying-shape steps → the shields retire (delete both wrapper blocks + the knob);
+   crashes → keep them (4 recorded candidates, all in sparse_gp's einsum; respelling
+   does NOT clear them — escalate via the partitioner knob, not a rewrite).
+3. **profile_sync per row** (the decision-maker):
+   `python utils/profile_sync.py -cn toptagging model=<row> save=false
+   training.batchsize=<sized>` for tag_cgenn, tag_CGENNLGATrGraphTrans,
+   tag_CGENNLGATrGraphGPS, and tag_LorentzNetLGATrSlimGraphGPS. Reads: does any COPY
+   kernel attribute to the glue (→ revisit 2.1, else it stays closed); is the data
+   scatter still ranked after the degree hoist (→ flip 2.2b, protocol in its entry);
+   does LNetSlim-GPS show the marshalling/micro-GEMM signature (→ Phase 3 opens, and
+   2a+2b transfer verbatim to lorentznet.py, else Phase 3 is empty); is it still
+   launch-bound (→ bucketing, last).
+4. **The vram matrix row** (`docs/oscar-vram.sbatch`) → the `activation_memory_budget`
+   adoption decision (Phase 1.3), with the CPU retention priors above as the
+   expected shape.
+5. **β-PERF walltime verdict + the gp_impl re-race** (the surroundings are clean now;
+   the 0.960x result is stale): the find_lr loop documented in `tag_cgenn.yaml`.
+6. **TF32 stays parked** — last resort, table-wide or not at all, operator protocol in
+   Phase 1 item 4.
 
 ### Workflow: are the gates a fair check for this program? Assessment and the additions
 

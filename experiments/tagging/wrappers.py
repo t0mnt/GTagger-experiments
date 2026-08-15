@@ -1,3 +1,5 @@
+import os
+
 import torch
 from lgatr import embed_vector, extract_scalar
 from lloca.framesnet.frames import Frames
@@ -1163,9 +1165,14 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
             # 16 compiled steps (8 warm + 8 profiled) over varying mini shapes, crash
             # gone, profile clean. A longer soak before the first long run is cheap
             # insurance: CGENN_SMOKE_STEPS=100 CGENN_SMOKE_COMPILE=1 on the smoke gate.
-            # The STRUCTURAL retirement of this shield is the layout unification item in
-            # the improvement program -- no saved permuted view, no class.
-            self._recompute_views = True
+            # Retirement status (2026-08-15 audit, docs/cgenn-compile.md): the Phase-1
+            # rewrites cut the saved permuted-view population 71 -> 45, of which only 4
+            # are activation-shaped-symbolic (all in sparse_gp's einsum; respelling it
+            # does NOT clear them -- measured). So retirement is decided by the gate-day
+            # SHIELD-OFF soak, not structurally: CGENN_RECOMPUTE_VIEWS_SHIELD=0 runs
+            # this model (and the LNetSlim-GPS twin) unshielded. Default stays ON.
+            self._recompute_views = os.environ.get(
+                "CGENN_RECOMPUTE_VIEWS_SHIELD", "1") != "0"
             self.net.compile(dynamic=True)
         self.budget = _activation_memory_budget(activation_memory_budget)
         self.framesnet = framesnet  # not actually used
@@ -1374,7 +1381,10 @@ class LorentzNetLGATrSlimGraphGPSWrapper(nn.Module):
         if compile:
             # compile the net only (dense top-k kNN inside the net is shape-static and
             # traces clean -- docs/cgenn-compile.md, Stage 2)
-            self._recompute_views = True  # see forward(): AOT view-saving vs inductor
+            # see forward(): AOT view-saving vs inductor. Same gate-day retirement knob
+            # as the CGENN-GPS twin: CGENN_RECOMPUTE_VIEWS_SHIELD=0 soaks unshielded.
+            self._recompute_views = os.environ.get(
+                "CGENN_RECOMPUTE_VIEWS_SHIELD", "1") != "0"
             self.net.compile(dynamic=True)
         self.framesnet = framesnet  # not actually used
         assert isinstance(framesnet, IdentityFrames)
