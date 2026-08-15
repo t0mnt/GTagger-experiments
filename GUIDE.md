@@ -169,7 +169,7 @@ memory ceiling and the loss-vs-lr curve):
 
 ```bash
 python utils/find_lr.py -cn jctagging model=tag_CGENNLGATrGraphGPS save=false \
-    +lr_find.find_batch_size=true
+    +lr_find.find_batch_size=true +lr_find.bs_max=512
 # -> fill training.batchsize / training.lr into config/training/jc_CGENNLGATrGraphGPS.yaml
 ```
 
@@ -213,7 +213,7 @@ Everything from §5.1 carries over:
 
 ```bash
 python utils/find_lr.py -cn toptagxl model=tag_PlainGraphGPS save=false \
-    +lr_find.find_batch_size=true
+    +lr_find.find_batch_size=true +lr_find.bs_max=512
 # -> fill training.batchsize / training.lr into config/training/xl_PlainGraphGPS.yaml
 python run.py -cp config -cn toptagxl model=tag_PlainGraphGPS training=xl_PlainGraphGPS
 ```
@@ -260,7 +260,7 @@ python utils/find_lr.py -cn toptagging model=tag_CGENNLGATrGraphGPS save=false
 
 # on a GPU: fit the batch size first, then sweep the LR at that size
 python utils/find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
-    save=false +lr_find.find_batch_size=true
+    save=false +lr_find.find_batch_size=true +lr_find.bs_max=512
 ```
 
 With `+lr_find.find_batch_size=true` it doubles the batch size until CUDA OOM
@@ -269,7 +269,25 @@ the largest fitting power of two (`bs_safety=1.0` default; set `<1` to trade the
 power of two for headroom), then prints the batch size and LR, e.g.
 `-> reuse with: training.batchsize=2048 training.lr=3.1e-04`, followed by a single greppable line naming the model and the recipe the pair belongs in (`FIND_LR model=X batchsize=N lr=L -> config/training/<prefix>_X.yaml`), so a chained sweep is transcribed with `grep FIND_LR`. Knobs:
 `+lr_find.{bs_start,bs_max,bs_sigmas,bs_refine,bs_safety,num_iter,end_lr}` — keep `num_iter` short (~300;
-a longer sweep biases the suggestion lower, it doesn't sharpen it). For models that expose a
+a longer sweep biases the suggestion lower, it doesn't sharpen it).
+
+**Why `+lr_find.bs_max=512` is on every sweep command above.** The search maximises what
+FITS, which is not the question the campaign asks — it is the same advisory the tool prints
+before it starts:
+
+> *We recommend a ceiling of 512 as performance starts to deteriorate after that,
+> particularly when iterations are limited by epoch.*
+
+Under the shared epoch budget (`tag_gts_and_friends_default`, equal data exposure) a larger
+batch buys **fewer optimizer steps** for the same 20 passes, so past a point the fit-maximal
+batch costs updates rather than saving time. Bounding the search at 512 also makes it
+cheaper for the roomy models — Plain fits far more than 512, and climbing to 8192 only to
+discard the answer is wasted GPU time. The bound resolves both cases without your knowing
+in advance which a model is in: **512 fits → you get 512; 512 OOMs (CGENN-GraphGPS is the
+likely one) → you get the largest power of two that did.** Either way the LR is then swept
+at the size you will train at, which is the point — an LR swept at 2048 is wrong for 512.
+Drop the flag when you genuinely want the unbounded answer; the tool is advisory and clamps
+nothing on its own, and it reminds you at the end if the chosen batch is over the ceiling. For models that expose a
 `knn_metric`, the sweep pins **`deltaR`** by default so the suggested LRs are comparable across
 the family (the LR scale is metric-independent — the model still *trains* under its own
 configured metric); pass `+lr_find.force_knn_metric=keep` to sweep each model's own metric

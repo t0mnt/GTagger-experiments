@@ -404,7 +404,7 @@ GUIDE §5.1 — shared epochs=5, wd=0; fill each `jc_<hybrid>.yaml`'s `???` from
 jctagging sweep, not the top-tagging one):
 
 ```bash
-# §4 becomes:  python utils/find_lr.py -cn jctagging model=tag_<hybrid> save=false +lr_find.find_batch_size=true
+# §4 becomes:  python utils/find_lr.py -cn jctagging model=tag_<hybrid> save=false +lr_find.find_batch_size=true +lr_find.bs_max=512
 # §5 becomes:  sbatch train.sbatch tag_<hybrid> jctagging     (recipe jc_<hybrid> is derived)
 ```
 
@@ -583,6 +583,13 @@ that flag the finder uses whatever `training.batchsize` the recipe already holds
 reports only an lr (which is exactly what the ParticleNet check above wants, since that
 recipe pins 512). For your own models, both numbers are `???`, so you need the flag:
 
+**Pair it with `+lr_find.bs_max=512`**, as every sweep command below does — the tool prints
+the reason before it starts: *"We recommend a ceiling of 512 as performance starts to
+deteriorate after that, particularly when iterations are limited by epoch."* The bound also
+covers both cases without your knowing which a model is in: 512 fits → 512; 512 OOMs
+(CGENN-GraphGPS most likely) → the largest power of two that did. Reasoning and the
+omit-it-for-the-unbounded-answer caveat: GUIDE.md, under find_lr.
+
 ```bash
 # from a LOGIN shell (prompt loginXXX; echo $SLURM_JOB_ID prints nothing -- §0)
 # `-q` is the partition. The general `gpu` pool is MIXED hardware, so it does not give you a
@@ -631,7 +638,7 @@ cd ~/GTagger-experiments
 apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
   source venv/bin/activate
   python utils/find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
-      save=false +lr_find.find_batch_size=true
+      save=false +lr_find.find_batch_size=true +lr_find.bs_max=512
 '
 #  ->  reuse with:  training.batchsize=<N> training.lr=<lr>
 ```
@@ -646,7 +653,7 @@ cd ~/GTagger-experiments
 apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc '
   source venv/bin/activate
   for M in tag_{Plain,ParticleNetParT,CGENNLGATr,LorentzNetLGATrSlim}{GraphTrans,GraphGPS}; do
-    python utils/find_lr.py -cn toptagging model=$M +lr_find.find_batch_size=true
+    python utils/find_lr.py -cn toptagging model=$M +lr_find.find_batch_size=true +lr_find.bs_max=512
   done
 ' 2>&1 | tee lr_sweep.log
 ```
@@ -902,7 +909,7 @@ MODELS="tag_PlainGraphTrans tag_PlainGraphGPS \
 cd ~/GTagger-experiments
 for M in $MODELS; do
   apptainer exec --nv "$NGC_PYTORCH_CONTAINER" bash -lc \
-    "source venv/bin/activate && python utils/find_lr.py -cn toptagging model=$M save=false +lr_find.find_batch_size=true"
+    "source venv/bin/activate && python utils/find_lr.py -cn toptagging model=$M save=false +lr_find.find_batch_size=true +lr_find.bs_max=512"
 done
 ```
 

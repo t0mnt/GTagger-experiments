@@ -113,11 +113,19 @@ First (in a §3-style GPU session, or as a short batch job) size the batch and l
 apptainer exec --nv "$IMG" bash -lc '
   source venv/bin/activate
   python utils/find_lr.py -cn toptagging model=tag_LorentzNetLGATrSlimGraphGPS \
-      save=false +lr_find.find_batch_size=true
+      save=false +lr_find.find_batch_size=true +lr_find.bs_max=512
 '   # prints:  ->  reuse with:  training.batchsize=<N> training.lr=<lr>
     #     and:  FIND_LR  model=<Model>  batchsize=<N>  lr=<lr>  ->  config/training/<recipe>.yaml
     #           (one line per model -- `grep FIND_LR` a chained sweep's log to transcribe it)
 ```
+
+`+lr_find.bs_max=512` bounds the search, matching the advisory the tool prints before it
+starts: *"We recommend a ceiling of 512 as performance starts to deteriorate after that,
+particularly when iterations are limited by epoch."* Under the shared epoch budget a larger
+batch buys fewer optimizer steps for the same data exposure, and the bound covers both cases
+without knowing which a model is in — 512 fits → 512, 512 OOMs → the largest that did — with
+the lr then swept at the size you will train at. Omit it for the unbounded answer; nothing is
+clamped, and the run warns at the end if the chosen batch exceeds the ceiling.
 
 Fill those into `config/training/top_<Model>.yaml`, then save the following as the
 FILE `train.sbatch` (file content — don't paste it into a shell; it would run the
