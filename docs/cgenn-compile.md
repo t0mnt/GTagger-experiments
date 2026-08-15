@@ -2614,6 +2614,27 @@ After round 4 the program's in-campaign scope closes: adopt-or-close on the race
 revert-or-keep on 2.2b pricing, and the operator flips. Post-campaign (or at the
 container upgrade): bucketing/host-tax, shield re-test, TF32 table-wide protocol.
 
+**ParticleNet LR-sweep anomaly (2026-08-15, unresolved — rerun before transcribing).**
+Today's H100 sweep read steepest 2.21e-04 with loss-min/10 8.19e-03 flagged
+NOT-reliable (no interior minimum). Both statistics sit far below the finder's own
+recorded nine-rerun evidence on the SAME model and batch (steepest 1.32-1.91e-3, a
+1.4x rerun spread; loss-min/10 2.64e-2-1.39e-1): steepest is ~6-8x below its
+documented envelope, and both moved DOWN together — a curve-level (conditions)
+shift, not a selector question. The audit's cross-revision trajectory checks
+verified ParticleNet's arithmetic unchanged across the range, so the candidates are
+unseeded rerun variance beyond its documented spread, hardware (the nine reruns'
+device is not recorded), or sweep posture. The sweep is unseeded by design
+(the rerun spread IS the stability diagnostic), so the protocol is cheap:
+    for i in 1 2 3; do python utils/find_lr.py -cn toptagging model=tag_particlenet \
+        save=false +lr_find.find_batch_size=true; done
+    python utils/find_lr.py -cn toptagging model=tag_particlenet model.compile=false \
+        save=false +lr_find.find_batch_size=true   # posture control
+If reruns scatter back to ~1.3-1.9e-3, today's reading was a tail draw — transcribe
+from the cluster. If 2.2e-4 reproduces, the eager-control run splits
+posture-vs-environment, and the finding graduates to its own investigation. Do NOT
+transcribe today's pair either way: it fails the tool's own >10x rule (37x) with no
+interior minimum, which per the docstring remedy means neither number is a recipe.
+
 ### Workflow: are the gates a fair check for this program? Assessment and the additions
 
 What exists and suffices: the BIT/TOL/DET class taxonomy with gates per class; β-PERF for
