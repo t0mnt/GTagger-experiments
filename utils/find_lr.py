@@ -159,6 +159,15 @@ DEFAULTS = dict(
 )
 
 
+# Advisory ceiling on the batchsize the GPU search returns. The search maximises what FITS,
+# which is not the same question as what trains best: under the epoch budget (equal data
+# exposure, tag_gts_and_friends_default) a bigger batch buys FEWER optimizer steps for the
+# same 20 (or 5) passes, so past some point the fit-maximal batch costs updates rather than
+# saving time. Advisory only -- nothing is clamped, because the right ceiling is per-model
+# and this tool measures memory, not convergence.
+BS_CEILING = 512
+
+
 def build_experiment(cfg):
     """Construct and partially initialize an experiment (no scheduler, no training).
 
@@ -802,6 +811,10 @@ def main(cfg):
     # trains at. Fine for the speedup RATIO it reports; not a basis for ranking impls by
     # jets/s, which is what this function's number decides.
     if params["find_batch_size"]:
+        LOGGER.info(
+            f"We recommend a ceiling of {BS_CEILING} as performance starts to deteriorate "
+            f"after that, particularly when iterations are limited by epoch."
+        )
         bs = find_max_batch_size(
             exp,
             params["bs_start"],
@@ -938,6 +951,10 @@ def main(cfg):
         f"FIND_LR  model={model_name}  batchsize={bs}  lr={suggested:.2e}"
         + (f"  ->  {recipe}" if recipe else "")
     )
+    # Short by design: the reasoning was printed before the search (see BS_CEILING); this is
+    # only the reminder, at the point where the number is about to be transcribed into a recipe.
+    if params["find_batch_size"] and bs is not None and bs > BS_CEILING:
+        LOGGER.warning(f"  ->  reminder:    over the {BS_CEILING} ceiling")
     LOGGER.info("=" * 64)
 
 
