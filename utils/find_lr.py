@@ -8,28 +8,41 @@ and the dataset within a task with the usual data overrides (e.g. `data.dataset=
 for top tagging); the sweep simply cycles that task's training dataloader, so a
 larger `+lr_find.num_iter` samples more of the data.
 
-The recommended learning rate is STEEPEST-DESCENT; `loss-min / 10` is printed as the
-upper bracket. (STALE-DOCSTRING FIX 2026-08-15: this paragraph long said the opposite
-of what the banner and the FIND_LR recipe line actually do -- the preference was
-deliberately reversed on nine ParticleNet reruns, see the RECOMMEND STEEPEST-DESCENT
-comment at the banner. Recipes have always transcribed steepest.)
+THE RECOMMENDATION (TRANSCRIBE line) IS SHAPE-GATED since 2026-08-16; neither
+statistic is trusted unconditionally. History, because this logic has now been wrong
+in both directions and the evidence trail is the guard against a third flip:
 
-Scope of that evidence, learned the hard way: it was measured at batch 512. At large
-batch (1024-2048) steepest collapses far below any workable lr (2-4e-5 on the
-GraphTrans hybrids -- the mid-fall slope point barely moves right while the whole
-curve does), which combined with fixed-epoch budgets undertrained those rows. The
-BS_CEILING advice exists for this; under the ceiling, steepest carries the
-ParticleNet evidence. Sanity rule when transcribing: if steepest sits more than ~10x
-below the printed loss-min/10 bracket, distrust STEEPEST -- when the banner shows an
-interior minimum (no "NOT reliable" warning), transcribe the loss-min/10 bracket
-instead; only when there is no interior minimum rerun at a smaller batch. Live case
-(PlainGraphTrans, 2026-08-15): steepest read 3.08e-05 at bs=512 AND 4e-05 at bs=2048
--- pinned by the curve's long shallow early descent, not tracking the stability edge
-at all -- while loss-min/10 read a plausible 4.52e-04 with an interior minimum; the
-bracket is the recipe there. The original loss-min/10 argument (steepest drifts low
-as num_iter grows,
-davidtvs/pytorch-lr-finder#68) is why `num_iter` stays 300 -- keep it short; if a
-suggestion looks unstable, lower it, don't raise it.
+- Originally the recipe value was `loss-min / 10` (the classic fastai bracket).
+- 2f29a17 flipped the recommendation to STEEPEST-DESCENT on nine ParticleNet reruns:
+  steepest was stable to 1.4x while loss-min/10 spread 5x. That mistook STABILITY for
+  ACCURACY. On the GraphTrans hybrids the curve falls at a near-constant shallow
+  slope for decades before the stability edge; argmin(gradient) lands wherever noise
+  peaks inside that plateau and BARELY MOVES between reruns or batch sizes
+  (PlainGraphTrans: 3.08e-05 at bs=512 AND 4e-05 at bs=2048) -- stable because the
+  plateau is, not because it tracks the edge.
+- The 2026-08-15 TRANSCRIBE rule kept steepest as default and distrusted it only
+  when the bracket sat >10x above. That coherence test cannot fire when the curve
+  pins BOTH statistics low: ParticleNetParTGraphTrans read steepest 3.08e-05 with
+  bracket 1.17e-04 (3.8x, "coherent") and the rule endorsed steepest.
+- MEASURED COST of that endorsement (2026-08-16, three controlled runs, same
+  architecture and config, bs=512): lr 3e-5 (steepest) gave test acc 0.9380/0.9384
+  and rej(epsS=0.3) 1239/1160; lr 1e-3 (the bracket value) gave 0.9414 and 1771,
+  matching the external weaver reference (0.9417) inside seed spread. Steepest was
+  33x low and cost 0.32pp accuracy / 40% background rejection.
+
+The rule now reads the CURVE, not just the two numbers (see PINNED_DECADES at
+suggest_lr): steepest counts only when the descent has a DISTINCT slope peak -- the
+lr-span of the region within half the steepest slope must stay under ~1.5 decades.
+ParticleNet's concentrated fall passes (its nine-rerun steepest 1.32-1.91e-3 remains
+the recommendation there, where the bracket read a 20-70x-high 2.64e-2-1.39e-1);
+the hybrids' plateau descents fail it, and the bracket -- WITH an interior minimum --
+is the recipe (PNPT above; PlainGraphTrans 4.52e-04). Pinned steepest with NO
+interior minimum means nothing on the curve is anchored: rerun, at a smaller batch
+if it reproduces. Hybrid brackets vary run-to-run (PNPT: 1.17e-04 vs ~1e-3 at the
+same bs), so when the banner says curve-pinned, confirm with a second sweep before
+committing a long run. The original loss-min/10 argument (steepest drifts low as
+num_iter grows, davidtvs/pytorch-lr-finder#68) is why `num_iter` stays 300 -- keep
+it short; if a suggestion looks unstable, lower it, don't raise it.
 
 It reuses the experiment's own `_batch_loss`, optimizer, scaler and dataloader,
 so the measured loss-vs-lr curve reflects the lr-scale-determining setup: optimizer
@@ -682,9 +695,24 @@ def range_test(exp, start_lr, end_lr, num_iter, beta, diverge):
     return np.array(lrs), np.array(losses)
 
 
+# Curve-shape gate for the steepest-descent statistic (2026-08-16, the PNPT incident --
+# see the module docstring's history). "Steepest" is only a candidate recommendation
+# when the descent is CONCENTRATED: a distinct slope peak. On the GT hybrids the loss
+# falls at a near-constant shallow slope over decades, argmin(gradient) lands wherever
+# noise peaks inside that plateau, and transcribing it cost a campaign row 0.32pp
+# accuracy / 40% rejection. Detector: the lr-span, in decades, of the region whose
+# downhill slope is within PINNED_HALF of the steepest. A concentrated fall spans well
+# under a decade; the hybrids' plateaus span 2+. Between them, 1.5.
+PINNED_HALF = 0.5
+PINNED_DECADES = 1.5
+
+
 def suggest_lr(lrs, losses, skip_start, skip_end, beta=0.98):
-    """Two heuristics: `loss-min/10` (robust, the recommended one) and the
-    steepest-descent point (lr at the minimum gradient of loss vs log(lr)).
+    """Two statistics -- `loss-min/10` (bracket) and the steepest-descent point --
+    plus the two curve diagnostics that decide which (if either) is a recipe:
+    `interior_min` (is the bracket anchored by a real trough?) and `pinned`
+    (is "steepest" just a point on a slope plateau? see PINNED_DECADES above).
+    `transcribe_lr` turns the four into one recommendation.
 
     The EMA used to smooth the loss leaves a high-variance transient over its
     ~1/(1-beta) warmup window; if the gradient search sees it, the "steepest"
@@ -714,9 +742,21 @@ def suggest_lr(lrs, losses, skip_start, skip_end, beta=0.98):
     loss_grad = losses[grad_start:grad_end]
     if len(lr_grad) >= 2:
         gradients = np.gradient(loss_grad, np.log(lr_grad))
-        steepest = float(lr_grad[int(np.argmin(gradients))])
+        steep_idx = int(np.argmin(gradients))
+        steepest = float(lr_grad[steep_idx])
+        # pinned test: how many DECADES of lr fall at >= half the steepest slope? A
+        # distinct peak keeps this small; a plateau descent (where the argmin above is
+        # noise-arbitrary) spreads it over the plateau's whole width.
+        gmin = gradients[steep_idx]
+        region = lr_grad[gradients <= PINNED_HALF * gmin] if gmin < 0 else lr_grad[:0]
+        steep_decades = (
+            float(np.log10(region.max() / region.min())) if region.size >= 2 else 0.0
+        )
+        pinned = steep_decades > PINNED_DECADES
     else:
         steepest = float(lr_trim[int(np.argmin(loss_trim))])
+        # too few points to certify a distinct peak -> conservative: not a recipe
+        pinned, steep_decades = True, float("nan")
 
     argmin = int(np.argmin(loss_trim))
     min_loss_lr = float(lr_trim[argmin])
@@ -732,39 +772,72 @@ def suggest_lr(lrs, losses, skip_start, skip_end, beta=0.98):
     # loss-min heuristic is inapplicable, not merely noisy.
     tail = max(3, int(round(0.15 * len(loss_trim))))
     interior_min = argmin < len(loss_trim) - tail
-    return steepest, min_loss_lr, lr_trim, loss_trim, interior_min
+    return steepest, min_loss_lr, lr_trim, loss_trim, interior_min, pinned, steep_decades
 
 
-def transcribe_lr(steepest, bracket, interior_min, ratio_bar=10.0):
+def transcribe_lr(steepest, bracket, interior_min, pinned, ratio_bar=10.0):
     """ONE number, ONE reason -- the banner applies the module-docstring rule so the
-    reader never has to (added 2026-08-15 after an operator transcribed under queue
-    pressure from a three-number banner; that ambiguity was the bug).
+    reader never has to (2026-08-15). REWRITTEN 2026-08-16 after the previous table's
+    'coherent pair -> steepest' branch endorsed a curve-pinned 3e-5 for
+    ParticleNetParTGraphTrans and cost the row 0.32pp accuracy / 40% rejection
+    (module docstring, MEASURED COST). Ratio-coherence cannot detect pinning when the
+    curve drags BOTH statistics low; the `pinned` curve-shape flag (suggest_lr,
+    PINNED_DECADES) is the gate now.
 
-    - Coherent pair (bracket/steepest <= ratio_bar): STEEPEST -- the default that
-      carries the nine-rerun ParticleNet evidence.
-      Live case: ParticleNetParTGraphTrans bs=512, 3.08e-05 vs 1.17e-04 (3.8x).
-    - Rule fires (> ratio_bar) WITH an interior minimum: the curve pinned steepest
-      in its long shallow early descent; transcribe the BRACKET (loss-min/10).
-      Live case: PlainGraphTrans bs=512, 3.08e-05 vs 4.52e-04 (14.7x) -> 4.52e-04.
-    - Rule fires WITHOUT an interior minimum: NEITHER number is a recipe -- the
-      sweep itself is suspect; rerun (and at a smaller batch if it reproduces).
-      Live case: ParticleNet 2026-08-15, 2.21e-04 vs 8.19e-03 (37x, no interior
-      minimum, and steepest 6-8x below its own nine-rerun envelope).
+    - PINNED steepest, interior minimum: the BRACKET (loss-min/10) is the recipe --
+      steepest sits on a slope plateau, the trough reads the stability edge.
+      Live cases: PNPT bs=512 3e-5 vs 1e-3 (bracket matched weaver, steepest cost
+      0.32pp); PlainGraphTrans bs=512 3.08e-05 vs 4.52e-04.
+      CAVEAT printed with it: hybrid brackets vary run-to-run (PNPT read 1.17e-04
+      and ~1e-3 at the same bs) -- confirm with a second sweep before a long run.
+    - PINNED steepest, NO interior minimum: NOTHING on this curve is anchored ->
+      no recipe; rerun, at a smaller batch if it reproduces.
+      Live case: ParticleNet 2026-08-15 anomaly (2.21e-04 vs 8.19e-03, steepest
+      6-8x below its own nine-rerun envelope -- a shifted curve IS pinning).
+    - DISTINCT steepest, interior minimum, bracket within ratio_bar and above
+      steepest: both anchored and agreeing -> the BRACKET (the recipe value the
+      classic range test transcribes).
+    - DISTINCT steepest, interior minimum, bracket > ratio_bar above: the bracket is
+      the outlier against a genuine slope peak -> STEEPEST.
+      Live case: the nine ParticleNet reruns (steepest 1.32-1.91e-3 vs brackets
+      2.64e-2-1.39e-1, 20-70x high; steepest matched the reproduced optimum).
+    - DISTINCT steepest, interior minimum, bracket BELOW steepest: a 'bracket' under
+      the steepest point is not an upper bracket; the curve is suspect above the
+      peak -> STEEPEST.
+    - DISTINCT steepest, NO interior minimum: the bracket is unanchored by
+      definition -> STEEPEST (this is the nine-rerun ParticleNet posture).
 
     Returns (lr_or_None, reason_string). Pure function; unit-tested in
-    tests/internal/test_find_lr_transcribe.py.
+    tests/internal/test_find_lr_transcribe.py, including synthetic curves for the
+    `pinned` detector itself.
     """
     ratio = (bracket / steepest) if steepest > 0 else float("inf")
-    if ratio <= ratio_bar:
-        return steepest, (
-            f"steepest [coherent pair: bracket/steepest = {ratio:.1f}x <= {ratio_bar:.0f}x]")
-    if interior_min:
+    if pinned:
+        if interior_min:
+            return bracket, (
+                f"loss-min/10 [steepest is curve-pinned (slope plateau); the interior "
+                f"minimum anchors the bracket. Brackets vary run-to-run on these "
+                f"curves -- confirm with a second sweep]")
+        return None, (
+            f"NO RECIPE [steepest is curve-pinned AND no interior minimum -- nothing "
+            f"on this curve is anchored; rerun, at a smaller batch if it reproduces]")
+    if interior_min and steepest < bracket <= ratio_bar * steepest:
         return bracket, (
-            f"loss-min/10 [rule fired: {ratio:.1f}x > {ratio_bar:.0f}x with an interior "
-            f"minimum -- steepest is curve-pinned; module docstring]")
-    return None, (
-        f"NO RECIPE [rule fired: {ratio:.1f}x > {ratio_bar:.0f}x and NO interior minimum "
-        f"-- the sweep is suspect; rerun before transcribing; module docstring]")
+            f"loss-min/10 [distinct slope peak and an interior minimum agree "
+            f"(bracket/steepest = {ratio:.1f}x <= {ratio_bar:.0f}x); the bracket is "
+            f"the recipe value]")
+    if interior_min and ratio > ratio_bar:
+        return steepest, (
+            f"steepest [distinct slope peak; the bracket sits {ratio:.1f}x above it "
+            f"(> {ratio_bar:.0f}x) -- the nine-rerun ParticleNet pattern, where the "
+            f"trough hugs the divergence and reads high]")
+    if interior_min:  # bracket at or below steepest
+        return steepest, (
+            f"steepest [distinct slope peak; loss-min/10 sits AT OR BELOW it "
+            f"({ratio:.1f}x), which is no upper bracket -- curve suspect past the peak]")
+    return steepest, (
+        f"steepest [distinct slope peak and NO interior minimum -- the bracket is "
+        f"unanchored on this curve shape]")
 
 
 def make_plot(lrs, losses, steepest, min_loss_lr, output, title="LR range test"):
@@ -904,15 +977,14 @@ def main(cfg):
         )
         return
 
-    steepest, min_loss_lr, _, _, interior_min = suggest_lr(
+    steepest, min_loss_lr, _, _, interior_min, pinned, steep_decades = suggest_lr(
         lrs,
         losses,
         skip_start=params["skip_start"],
         skip_end=params["skip_end"],
         beta=params["beta"],
     )
-    # loss-min/10 is the robust recommendation (peak lr for an annealed schedule);
-    # the steepest-descent point is reported as a usually-similar lower bound.
+    # the two statistics; which one (if either) is the recipe is transcribe_lr's call
     suggested = min_loss_lr / 10.0
     bs = cfg.training.batchsize
 
@@ -963,20 +1035,19 @@ def main(cfg):
     LOGGER.info("=" * 64)
     if params["find_batch_size"]:
         LOGGER.info(f"Batchsize (fit to GPU):          {bs}")
-    # RECOMMEND STEEPEST-DESCENT. This reverses the original preference, on evidence: nine
-    # ParticleNet/top-tagging reruns (batch 512, the published recipe) gave steepest
-    # 1.32e-3 -- 1.91e-3, a 1.4x spread bracketing ParT's published 1e-3, while loss-min/10
-    # gave 2.64e-2 -- 1.39e-1, a 5x spread whose every value sits ABOVE ParticleNet's
-    # published 1e-2. Crucially the split held in BOTH branches of the interior test, so the
-    # curve shape does not rescue loss-min/10 here: its trough is shallow and sits just
-    # before divergence, where "the minimum" is only where the fall stops, not an optimum.
-    # The original argument for loss-min/10 (steepest drifts low as num_iter grows,
-    # davidtvs/pytorch-lr-finder#68) predicts drift with SWEEP LENGTH; at the fixed
-    # num_iter=300 used here steepest is the stable one. Revisit if a hybrid disagrees --
-    # this is one model on one dataset, and flipping back is this block.
-    LOGGER.info(f"Suggested lr (steepest descent): {steepest:.2e}   [default]")
+    # The two statistics are DIAGNOSTICS, each printed with its health flag; the
+    # recommendation is the TRANSCRIBE line below, which applies the shape-gated rule
+    # (transcribe_lr / module docstring). A "[default]"-labeled steepest line here
+    # once let a curve-pinned 3e-5 into a recipe and cost the row 0.32pp accuracy --
+    # neither statistic gets a label that invites transcribing it directly again.
+    shape = (
+        f"curve-pinned: half-max slope spans {steep_decades:.1f} decades > {PINNED_DECADES:g}"
+        if pinned
+        else f"distinct peak: half-max slope spans {steep_decades:.1f} decades"
+    )
+    LOGGER.info(f"steepest descent:   {steepest:.2e}   [{shape}]")
     if interior_min:
-        LOGGER.info(f"Suggested lr (loss-min / 10):    {suggested:.2e}   [upper bracket]")
+        LOGGER.info(f"loss-min / 10:      {suggested:.2e}   [interior minimum]")
     else:
         LOGGER.warning(
             "No INTERIOR loss minimum: the loss was still falling when the sweep ended, so the "
@@ -984,10 +1055,10 @@ def main(cfg):
             "(it moves by several x between reruns); the plot will show no trough before the "
             "blow-up."
         )
-        LOGGER.info(f"Suggested lr (loss-min / 10):    {suggested:.2e}   [NOT reliable here]")
+        LOGGER.info(f"loss-min / 10:      {suggested:.2e}   [NOT reliable: no interior minimum]")
     # ONE directive line -- the banner applies the transcription rule so the reader
     # never juggles the two diagnostics above under queue pressure (see transcribe_lr).
-    pick, why = transcribe_lr(steepest, suggested, interior_min)
+    pick, why = transcribe_lr(steepest, suggested, interior_min, pinned)
     untrusted = pick is None
     if untrusted:
         LOGGER.warning(f"TRANSCRIBE: nothing -- {why}")

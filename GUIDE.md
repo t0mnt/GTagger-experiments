@@ -246,7 +246,9 @@ than inside a multi-day hybrid run.
 **Learning rate (and GPU batch size) — `utils/find_lr.py`.** Runs a Leslie-Smith LR
 range test under the *training config's* optimizer + param-group ratios (but with
 weight-decay and grad-clipping switched off for the sweep — they'd only mask the
-divergence) and reports a robust `loss-min/10` peak LR — a safe peak for the
+divergence) and prints ONE shape-gated recommendation on its `TRANSCRIBE` line —
+`loss-min/10` or steepest-descent, chosen from the curve's own diagnostics (see
+"When `loss-min/10` does not apply" below) — a safe peak for the
 warmup→cosine schedule (it never builds the scheduler; it ramps the LR by hand from 1e-7). The default training
 is now `tag_gts_and_friends_default` (AdamW, clip=1.0, wd=0.01), so for the GT
 hybrids you sweep with nothing extra. Pass `training=<recipe>` only to match a
@@ -354,8 +356,9 @@ where noise of ~1e-4 in the smoothed loss flips it between grid points a factor 
 Measured on ParticleNet / top tagging, three unseeded reruns of the same command gave
 **1.39e-1 / 3.82e-2 / 2.64e-2** — a 5x spread against a published `lr: 1e-2` — while
 steepest-descent on the same three curves gave **1.91e-3 / 1.32e-3 / 1.91e-3**, a 1.4x spread that
-brackets ParT's `1e-3`. `find_lr` now detects a non-interior minimum, warns, and recommends
-steepest-descent in that case — and searches for steepest-descent **only before the loss
+brackets ParT's `1e-3`. `find_lr` detects a non-interior minimum, warns, and recommends
+steepest-descent in that case (when the slope peak is distinct — next paragraph) — and
+searches for steepest-descent **only before the loss
 minimum**, because past it the curve is diverging and one chaotic downward blip yields a
 gradient more negative than the honest falling region (measured: an unrestricted search returned
 `2.42e+00` on a curve whose real answer was `1.32e-3`).
@@ -364,16 +367,28 @@ Across six ParticleNet reruns, steepest-descent returned `1.91e-3 / 1.32e-3 / 1.
 1.32e-3` (excluding the one unrestricted-search artefact) — stable to 1.4x and sitting between
 ParT's `1e-3` and ParticleNet's `1e-2` — while `loss-min/10` returned `1.39e-1 / 3.82e-2 /
 2.64e-2 / 3.38e-2 / 9.05e-2 / 7.07e-2`, a 5x spread every value of which is above the published
-`1e-2`. **`find_lr` therefore recommends steepest-descent**, with `loss-min/10` kept as the upper
-bracket. That reverses the original preference, on evidence rather than theory — and note the
-split held in **both** branches of the interior test, so the curve shape does not rescue
-`loss-min/10` here: its trough is shallow and sits just before divergence, where "the minimum"
-is only where the fall stops, not an optimum. Revisit if a hybrid disagrees; it is one model on
-one dataset, and flipping back is one block in `suggest_lr`'s caller. Where a trough does exist, `loss-min/10` remains the recommendation
-for the reason below.
+`1e-2`. For a time `find_lr` therefore recommended steepest-descent outright — **and that
+over-generalization cost a campaign row.** A hybrid DID disagree (2026-08-16):
+`top_ParticleNetParTGraphTrans` filled from steepest (3e-5) scored 0.9380 test acc /
+rej 1239, while the bracket-class `1e-3` scored **0.9414 / 1771**, matching the external
+weaver reference (0.9417) inside seed spread — steepest was 33x low. The mechanism: on
+the GraphTrans-hybrid curves the loss falls at a near-constant shallow slope over decades,
+so argmin(gradient) lands wherever noise peaks inside that plateau. It barely moves between
+reruns or batch sizes (PlainGraphTrans: 3.08e-05 at bs=512, 4e-05 at bs=2048) — the
+ParticleNet stability argument mistook a stable PLATEAU for a stable EDGE.
 
-**Number or graph?** Take the printed `loss-min/10` — it is the value the recipes are meant to
-carry, and it is stable in `num_iter` in a way the steepest-descent point is not. Use the plot
+**The rule is now shape-gated** (`suggest_lr`'s `pinned` flag, threshold `PINNED_DECADES`):
+steepest is only a candidate when the descent has a *distinct* slope peak (half-max-slope
+region under ~1.5 decades of lr — ParticleNet's concentrated fall qualifies; the hybrids'
+plateaus do not). Pinned steepest + interior minimum → the bracket is the recipe (confirm
+with a second sweep; hybrid brackets vary run-to-run). Pinned + no interior minimum →
+nothing on the curve is anchored; rerun. Distinct peak → steepest when the bracket is
+unanchored or a >10x outlier (the nine-rerun ParticleNet pattern), the bracket when both
+agree. **Transcribe only the TRANSCRIBE line** — it applies this table so no one juggles
+the diagnostics under queue pressure.
+
+**Number or graph?** Take the printed `TRANSCRIBE` value — it is the value the recipes are
+meant to carry. Use the plot
 (`lr_finder.png`) as a veto, not as a second opinion: you want one clean descent into a single
 minimum before the divergence. If the curve is flat, double-dips, or is still falling when the
 sweep ends, the printed number is summarising a curve that has no well-defined minimum and

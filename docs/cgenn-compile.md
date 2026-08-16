@@ -2792,6 +2792,132 @@ changes arithmetic and is campaign-frozen by definition.
   SortedGather; the marshalling tax of layout conversion is the number to
   measure first.
 
+### find_lr incident (2026-08-16): the steepest recommendation cost a row 0.32pp — rule now shape-gated
+
+`top_ParticleNetParTGraphTrans` was filled from the finder's steepest line (3e-5,
+bs=512). Three controlled runs, same architecture and config: lr 3e-5 scored 0.9380 /
+0.9384 test acc with rej(epsS=0.3) 1239 / 1160; lr 1e-3 (the bracket-class value)
+scored **0.9414 / 1771**, matching the external weaver reference 0.9417 inside the
+0.0004 seed spread. Steepest was 33x low; rejection — the judged metric — moved five
+times harder than accuracy. The scheduler was never at fault.
+
+**Causal chain, dated by git:** (1) `2f29a17` flipped the recommendation from
+loss-min/10 to steepest on nine ParticleNet reruns whose success criteria were
+STABILITY (1.4x spread) and sitting between two OTHER recipes' published lrs — on the
+hybrids' curves the loss falls at a near-constant shallow slope over decades, so
+argmin(gradient) is noise-arbitrary inside that plateau and *stable because the
+plateau is* (PlainGraphTrans: 3.08e-05 at bs=512, 4e-05 at bs=2048). Stability was
+mistaken for accuracy. (2) `17142cb`'s TRANSCRIBE rule kept steepest as default and
+gated distrust on bracket/steepest > 10x — a test that cannot fire when the curve
+drags BOTH statistics low. PNPT read 3.08e-05 vs 1.17e-04 ("coherent", 3.8x), the
+rule endorsed steepest, and the unit tests PINNED that endorsement as correct.
+
+**Fix (same commit as this entry):** `suggest_lr` now measures the curve — the
+lr-span, in decades, of the region within half the steepest slope. A distinct peak
+spans well under `PINNED_DECADES = 1.5` (ParticleNet's concentrated fall); a plateau
+spans 2+ (the hybrids) and flags steepest as `pinned`. `transcribe_lr` is
+re-tabled: pinned + interior minimum → BRACKET (with a printed confirm-rerun caveat —
+hybrid brackets varied 1.17e-04 vs ~1e-3 run-to-run at the same bs); pinned + no
+interior minimum → NO RECIPE (rerun, smaller batch if it reproduces); distinct peak →
+steepest when the bracket is unanchored or a >10x outlier (the nine-rerun pattern,
+which the OLD rule would itself have voided at ratio 20-70x), bracket when both
+anchored and agreeing. Banner labels went from `[default]`/`[upper bracket]` to
+health-flag diagnostics + the one TRANSCRIBE directive. Tests rewritten — the
+incident readings, both PNPT brackets, PlainGraphTrans, the nine-rerun pattern, the
+anomaly refusal, plus synthetic hybrid/ParticleNet curves exercising the detector.
+GUIDE.md's contradicting paragraphs rewritten to match.
+
+**OPERATOR ACTION — the six queued hybrids:** any queued row whose lr came from a
+steepest reading at bs=512 is suspect in the same direction (undertrained). Rerun the
+finder after pulling this fix (the TRANSCRIBE line now resolves the plateau curves to
+their brackets), or where a finder log is retained, re-read it: pinned-shaped model +
+interior minimum → transcribe the printed loss-min/10, and confirm with a second
+sweep. The CGENN recipe (bs=128, lr=5.57e-04) came from a finder read too — re-derive
+it under the new rule before the long run, same one-command cost.
+
+### The pending ledger, ranked (2026-08-16)
+
+In value order, with owner:
+
+1. **Re-derive queued-hybrid lrs under the fixed finder** (operator, one command per
+   row) — direct accuracy recovery; the incident row already measured +0.34pp / +43%
+   rej between the wrong and right value.
+2. **gp_impl re-race before the tag_cgenn sparse→matmul flip** (operator, one bperf
+   row) — blockdiag moved sparse from ~284 to ~297 jets/s against matmul's 304; the
+   flip decision predates it and may invert.
+3. **SortedGather: segment-sum backward for recv-side gathers** (post-campaign,
+   code) — the top remaining kernel on both profiles (22-28%), receivers provably
+   sorted, kills the atomics AND the nondeterminism. Biggest single in-repo win left.
+4. **GPS host-tax / bucketing project** (post-campaign, code+measure) — 72-95% of
+   GPS-family step time is host-side; nothing kernel-side matters for those rows
+   until this lands. Blocked on the campaign freeze (theta_h/readout padded-width
+   arithmetic), not on knowledge.
+5. **Flash port plan** (post-campaign, see next section) — the GP-layer endgame.
+6. **Shield retirement test at the NGC container upgrade** (operator+code, one soak)
+   — the 2.13 evidence says the stride-guard family is fixed; until then both shields
+   stay.
+7. **TF32 table-wide protocol decision** (operator policy) — precision is a
+   table-wide knob or absent; now with the race's measured example of what TF32 does
+   to a single arm (4x → 1.3x).
+8. **Upstream inductor issue** (user files): saved views with padded-width-dependent
+   strides under dynamic shapes — the round-3 crash minimal case.
+9. Scratch-branch deletions (`claude/audit-regressions-cdcc966-jebk1r`,
+   `claude/find-lr-transcribe-landing`) — one UI click each; the proxy refuses
+   branch deletes.
+
+### Next-upgrade decision: flash-kingdon over flash-clifford for the SO(1,3) port
+
+**Recommendation: invest in the flash-kingdon APPROACH (kingdon codegen), reading
+flash-clifford as the scaffolding reference — not a port of either repo as-is.**
+Reasoning: nobody ships Cl(1,3), so the Lorentz kernels must be authored either way;
+flash-clifford's route means hand-writing ~1k LOC of p1m3 Triton per op family with
+hand-derived sign tables (exactly the error class our gates exist to catch), while
+kingdon's `Algebra(1,3)` + symbolic compile/CSE generates the per-blade expressions
+mechanically — and our primitive stack (MVSiLU→GP→MVLayerNorm, 35-path weighted GP)
+differs from their shipped GELU→GP→RMSNorm modules anyway, so codegen-to-OUR-spec is
+needed regardless. flash-clifford contributes the things codegen does not: the
+(MV_DIM, batch, features) layout argument, launch/fusion structure, and the benchmark
+harness shape. Weight-per-grade-triple semantics match our sparse tables, so
+checkpoints stay compatible.
+
+**Supersede or compose?** COMPOSE at the program level, SUPERSEDE at the GP layer:
+- Superseded where a fused kernel lands: the einsum/matmul/sparse/blockdiag
+  contraction ladder and the sparse Function's hand backward — at those call sites
+  only. (They were still worth building: they are the eager/CPU reference and
+  fallback the flash arm is gated against, and blockdiag is the honest baseline any
+  flash speedup must beat.)
+- Composes untouched: 2.2a/2.2b (graph aggregation — their ops never touch
+  scatter/message-passing), the SortedGather candidate, the shields and the whole
+  gate/β-PERF/GPU-gate-day infrastructure (the port is MEASURED BY it), theta_h /
+  readout semantics, recipes and the finder.
+- Honest ceiling: post-blockdiag, the GP block is ~13-14% of tag_cgenn's CUDA — full
+  fusion buys <=~1.15x step there, NOT their headline multiples (their benchmark is a
+  pure Clifford-MLP stack; ours is attention/message-passing-heavy). For GPS rows the
+  host tax (item 4) gates everything: fusion is invisible behind 72-95% host time.
+
+**The plan (post-campaign, in order):**
+- F0 *Legal + conventions.* Ask both authors for licenses (neither repo ships one;
+  read-and-learn only until resolved). Pin a kingdon version; machine-check its
+  Algebra(1,3) blade order/signs against `CliffordAlgebra` (a conversion-table test —
+  OUR cayley is the reference).
+- F1 *Codegen spike, CPU-checkable.* Generate the 35-path Cl(1,3) weighted-GP
+  forward + grads as pure Python; gate vs `sparse_gp_expression` at fp64 and
+  gradcheck BEFORE any Triton exists.
+- F2 *One Triton op + the layout measurement.* Fuse MVSiLU→wGP→MVLayerNorm in a
+  blade-minor-boundary wrapper; measure blade-major-inside vs blade-minor-inside —
+  the marshalling tax is the make-or-break number (Phase 1 killed these copies once).
+- F3 *Compile + determinism posture.* torch.library custom op (fake-tensor shapes,
+  registered backward) so the 0-break/RECOMP gates hold; no atomics in x/y/w grads,
+  deterministic weight-grad reduction — match what 2.2b and the sparse backward
+  already bought, or don't ship.
+- F4 *`gp_impl=flash` fifth arm.* CUDA-only behind the existing knob with eager
+  fallback; GPU-gate-day battery (TOL vs einsum ref, DET, RECOMP, soak) + a
+  pinned-precision race vs the post-blockdiag baseline at campaign shapes; adopt only
+  on the race discipline's >10%-everywhere bar.
+- F5 *Extend or close.* If F4 adopts: fc-GP + MVLinear fusion next, pins re-recorded
+  with the class change stated. If not: record the price and close — the scaffolding
+  and conversion tests remain as the Cl(1,3) reference implementation.
+
 ### Workflow: are the gates a fair check for this program? Assessment and the additions
 
 What exists and suffices: the BIT/TOL/DET class taxonomy with gates per class; β-PERF for
