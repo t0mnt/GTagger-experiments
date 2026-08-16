@@ -2835,6 +2835,88 @@ interior minimum → transcribe the printed loss-min/10, and confirm with a seco
 sweep. The CGENN recipe (bs=128, lr=5.57e-04) came from a finder read too — re-derive
 it under the new rule before the long run, same one-command cost.
 
+### find_lr incident, part 2 (2026-08-16): the ParticleNet curve itself was wrong — sweeps ran under the wrong OPTIMIZER
+
+Same day, the operator's fresh H100 ParticleNet sweep read steepest 1.73e-04 with
+loss-min/10 4.70e-03 — BOTH statistics far from the canonical ~1e-3 and both down
+together, reproducing the 2026-08-15 anomaly (2.21e-04 / 8.19e-03). Per that
+anomaly's own protocol, reproduction graduates it from tail-draw to conditions
+investigation. The cause is found, verified, and fixed:
+
+- **Cause.** The repo's ROOT commit (`2f29a17`, 2026-08-07 — the import from the
+  predecessor repo) created `tag_gts_and_friends_default` (AdamW) and made it
+  `-cn toptagging`'s default training config. `top_particlenet.yaml` inherits
+  `top_ParT.yaml`, which trains with **Ranger** (RAdam + Lookahead, betas (0.95,
+  0.999), the weaver/ParT-paper setup). Every bare `model=tag_particlenet` sweep
+  since the import has therefore measured an **AdamW** loss-vs-lr curve, while the
+  recipe, the canonical lr, the nine-rerun envelope (1.32–1.91e-3), and the FIND_LR
+  pointer all speak Ranger. The era the operator remembers ("after 3 tweaks it
+  produced ~1e-3 consistently") predates the import: those three tweaks (EMA-warmup
+  skip, pre-minimum restriction, num_iter=300) fixed real selector artifacts and
+  were never the regression — the import's silent default flip was.
+- **Mechanism, verified.** Ranger's RAdam rectification + Lookahead slow weights
+  (alpha 0.5, k 6) damp the early effective step, so at equal nominal lr it moves
+  less than AdamW and its whole curve sits right of AdamW's. Probe (identical model,
+  data, and ramp; only the optimizer swapped, repo's own Ranger class with
+  base_experiment's kwargs): descent onset 4.79e-03 (AdamW) vs 5.49e-02 (Ranger) =
+  **11.5×**; steepest 1.21e-02 vs 9.81e-02 = **8.1×** — the same factor separating
+  the field readings (1.7-2.2e-4 AdamW-swept vs 1.32-1.91e-3 Ranger-era).
+- **Fix.** `find_lr` now ALIGNS the sweep with the model's own recipe: when
+  `config/training/<prefix>_<model>.yaml` exists (the exact file the FIND_LR pointer
+  names) and no explicit `training=` was passed, the cfg is recomposed under it —
+  so the number and the recipe it lands in share one optimizer by construction. An
+  explicit `training=...` always wins; models without a recipe keep the task default
+  (correct for the GT hybrids, whose recipes inherit the AdamW default — their
+  sweeps are unchanged). The banner now prints `swept under: training=<choice>
+  optimizer=<type>` so a cross-recipe transcription is visibly wrong instead of
+  silent. Decision logic is a pure function
+  (`_recipe_training_choice`), unit-tested beside composition pins on the two config
+  facts (recipe=Ranger/1e-2; bare compose=AdamW) in
+  tests/internal/test_find_lr_alignment.py.
+- **The two find_lr incidents are INDEPENDENT bugs.** PNPT (a GT hybrid) swept under
+  its correct AdamW recipe and was failed by the SELECTOR (fixed by the shape gate,
+  part 1). ParticleNet swept under the wrong OPTIMIZER (fixed by alignment, part 2);
+  no selector can rescue a wrong-curve sweep. With both fixes, the aligned
+  ParticleNet curve is Ranger-shaped again — concentrated fall, distinct peak — so
+  the shape gate resolves it to steepest ≈ the canonical scale.
+- **2026-08-15 anomaly: CLOSED** (cause = conditions, optimizer mismatch; the
+  planned eager-control run is moot). H100 validation is the same bare command as
+  before — the banner should now show the alignment line and a steepest back inside
+  1.32–1.91e-3:
+
+      python utils/find_lr.py -cn toptagging model=tag_particlenet save=false \
+          +lr_find.find_batch_size=true
+
+### Scheduler verdict for the GT table at 20 epochs (2026-08-16, theory review)
+
+Question: best schedule for the GT hybrids (GraphTrans + GPS families), 20 epochs,
+bs<=512, AdamW. Verdict, with the reasoning recorded in the session log:
+
+- **KEEP LinearWarmup(5%) + Cosine for the campaign, both families.** At a correct
+  peak lr every credible alternative (flat+decay a la weaver, WSD/trapezoid, linear-
+  to-zero) sits within ~0.03pp on the one controlled comparison available (PNPT
+  cosine 0.9414 vs weaver flat+decay 0.9417, inside the 0.0004 seed spread), while
+  schedule DIVERGENCE inside the table costs comparability — and the lr incidents
+  just measured 0.32pp for lr errors. Schedule shape is second-order; peak lr is
+  first-order. Do not differentiate GPS vs GraphTrans: the one real asymmetry
+  (GraphTrans's two-stage series sees a shifting transformer-input distribution
+  early, arguing for marginally longer warmup) is speculative and far below the
+  comparability cost.
+- **One knob is genuinely wrong: `cosanneal_eta_min: 0`.** Cosine-to-zero freezes
+  the last ~5% of a 47k-step run (~2k steps below 1% of peak). Weaver decays to 1%,
+  not 0. Set eta_min ~= 0.01-0.02 x peak — but this changes training arithmetic, so
+  it is a CAMPAIGN-BOUNDARY change (next campaign start or a documented table-wide
+  re-run), not a mid-stream flip.
+- **Peak-lr / schedule coupling** (why schedule flips invalidate transcribed lrs):
+  cosine holds peak briefly and tolerates a hot peak; flat+decay holds peak for 70%
+  of the budget and wants ~0.75-0.8x the cosine peak. Any schedule change re-opens
+  every recipe's lr.
+- **Post-campaign A/B if chasing the last 0.05pp**: one model per family, fixed
+  finder lr, 3 seeds: cosine vs flat+decay(70/30, exp to 1%) vs linear-to-zero;
+  adopt table-wide only on a both-families win. If rows UNDERFIT at 20 epochs (val
+  still falling at the end), the lever is epochs 20->30 (the recipe's own comment),
+  never schedule exotica.
+
 ### The pending ledger, ranked (2026-08-16)
 
 In value order, with owner:

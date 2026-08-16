@@ -52,11 +52,25 @@ regularizers are deliberately switched off for the sweep -- `weight_decay` (iner
 divergence the test needs) -- so the curve is the raw loss-vs-lr response. The base
 `training.lr` is *ignored*; only the inter-group lr ratios are preserved.
 
-The optimizer (type/betas) and param-groups come from the chosen *training* config; the task
-defaults (e.g. `toptagging`) now select `tag_gts_and_friends_default` (AdamW), so
-the GT hybrids sweep correctly with just `model=...`. Because the suggested lr is
-optimizer-specific, pass `training=top_<baseline>` to sweep a baseline under its own
-optimizer (e.g. `training=top_transformer` for the Lion transformer).
+The optimizer (type/betas) and param-groups come from the chosen *training* config, and
+since 2026-08-16 the finder ALIGNS that choice with the model's own recipe: when
+`config/training/<prefix>_<model>.yaml` exists (the same file the FIND_LR pointer names)
+and no explicit `training=` override was given, the sweep recomposes under it, so the
+number and the recipe it lands in share one optimizer. An explicit `training=...` always
+wins; models without a recipe sweep under the task default (`tag_gts_and_friends_default`,
+AdamW -- correct for the GT hybrids, whose recipes inherit it).
+
+Why this is load-bearing and not a convenience (the 2026-08-16 ParticleNet incident):
+the task default silently became the GT AdamW recipe at the repo root commit (2f29a17),
+while `top_particlenet.yaml` inherits `top_ParT` and trains with RANGER. Ranger's RAdam
+rectification + Lookahead slow weights damp the early effective step, so at equal nominal
+lr it moves less than AdamW and its loss-vs-lr curve sits about an order of magnitude
+RIGHT of AdamW's. Bare `model=tag_particlenet` sweeps therefore measured an AdamW curve
+(steepest 1.7-2.2e-4, loss-min/10 ~4.7-8.2e-3 -- both statistics down together, twice,
+2026-08-15 and 2026-08-16) while the recipe, its canonical lr 1e-2 (paper) / ~1e-3
+(nine-rerun steepest envelope 1.32-1.91e-3), and the FIND_LR pointer all speak Ranger.
+No selector rule can rescue a sweep run under the wrong optimizer; alignment removes the
+mismatch at the source.
  
 The test follows the Leslie-Smith / fastai recipe: exponentially ramp the lr over
 a few hundred batches, record an EMA-smoothed training loss, stop early if the
@@ -865,10 +879,96 @@ def make_plot(lrs, losses, steepest, min_loss_lr, output, title="LR range test")
     LOGGER.info(f"Saved LR-finder plot to {os.path.abspath(output)}")
 
 
+# task -> recipe filename prefix; shared by the FIND_LR pointer and the training alignment
+RECIPE_PREFIX = {"toptagging": "top", "jctagging": "jc", "toptagxl": "xl"}
+
+
+def _recipe_training_choice(exp_type, model_stems, current_choice, overrides, isfile=None):
+    """Which training config should the sweep run under? None = keep the composed one.
+
+    Pure decision function (2026-08-16 incident fix -- see the module docstring's
+    'Why this is load-bearing'): a baseline must be swept under ITS OWN recipe, because
+    the suggested lr is optimizer-specific and the FIND_LR pointer names that recipe.
+
+    - An explicit `training=` (or `training@...=`) CLI override always wins: None.
+    - Otherwise the first stem with a `config/training/<prefix>_<stem>.yaml` on disk is
+      the target; already-current targets return None (nothing to do).
+    - No prefix for this task, or no recipe file: None.
+
+    `model_stems` is the same candidate list the FIND_LR pointer uses (hydra model
+    choice first, net class name as fallback). `isfile` is injectable for tests.
+    """
+    isfile = isfile or os.path.isfile
+    prefix = RECIPE_PREFIX.get(exp_type)
+    if prefix is None:
+        return None
+    if any(o.split("=", 1)[0].split("@", 1)[0] == "training" for o in overrides):
+        return None
+    for stem in model_stems:
+        if not stem:
+            continue
+        name = f"{prefix}_{stem}"
+        if isfile(os.path.join("config", "training", f"{name}.yaml")):
+            return None if name == current_choice else name
+    return None
+
+
+def _model_stems(cfg):
+    """Candidate recipe stems, hydra model choice first (same order as the pointer)."""
+    stems = []
+    try:
+        from hydra.core.hydra_config import HydraConfig
+
+        choice = HydraConfig.get().runtime.choices.get("model")
+        if choice:
+            stems.append(choice[4:] if choice.startswith("tag_") else choice)
+    except Exception:
+        pass  # not under hydra.main (imported by bperf, or composed directly)
+    net_class = (OmegaConf.select(cfg, "model.net._target_", default="") or "").rsplit(".", 1)[-1]
+    if net_class:
+        stems.append(net_class)
+    return stems
+
+
+def _align_training_with_recipe(cfg):
+    """Recompose cfg under the model's own training recipe when one exists.
+
+    Returns (cfg, chosen_name_or_None). Recomposition replays the CLI overrides and
+    appends `training=<recipe>`, so everything the operator typed still applies; any
+    failure keeps the composed cfg (alignment must never be able to kill a sweep).
+    """
+    try:
+        from hydra import compose
+        from hydra.core.hydra_config import HydraConfig
+
+        hc = HydraConfig.get()
+        overrides = list(hc.overrides.task)
+        target = _recipe_training_choice(
+            cfg.exp_type, _model_stems(cfg), hc.runtime.choices.get("training"), overrides
+        )
+        if target is None:
+            return cfg, None
+        cfg2 = compose(config_name=hc.job.config_name, overrides=overrides + [f"training={target}"])
+        LOGGER.info(
+            f"LR sweep: training config '{hc.runtime.choices.get('training')}' -> '{target}' "
+            f"(the model's own recipe; optimizer={cfg2.training.optimizer}). The suggested lr "
+            f"is optimizer-specific and the FIND_LR pointer names this recipe -- pass an "
+            f"explicit training=... to override."
+        )
+        return cfg2, target
+    except Exception as err:
+        LOGGER.warning(f"LR sweep: training-recipe alignment skipped ({err}).")
+        return cfg, None
+
+
 # Default to the real config/ tree so a bare run matches training (clipping on, full data);
 # pass `-cp config_quick ... data.dataset=mini` for a fast smoke test of the finder itself.
 @hydra.main(config_path="../config", config_name="toptagging", version_base=None)
 def main(cfg):
+    # Sweep a baseline under its own recipe (2026-08-16 incident fix; must run before
+    # anything reads cfg.training). Explicit training= overrides survive inside.
+    cfg, aligned_training = _align_training_with_recipe(cfg)
+
     # LR finding is single-process and never trains / evaluates / saves a model.
     # `save` is forced here rather than left to the CLI: a forgotten `save=false` would mint a
     # run directory that looks like a training run in `runs/` -- discoverable by a later
@@ -1071,6 +1171,20 @@ def main(cfg):
     if params["find_batch_size"]:
         reuse = f"training.batchsize={bs} " + reuse
     LOGGER.info(f"  ->  reuse with:  {reuse}{tag}")
+    # The lr is optimizer-specific: say which training config produced it, so a
+    # transcription into a DIFFERENT recipe is visibly wrong (the 2026-08-16 incident
+    # was exactly this mismatch, silent).
+    trained_under = aligned_training
+    if trained_under is None:
+        try:
+            from hydra.core.hydra_config import HydraConfig
+
+            trained_under = HydraConfig.get().runtime.choices.get("training")
+        except Exception:
+            trained_under = "(composed directly)"
+    LOGGER.info(
+        f"  ->  swept under: training={trained_under}  optimizer={cfg.training.optimizer}"
+    )
     LOGGER.info(f"  ->  plot:        {params['output']}")
     # One greppable line per model: `grep FIND_LR <log>` turns a chained family sweep into the
     # table you actually have to transcribe, in order, without scrolling. lr= carries the
