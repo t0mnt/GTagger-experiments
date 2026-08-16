@@ -20,10 +20,13 @@ arXiv:2608.02735 §3.2): wrap the contraction in a `torch.autograd.Function` who
 drops from two (B, N, 16, 16) tensors to two (B, N, 16) ones -- 16x smaller, and 8x below
 what the dense forms retain. Their measured figure is 6.6 MB against our 130.9 MB.
 
-Bit-identity: the forward below is the same three lines, unchanged, in the same order.
-Grad mode is off inside `Function.forward`, so `pair` and the gathered `y` become transient
-instead of retained -- same arithmetic, same output bits, no tensors held. The BIT gate
-pins `gp_impl=einsum`; sparse is TOL-class against it (unchanged by this file).
+Bit-identity: `Function.forward` IS `sparse_gp_expression`, so the eager Function and the
+compiled direct path are bit-identical to each other by construction. Grad mode is off
+inside `Function.forward`, so `pair` and the gathered `y` become transient instead of
+retained -- same arithmetic, no tensors held. The BIT gate pins `gp_impl=einsum`; sparse
+is TOL-class against it. Since 2026-08-16 the fc contraction inside the expression is the
+race-adopted blockdiag GEMM (see `sparse_gp_expression`), which is additionally TOL-class
+against the einsum spelling it replaced -- the gates in test_sparse_gp.py state the split.
 
 Gates: tests/experiments/test_sparse_gp.py (KEEP, fixture-free) owns this module -- the
 backward here is HAND-WRITTEN, so unlike the rest of the CGENN work it is not implied by
@@ -85,9 +88,25 @@ def sparse_gp_expression(x, y, weight, kidx, spath, spval):
     one is NOT established -- it was measured on CPU inductor, and CPU emits C++ where GPU
     emits Triton. The split does not depend on the answer: the expression is at least as
     fast in both postures once AOT is in charge.
+
+    FC CONTRACTION: block-diagonal flat GEMM, not the einsum (2026-08-16). The dim-3
+    spec's einsum lowers to bmm over 16 j-slices; respelling it as ONE GEMM against a
+    block-diagonal weight -- 16x the MACs on paper, zero activation copies -- won the
+    H100 race at every campaign shape (0.72-0.81x of einsum, fwd+bwd, CUDA events,
+    `float32_matmul_precision=highest` pinned: utils/sparse_gp_race.py, verdict recorded
+    in docs/cgenn-compile.md round 4). TOL-class vs the einsum spelling (reassociation
+    only, ~1e-15 fp64); the einsum stays for the dim-2 layer, which was not raced. Both
+    call sites (the eager Function and the compiled direct path) share this function, so
+    they remain bit-identical to EACH OTHER either way.
     """
     pair = x.unsqueeze(-1) * y[..., kidx]
     w = weight[..., spath] * spval
+    if weight.dim() == 3:
+        m, n, nb = w.shape[0], w.shape[1], w.shape[-1]
+        # w (m,n,i,j) -> (n,i,m,j) -> diagonal-embed j -> (n,i,j,m,j') -> (n*16*16, m*16)
+        wbd = torch.diag_embed(w.permute(1, 2, 3, 0).movedim(2, -1))
+        wbd = wbd.permute(0, 1, 3, 2, 4).reshape(n * nb * nb, m * nb)
+        return (pair.reshape(pair.shape[0], -1) @ wbd).view(-1, m, nb)
     return torch.einsum(_SPECS[weight.dim()][0], pair, w)
 
 
@@ -108,6 +127,8 @@ def sparse_gp_expression(x, y, weight, kidx, spath, spval):
 _SPECS = {
     2: ("bnij,nij->bnj", "bnj,nij->bnij", "bnij,bnj->nij"),
     3: ("bnij,mnij->bmj", "bmj,mnij->bnij", "bnij,bmj->mnij"),
+    # the dim-3 FORWARD spec is documentation now (the expression ships the blockdiag
+    # respelling of that exact contraction); its t-builder and dL/dweight specs are live.
 }
 _SPEC_GX = "bnij,bnij->bni"  # same for both layer forms: m is already contracted into t
 _SPEC_GY = "bni,bnik->bnk"

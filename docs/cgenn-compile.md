@@ -2698,6 +2698,49 @@ If the pinned run still clears >10% at every shape, blockdiag is adopted into
 `sparse_gp_expression` (TOL class, fixtures re-recorded); if not, the einsum stays
 and the question closes. This is the last open measurement of the in-campaign scope.
 
+### Round 4 close-out — the pinned race adopts blockdiag; the fc contraction is respelled
+
+**Pinned rerun (H100, `float32_matmul_precision=highest` printed and verified,
+2026-08-16): blockdiag 0.76x / 0.72x / 0.81x of einsum — clears the >10%-everywhere
+bar with clean fp32 numerics (rel 5.8e-07 to 1.0e-06, no TF32 tell). ADOPTED.**
+ctg-bmm read 0.93-0.98x and stays un-adopted; the un-pinned run's 4x was indeed
+TF32 vapor (0.22-0.25x collapsed to 0.72-0.81x once precision was pinned — the
+einsum recovered 15-23 ms/call of the difference). The question is CLOSED.
+
+What shipped (commit of this entry):
+
+- `sparse_gp_expression` fc branch (`weight.dim() == 3`): the einsum
+  `"bnij,mnij->bmj"` became one flat GEMM against a block-diagonal weight —
+  `diag_embed` over the j axis, `(E, n·256) @ (n·256, m·16)`. 16x the paper MACs,
+  zero activation copies, and the H100 prefers it at every campaign shape. The dim-2
+  layer keeps its einsum (not raced, not touched); the hand-written Function backward
+  keeps its einsums (not raced — its determinism rationale is unchanged).
+- **Class statement: TOL vs the einsum spelling it replaced** (reassociation only).
+  Measured: Function-level fwd rel 6.8e-16 fp64, grads 0 to 3.5e-16
+  (test_sparse_gp GATE-TOL-FWD/GATE-GRAD); model-level tag_cgenn sparse-vs-einsum
+  fwd 4.7e-15 fp64 / 5.9e-06 fp32, BACKWARD-TOL worst 1.0e-10 (bars 1e-10/1e-5/1e-8);
+  hybrid pins tag_CGENNLGATrGraphTrans fwd 8.9e-17 fp64 / 2.0e-07 fp32 vs the old
+  recording. The eager-Function vs compiled-path bit-identity is UNCHANGED (both call
+  sites share `sparse_gp_expression`) and stays gated.
+- Gates updated with the class split stated: `test_sparse_gp` fc forward moved
+  torch.equal → rel < 1e-13 fp64 (dim-2 stays torch.equal); the compiled-bypass gate
+  now bit-compares compiled-vs-eager (the property call sites rely on) instead of
+  vs the einsum reference. Trans hybrid pins re-recorded (both precisions).
+- **Curio, verified not a bug: the GPS pins came back BIT-IDENTICAL** (rel exactly 0
+  at both precisions) even though a spy confirms the GPS forward makes 4 dim-3
+  expression calls. The blockdiag GEMM's padding terms are exact zeros (fp no-ops)
+  and at the GPS pin shapes the CPU GEMM accumulates the nonzeros in the einsum-bmm's
+  n-major/i-major order, so the sums land on identical bits. Shape/kernel accident,
+  not a guarantee — the class stays TOL.
+
+**Operator caveat on the pending `gp_impl sparse→matmul` flip for tag_cgenn:** that
+flip was decided on the pre-blockdiag race (matmul 304 > einsum 296 > sparse 284
+jets/s own-batch). Blockdiag cuts the sparse fc contraction ~25% on a profile where
+the sparse-GP block was ~17-18% of CUDA — roughly +4% step-level, putting sparse
+~297 jets/s, inside the noise of matmul's 304. Re-run the bperf gp_impl race before
+executing the flip; the memory-side argument for sparse (eager retention) is
+unchanged, so a re-race could keep sparse and skip the fixture churn.
+
 ### Workflow: are the gates a fair check for this program? Assessment and the additions
 
 What exists and suffices: the BIT/TOL/DET class taxonomy with gates per class; β-PERF for

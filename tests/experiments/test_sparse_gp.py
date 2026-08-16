@@ -15,7 +15,12 @@ Each gate compares against the exact three-line expression the Function replaced
     w    = weight[..., sp_path] * sp_val
     out  = einsum("bnij,nij->bnj", pair, w)          # or "bnij,mnij->bmj" for the fc layer
 
-BIT     forward is bit-identical (torch.equal) — the premise of the whole change
+BIT     forward is bit-identical (torch.equal) for the dim-2 layer; the fc layer is
+        TOL <= 1e-13 (fp64) instead, a STATED class change: since 2026-08-16 the shipped
+        fc contraction is the race-adopted blockdiag GEMM (sparse_gp_expression), which
+        reassociates the einsum reference's sums. Function-vs-compiled-path bit-identity
+        is still exact for both layers (they share sparse_gp_expression) and is gated in
+        test_compiled_path_bypasses_the_function.
 GRAD    gradients agree with plain autograd through that expression to <= 1e-13 (fp64)
 CHECK   gradcheck vs a numeric jacobian, and gradgradcheck (backward is differentiable)
 SAVED   the Function retains < 1/8 of what the expression retained — its reason to exist
@@ -89,10 +94,20 @@ def test_matches_the_expression_it_replaced(fc):
     forward must be bit-zero and the gradients roundoff-scale.
     """
     fn, eager, args = _case(fc)
-    assert torch.equal(fn(*args), eager(*args)), (
-        f"{NAMES[fc]}: forward is NOT bit-identical to the expression it replaced. That "
-        f"identity is the premise of the change -- the einsum is meant to move INSIDE the "
-        f"Function unchanged, so only what autograd retains differs.")
+    if fc:
+        # fc forward is TOL vs the einsum reference since the blockdiag adoption
+        # (2026-08-16): same math, reassociated sums. Roundoff-scale at fp64.
+        rel = ((fn(*args) - eager(*args)).abs().max()
+               / (1 + eager(*args).abs().max())).item()
+        print(f"GATE-TOL-FWD[{NAMES[fc]}] rel={rel:.3e}")
+        assert rel < 1e-13, (
+            f"fcgp: forward vs the einsum reference rel={rel:.3e} >= 1e-13 -- beyond "
+            f"reassociation scale, the blockdiag respelling is computing different math.")
+    else:
+        assert torch.equal(fn(*args), eager(*args)), (
+            f"{NAMES[fc]}: forward is NOT bit-identical to the expression it replaced. "
+            f"The dim-2 layer still ships the einsum unchanged inside the Function, so "
+            f"only what autograd retains may differ.")
     g = torch.randn(eager(*args).shape, dtype=torch.float64)
     out = {}
     for name, f in (("eager", eager), ("Function", fn)):
@@ -187,7 +202,12 @@ def test_masked_grade_paths(fc):
     def fn(x, y, w):
         return sparse_geometric_product(x, y, w, alg, spath, spval, sel)
 
-    assert torch.equal(fn(*args), eager(*args)), f"{NAMES[fc]}: masked forward differs"
+    if fc:  # TOL since the blockdiag adoption, same split as the unmasked gate
+        relf = ((fn(*args) - eager(*args)).abs().max()
+                / (1 + eager(*args).abs().max())).item()
+        assert relf < 1e-13, f"fcgp: masked forward rel={relf:.3e} >= 1e-13"
+    else:
+        assert torch.equal(fn(*args), eager(*args)), f"{NAMES[fc]}: masked forward differs"
     g = torch.randn(eager(*args).shape, dtype=dtype)
     out = {}
     for name, f in (("eager", eager), ("Function", fn)):
@@ -271,7 +291,7 @@ def test_compiled_path_bypasses_the_function(fc):
 
     sparse_gp.SparseGeometricProduct.forward = staticmethod(counting)
     try:
-        fn(*args)
+        out_e = fn(*args)
         assert calls, "eager call did NOT enter the Function -- the branch is inverted"
         eager_calls = len(calls)
         dynamo.reset()
@@ -284,6 +304,10 @@ def test_compiled_path_bypasses_the_function(fc):
     finally:
         sparse_gp.SparseGeometricProduct.forward = staticmethod(real)
         dynamo.reset()
-    assert torch.equal(out_c, eager(*args)), (
-        f"{NAMES[fc]}: compiled output differs from the eager expression")
+    # both branches call sparse_gp_expression, so compiled-vs-eager stays BIT for BOTH
+    # layers -- including fc after the blockdiag adoption (which moved only the
+    # expression-vs-einsum-REFERENCE comparison to TOL, in the gates above).
+    assert torch.equal(out_c, out_e), (
+        f"{NAMES[fc]}: compiled output differs bitwise from the eager path -- the two "
+        f"call sites no longer share one arithmetic")
     print(f"GATE-EAGERONLY[{NAMES[fc]}] compiled path skips the Function, output bit-equal")
