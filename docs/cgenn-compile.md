@@ -2918,6 +2918,125 @@ checkpoints stay compatible.
   with the class change stated. If not: record the price and close — the scaffolding
   and conversion tests remain as the Cl(1,3) reference implementation.
 
+### FINAL PLAN (2026-08-16): pending-ledger execution, with commands
+
+The ranked ledger above is the WHAT; this is the HOW, in execution order. Items 1-2
+are operator commands runnable today; 3-7 are post-campaign code in dependency order.
+
+**1. Re-derive the queued hybrid lrs under the shape-gated finder** (today, before
+the queue runs). One sweep per QUEUED row — prune this list to what is actually
+queued; the family is:
+
+    git pull origin main
+    for M in tag_PlainGraphTrans tag_PlainGraphGPS tag_ParticleNetParTGraphTrans \
+             tag_ParticleNetParTGraphGPS tag_CGENNLGATrGraphTrans \
+             tag_CGENNLGATrGraphGPS tag_LorentzNetLGATrSlimGraphTrans \
+             tag_LorentzNetLGATrSlimGraphGPS; do
+      python utils/find_lr.py -cn toptagging model=$M save=false \
+          +lr_find.find_batch_size=true
+    done
+    # transcribe ONLY the TRANSCRIBE/FIND_LR lines; where the banner says
+    # "curve-pinned", run that model a SECOND time and take the agreeing bracket
+    # (hybrid brackets vary run-to-run; two sweeps is the confirmation).
+
+  The CGENN recipe's lr (5.57e-04 at bs=128) is a finder read from the old rule —
+  re-derive at its own batch before the long run:
+
+    python utils/find_lr.py -cn toptagging model=tag_cgenn training.batchsize=128 save=false
+
+**2. gp_impl re-race before executing the tag_cgenn sparse→matmul flip** (one bperf
+call — `--models` is a substring filter, so this runs the einsum/matmul/sparse rows
+in one go, sized and seeded identically):
+
+    python utils/bperf.py --models tag_cgenn --find-batchsize
+
+  Decision rule: flip to matmul only if it still beats post-blockdiag sparse by more
+  than the ~3% single-run noise band; otherwise KEEP sparse (skips fixture churn and
+  keeps the eager-retention advantage).
+
+**3. SortedGather (post-campaign, first code item).** Custom autograd Function for
+RECV-SIDE gathers only (`x[i_recv]`; senders are unsorted and keep autograd):
+forward = index_select (BIT), backward = `torch.segment_reduce(grad, "sum",
+lengths=degree)` over the sorted receivers instead of atomic scatter-add.
+Class: forward BIT, gradients DET-not-bitwise (deterministic where atomics were not
+— state the class change). Gates: grad-vs-autograd TOL at fp64, CUDA determinism
+pair-run, RECOMP; adopt on a profile_sync delta (the target kernel is 22-28% of
+CUDA on both profiles). Reuses 2.2a's threaded `edge_counts` as lengths — no new
+graph inputs.
+
+**4. GPS host-tax / bucketing (post-campaign, the big GPS item).** Order matters:
+(a) semantic unfreeze first — make `theta_h` BatchNorm and the tag_cgenn readout
+mask-aware so arithmetic no longer depends on padded width (accuracy-affecting:
+needs its own short-run validation vs the frozen baseline, stated in the table);
+(b) then bucket padded widths to a small set and mark them static; (c) then the
+cudagraphs/`reduce-overhead` posture becomes legal. Measure each stage with the
+existing instrument:
+
+    python utils/profile_sync.py -cn toptagging model=tag_CGENNLGATrGraphGPS \
+        save=false data.dataset=mini training.batchsize=64
+
+**5. Flash port** — next section, F0-F5 with the fusion scope now explicit.
+
+**6. Shield retirement test** — at the NGC container upgrade, nothing sooner:
+
+    CGENN_RECOMPUTE_VIEWS_SHIELD=0 CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 \
+    CGENN_SMOKE_STEPS=100 python -m pytest tests/experiments/test_training_smoke.py \
+        -k "CGENNLGATrGraphGPS or LorentzNetLGATrSlimGraphGPS"
+
+  Both shields retire together only if 100 varying-shape steps stay green per row.
+
+**7. TF32 policy** (operator, post-campaign): one decision, table-wide — either the
+whole table reruns under `float32_matmul_precision=high` or nobody does. The race
+measured what per-arm TF32 does to a comparison (a 4x that was really 1.3x); the
+same distortion applies to any single-row flip.
+
+### Flash port: fusion scope (what becomes Triton, what stays torch)
+
+The replacement unit is the **phi_x / theta_x SUB-STACK, not the bare GP** — one
+generated kernel per stack, matching flash-clifford's own fusion boundary
+(act → weighted/fc GP → norm in one launch). Our norms and activations go INSIDE
+the kernel; that is where fusion pays, since each is a separate kernel + a full
+(E or N, feat, 16) round-trip today:
+
+| becomes ONE Triton kernel | stays torch, why |
+|---|---|
+| `phi_x` fc stack: FCGP → MVLayerNorm (edge-level, E-sized — Tier A, do first) | message passing: gathers + segment_reduce (2.2b) + SortedGather — scatter is not their op class |
+| `theta_x` fc stack: FCGP → MVLayerNorm (node-level — Tier B) | `theta_h` / h-stream MLPs: BatchNorm reduces over the BATCH with running stats, and its padded-width semantics are the frozen quirk — wrong kernel class twice over |
+| gpmlp-type stack where configured: MVLinear → MVSiLU → SGP → MVLayerNorm | LGATr attention blocks (already SDPA/fused upstream) |
+| MVSiLU + MVLayerNorm as fused epilogues/prologues of the above (never standalone kernels) | readout/invariants (post-Phase-1 `q`/`b` are cheap diagonal ops; readout semantics frozen) |
+
+MVLayerNorm qualifies because its reduction is per-node over (features x 16) — one
+Triton program's tile; BatchNorm does not because its reduction axis is the batch.
+Tier A alone covers the measured hot spot (the fc-GP pair clone + einsum/blockdiag +
+norm on E-sized tensors); Tier B and MVLinear fusion only proceed if Tier A's race
+adopts (plan F5).
+
+**References for the port:**
+- `flash-clifford` (github.com/maxxxzdn/flash-clifford): `ops/fc_p3m0.py` — the
+  fc-GP fused kernel to mirror structurally (layout, launch, fused norm, the
+  `tl.atomic_add` weight-grad reduction we must REPLACE with a deterministic one);
+  `modules/layer.py` — module boundary; `tests/benchmarks/` — harness shape.
+- `flash-kingdon` (github.com/tBuLi/flash-kingdon): README — the full codegen
+  recipe (`Algebra(p,q).compile(symbolic=True)` on a weighted-GP expression, grad
+  derived by symbolic differentiation, `triton.jit` on the generated function);
+  `ops/kingdon_ops.py`, `ops/vga2d.py`/`vga3d.py` — generation scaffolding to adapt
+  with `Algebra(1, 3)`.
+- `kingdon` (github.com/tBuLi/kingdon): the algebra/codegen engine itself; pin the
+  version at F0 and machine-check its Cl(1,3) blade order/signs against OUR
+  `CliffordAlgebra` cayley before trusting any generated line.
+- Local scouting clones this assessment was read from: `/workspace/maxxxzdn/`
+  and `/workspace/tbuli/` (session-ephemeral; re-clone as needed).
+- F1 spike bootstrap (CPU-checkable, no cluster needed):
+
+      pip install kingdon sympy
+      # scratch: generate p1m3 35-path weighted-GP fwd+grad as pure Python, then
+      # gate vs the shipped reference at fp64 before any Triton exists:
+      #   from experiments.baselines.cgenn.sparse_gp import sparse_gp_expression
+
+LICENSE GATE stands ahead of all of it: neither flash repo ships a license — ask
+both authors (issue or email) before vendoring a line; generated-from-kingdon code
+follows kingdon's own license, which is the cleaner path anyway.
+
 ### Workflow: are the gates a fair check for this program? Assessment and the additions
 
 What exists and suffices: the BIT/TOL/DET class taxonomy with gates per class; β-PERF for
