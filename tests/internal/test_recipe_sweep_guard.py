@@ -73,16 +73,20 @@ def test_command_line_values_count_as_filled():
 
 
 def test_partial_override_still_refuses_the_rest():
-    """CLI: filling one key must not excuse the other."""
+    """CLI: filling one key must not excuse the other.
+
+    Since the 2026-08-16 table-wide lr decision every top_<hybrid>.yaml ships
+    lr: 1e-3, so the live unswept key on this recipe is batchsize -- the CLI
+    supplies lr and the guard must still refuse for batchsize."""
     with pytest.raises(SystemExit) as exc:
         _run([
             "model=tag_PlainGraphGPS",
             "training=top_PlainGraphGPS",
-            "training.batchsize=256",
+            "training.lr=1e-3",
             "save=false",
         ])
     listed = str(exc.value).split("unswept keys: ")[1].split(".")[0]
-    assert listed == "lr", listed  # not the key already supplied on the command line
+    assert listed == "batchsize", listed  # not the key already supplied on the command line
 
 
 def test_swept_recipe_passes():

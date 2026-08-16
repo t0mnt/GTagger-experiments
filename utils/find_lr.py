@@ -715,10 +715,18 @@ def range_test(exp, start_lr, end_lr, num_iter, beta, diverge):
 # falls at a near-constant shallow slope over decades, argmin(gradient) lands wherever
 # noise peaks inside that plateau, and transcribing it cost a campaign row 0.32pp
 # accuracy / 40% rejection. Detector: the lr-span, in decades, of the region whose
-# downhill slope is within PINNED_HALF of the steepest. A concentrated fall spans well
-# under a decade; the hybrids' plateaus span 2+. Between them, 1.5.
+# downhill slope is within PINNED_HALF of the steepest.
+#
+# THRESHOLD, second calibration (same day): the first threshold was 1.5 EXCLUSIVE,
+# reasoned from synthetic curves (concentrated ~0.7 decades, plateau 2+). The real
+# PNPT bs=512 curve then measured EXACTLY 1.5 on the H100 and the strict inequality
+# classified it "distinct" -- re-emitting the same 3.08e-05 the incident was about.
+# Now 1.2 INCLUSIVE: ParticleNet's concentrated fall (~0.7) keeps a 0.5-decade margin
+# on one side, PNPT's 1.5 a 0.3-decade margin on the other, and a boundary-sitting
+# curve now fails TOWARD the bracket/refusal -- after two incidents, wrong-by-caution
+# (a rerun prompt) is the only acceptable failure direction, never a pinned steepest.
 PINNED_HALF = 0.5
-PINNED_DECADES = 1.5
+PINNED_DECADES = 1.2
 
 
 def suggest_lr(lrs, losses, skip_start, skip_end, beta=0.98):
@@ -766,7 +774,7 @@ def suggest_lr(lrs, losses, skip_start, skip_end, beta=0.98):
         steep_decades = (
             float(np.log10(region.max() / region.min())) if region.size >= 2 else 0.0
         )
-        pinned = steep_decades > PINNED_DECADES
+        pinned = steep_decades >= PINNED_DECADES  # inclusive: boundary fails toward caution
     else:
         steepest = float(lr_trim[int(np.argmin(loss_trim))])
         # too few points to certify a distinct peak -> conservative: not a recipe
@@ -1141,7 +1149,7 @@ def main(cfg):
     # once let a curve-pinned 3e-5 into a recipe and cost the row 0.32pp accuracy --
     # neither statistic gets a label that invites transcribing it directly again.
     shape = (
-        f"curve-pinned: half-max slope spans {steep_decades:.1f} decades > {PINNED_DECADES:g}"
+        f"curve-pinned: half-max slope spans {steep_decades:.1f} decades >= {PINNED_DECADES:g}"
         if pinned
         else f"distinct peak: half-max slope spans {steep_decades:.1f} decades"
     )

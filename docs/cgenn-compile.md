@@ -2887,6 +2887,55 @@ investigation. The cause is found, verified, and fixed:
       python utils/find_lr.py -cn toptagging model=tag_particlenet save=false \
           +lr_find.find_batch_size=true
 
+### find_lr incident, part 3 (2026-08-16): the shape gate's boundary miss — and the decision that retires the question
+
+The first aligned PNPT rerun exposed a calibration error in the part-1 fix: the real
+curve's half-max slope region measured EXACTLY 1.5 decades, and `pinned` was a STRICT
+`> 1.5` — so a boundary-sitting plateau classified "distinct", fell into the
+bracket-is-outlier branch (ratio 37×), and the banner re-emitted the incident's own
+3.08e-05. Two mistakes, both mine: the synthetic calibration curves (0.7 vs 3.5
+decades) were far better separated than real curves, and a threshold that a live case
+sits exactly ON is fragile by construction. Fixed: `PINNED_DECADES = 1.2`,
+INCLUSIVE — ParticleNet's concentrated fall (~0.7) keeps a 0.5-decade margin, PNPT's
+1.5 a 0.3-decade margin, and a boundary case now fails toward the bracket/refusal,
+never toward a pinned steepest. Pinned by test against the measured 1.5.
+
+**TABLE-WIDE lr DECISION (operator, 2026-08-16): every top_<hybrid>.yaml now ships
+`lr: 1e-3`** — which is also `tag_default`'s own value the finder-transcribed 3e-5
+had been overriding. Grounds: all eight rows share one AdamW recipe; every reliable
+hybrid reading clusters in 4.5e-4..1.2e-3 (flat within ~2× of 1e-3); 1e-3 is
+trained-and-validated on PNPT (0.9414 vs weaver 0.9417, inside seed spread); and two
+transcription incidents in one day showed per-row single-sweep transcription carries
+more risk than the ≤2× lr suboptimality it might save. The finder remains the
+CONFIRMATION tool (its aligned, shape-gated readings should agree with 1e-3 within
+~2× — a reading that does not is a finding, not a recipe). Scope: the top-tagging GT
+table only; the jc_ tree and the non-AdamW baselines (Ranger/Lion recipes) keep
+their own values.
+
+**Batch sizes** are the one number still owed per row: `utils/find_bs.py` runs ONLY
+the doubling search (own-recipe compose, shipped compile posture, worst-case probe,
+cap = the 512 ceiling by default) and prints paste-ready `batchsize:` lines for all
+eight in one pass:
+
+    python utils/find_bs.py
+
+### Aggregate-table audit (2026-08-16): the trials-policy changes are sound
+
+Reviewed 2f29a17 (group-instead-of-dedup) + 5cec76a (policy + guards) on request.
+Verdict: SOUND. Grouping is by (task, model, frames, kNN) with recency by log mtime
+(entries re-sorted inside `_consolidate`, so newest-wins is order-independent);
+pooling uses sample std (n−1) and matches the per-run formatter's precision; and
+every case where key-inference could lie refuses toward a visible newest-wins note
+instead of a silently wrong row: mixed with an in-run-aggregated row
+(double-counting), disagreeing iters/params/FLOPs (ablations sharing a key), and
+identical-metrics clones (pinned seed — would fabricate ±0.000 precision). The one
+gap found: those guards were "exercised synthetically" in the authoring session but
+never committed as tests — closed now by
+tests/internal/test_aggregate_consolidate.py (5 pins, including mtime-vs-list-order).
+Residual limitations, acknowledged not fixed: mtime is fragile across rsync/copies,
+and the invariant comparison is string-exact (a formatter change would refuse pooling
+— conservative direction, visible note).
+
 ### Scheduler verdict for the GT table at 20 epochs (2026-08-16, theory review)
 
 Question: best schedule for the GT hybrids (GraphTrans + GPS families), 20 epochs,

@@ -1,8 +1,8 @@
 # Training recipe for tag_CGENNLGATrGraphGPS -- fill in the (???) keys, then:
 #   python run.py model=tag_CGENNLGATrGraphGPS training=top_CGENNLGATrGraphGPS data.dataset=full gpus=1
 #
-#   lr         <- utils/find_lr.py                                   (reported loss-min / 10)
-#   batchsize  <- utils/find_lr.py +lr_find.find_batch_size=true     (the GPU-fit size)
+#   lr         = 1e-3 TABLE-WIDE (2026-08-16 operator decision; see the note at the key)
+#   batchsize  <- utils/find_bs.py (bs only, quick) or find_lr.py +lr_find.find_batch_size=true
 #   (epochs=20 + CosineAnnealingWarmup are shared in tag_gts_and_friends_default; iterations auto-derived)
 #   weight_decay (optional override) -> see the weight-decay guidance
 #
@@ -13,9 +13,14 @@
 defaults:
   - tag_gts_and_friends_default
 
-# found using utils/find_lr.py (batch size capped at <=512)
+# lr: TABLE-WIDE 1e-3 (2026-08-16 operator decision). Two finder-transcription incidents
+# (docs/cgenn-compile.md, 'find_lr incident' parts 1-3) retired per-row finder lrs for this
+# campaign: reliable hybrid readings cluster 4.5e-4..1.2e-3, all rows share the AdamW
+# recipe, and 1e-3 is trained-and-validated on PNPT (0.9414 vs weaver 0.9417, inside seed
+# spread). The finder stays as the CONFIRMATION tool; batch size cap stays <=512 (update
+# starvation under the epoch budget).
 batchsize: ???
-lr: ???
+lr: 1e-3
 
 # weight_decay: 0.01          # AdamW: tune on val {0, 0.01, 0.05, 0.1}
 # optimizer: AdamW            # AdamW | Ranger | Lion | ...

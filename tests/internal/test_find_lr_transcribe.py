@@ -130,6 +130,17 @@ def test_detector_passes_concentrated_fall():
     assert 1e-4 < steepest < 1e-2, "steepest tracks the concentrated fall"
 
 
+def test_pnpt_measured_width_classifies_pinned():
+    """The real PNPT bs=512 curve measured its half-max slope region at EXACTLY 1.5
+    decades (H100, 2026-08-16) and the first threshold (1.5 EXCLUSIVE) classified it
+    'distinct' -- re-emitting the incident's 3.08e-05 through the bracket-outlier
+    branch. Pin the constant and the inclusiveness: 1.5 must classify as pinned,
+    and a curve sitting exactly ON the threshold must too."""
+    assert PINNED_DECADES <= 1.5, "PNPT's measured 1.5-decade plateau must flag pinned"
+    lr, why = transcribe_lr(3.08e-05, 1.14e-03, interior_min=True, pinned=1.5 >= PINNED_DECADES)
+    assert lr == 1.14e-03 and "loss-min/10" in why
+
+
 def test_detector_degenerate_curve_is_pinned():
     # fewer points than the gradient window needs -> no certified peak -> pinned
     # (main() refuses < 3 points already; this pins the helper's own conservatism)
