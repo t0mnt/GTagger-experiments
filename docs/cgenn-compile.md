@@ -2984,6 +2984,59 @@ log: the inductor TF32 hint is the EXPECTED reminder of the deliberate
 FutureWarning is fixed at the source (`torch.amp.GradScaler("cuda", ...)`, same
 class, identical behavior).
 
+### FINAL LEDGER RESOLUTION (2026-08-16): no post-campaign exists for CGENN — every item is DO or DON'T
+
+Operator constraint: anything not done before the CGENN rows launch will never be
+done. That collapses "post-campaign" for the whole CGENN family; each ledger item is
+re-decided under it, decisions FINAL:
+
+**JC SCHEDULE, decided here and down: LinearWarmup+Cosine for ALL GT rows, both
+tables, with `cosanneal_eta_min: 1e-5` (1% of the 1e-3 peak) set now at the campaign
+boundary.** flat+decay's theoretical edge in the jc few-pass regime (~0.1pp scale) is
+unmeasured in-repo under AdamW and needs a re-shaded peak — two coupled unknowns
+against one-schedule-per-table comparability and a peak validated under cosine. The
+A/B is CLOSED, not pending. Sequencing note: eta_min landed after the three jc
+GraphTrans submissions were handed over — if those jobs already started, scancel and
+resubmit (minutes old), so the jc table stays uniform.
+
+**DO NOW — the two items that survive:**
+1. **SortedGather** (this commit series). Recv-side gathers get a custom Function
+   whose backward is a `segment_reduce` sum over the provably-sorted receivers,
+   replacing the atomic scatter-add that is the top kernel on both profiles
+   (27.9%/22.7%; the send-side share stays, so expect roughly half of it back).
+   Forward is BIT-identical (index_select), so the hybrid pins stand un-re-recorded;
+   gradients are the same math reassociated — and the atomics they replace were
+   nondeterministic run-to-run anyway, so no comparability exists today that this
+   could break. Ships behind `CGENN_SORTED_GATHER` (default on) with the full gate
+   battery; the CGENN rows need one 15-min GPU gate day before launch. Launch the
+   five non-CGENN top rows immediately; hold tag_cgenn + the two CGENN hybrids for
+   the gate.
+2. **eta_min** (above) — free at the boundary, uniform, ~0.03pp-class upside.
+
+**DON'T — closed forever, with reasons:**
+- **Flash port F0–F5**: F2–F5 (Triton, custom ops, adoption races, licensing) cannot
+  land responsibly before a launching queue, and with no post-campaign the port is
+  dead — so the F0–F1 spike, whose only value was de-risking F2–F5, is dead with it.
+  (Reverses the earlier "I'll do F0–F1 now": groundwork for a port that will never
+  run is pure cost.) The scouting record remains for any future repo.
+- **Bucketing / GPS host-tax**: needs the mask-aware theta_h/readout semantics change
+  plus its own validation runs — days of delay and accuracy risk against a launching
+  queue. The GPS rows train correctly, just slower; accepted.
+- **gp_impl sparse→matmul flip for tag_cgenn**: post-blockdiag expected gain is ~2%
+  (304 vs ~297 jets/s), inside bperf's own ±3% noise band, against fixture churn and
+  a queue blocker. Keep sparse; the re-race itself is cancelled. (The tag_cgenn
+  recipe bs=128 / lr=5.57e-04 stays valid — 5.57e-04 is sqrt-scaled 1e-3 at bs128,
+  independently corroborating both numbers.)
+- **Shield retirement**: needs the NGC container upgrade; shields are ~free
+  insurance — they simply stay on for the whole campaign.
+- **TF32 table-wide**: a precision cut with unmeasured accuracy cost cannot be
+  decided under queue pressure; `highest` stays, question closed.
+- **Scheduler A/Bs (both tables)** and **3-point lr training sweeps**: closed by the
+  schedule decision above and the table-wide 1e-3 (revive a sweep only if a row
+  lands clearly below its weaver-class expectation).
+- Remaining user-optional cosmetics (upstream inductor issue, scratch-branch
+  deletions) are unaffected by the constraint and stay optional.
+
 ### Scheduler verdict for the GT table at 20 epochs (2026-08-16, theory review)
 
 Question: best schedule for the GT hybrids (GraphTrans + GPS families), 20 epochs,

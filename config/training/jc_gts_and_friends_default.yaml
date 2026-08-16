@@ -25,7 +25,16 @@ epochs: 5
 
 # shared schedule as in the top-tagging family recipe, but NO weight decay on JetClass
 # (matching jc_ParT: at 100M jets regularization is unnecessary and only slows fitting)
+# SCHEDULE DECISION, FINAL for the campaign (2026-08-16, docs/cgenn-compile.md): every jc
+# GT row trains under LinearWarmup+Cosine. flat+decay's theoretical edge in the few-pass
+# regime (~0.1pp scale, unmeasured in-repo under AdamW, needs a re-shaded peak) does not
+# beat one-schedule-per-table comparability with a validated 1e-3 peak. Do not flip
+# per-row; the A/B is CLOSED, not pending.
 scheduler: CosineAnnealingWarmup
+# 1% of the 1e-3 table peak: cosine-to-ZERO freezes the last ~5% of the run (weaver
+# decays to 1%, not 0). Set at the campaign boundary -- every row launches under it;
+# never change it mid-table.
+cosanneal_eta_min: 1e-5
 weight_decay: 0
 
 # validate once per (nominal) epoch for every model; the sentinel base guarantees the

@@ -26,7 +26,15 @@ epochs: 20
 # shared schedule: linear warmup (warmup_pct_start of the budget) then cosine decay to
 # cosanneal_eta_min. Warmup stabilises the transformer/equivariant layers; one shared schedule
 # isolates architecture for the hybrid-vs-hybrid table.
+# SCHEDULE DECISION, FINAL for the campaign (2026-08-16, docs/cgenn-compile.md):
+# LinearWarmup+Cosine for every GT row, both tables. The top-tagging evidence bounds
+# schedule effects at ~0.03pp (PNPT cosine 0.9414 vs weaver flat+decay 0.9417, inside
+# seed spread); comparability beats that. The A/B is CLOSED, not pending.
 scheduler: CosineAnnealingWarmup
+# 1% of the 1e-3 table peak (cosine-to-zero freezes the last ~5% of a 47k-step run;
+# weaver decays to 1%). Campaign-boundary knob: set before any row launched, uniform
+# across the family; never change mid-table.
+cosanneal_eta_min: 1e-5
 
 # shared weight decay (AdamW). One value for the whole family isolates architecture: with
 # decoupled WD on normalized weights this is mostly an effective-LR / weight-norm knob
