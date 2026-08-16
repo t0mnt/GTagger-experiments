@@ -2745,6 +2745,53 @@ the sparse-GP block was ~17-18% of CUDA — roughly +4% step-level, putting spar
 executing the flip; the memory-side argument for sparse (eager retention) is
 unchanged, so a re-race could keep sparse and skip the fixture churn.
 
+### Post-campaign scouting: flash-clifford / flash-kingdon (first look, 2026-08-16)
+
+Operator-directed first read of `maxxxzdn/flash-clifford` and its fork
+`tBuLi/flash-kingdon` (fused Triton kernels for Clifford-algebra networks),
+AFTER the in-campaign scope closed. Assessment, not adoption — everything here
+changes arithmetic and is campaign-frozen by definition.
+
+- **What they are.** Hand-written (flash-clifford) or kingdon-codegen'd
+  (flash-kingdon) Triton kernels that fuse MV-GELU → weighted/fully-connected
+  geometric product → MV-RMSNorm into one launch, hardcoding the nonzero cayley
+  rules instead of einsum-ing a 95%-sparse table — the same waste our
+  einsum/sparse/blockdiag ladder attacks, taken to the kernel level. Their README's
+  baseline critique is literally our `bnij,mnijk,bnk` starting point.
+- **Weight semantics MATCH.** Their weighted GP carries one weight per grade-triple
+  path (2D: 10, e.g. `X1*Y1` splits into `|` and `^` with separate weights) —
+  the same parametrization as our sparse tables' compact paths (Cl(1,3): 35), so a
+  generated Lorentz kernel would be checkpoint-compatible with CGENN's GP layers.
+- **The metric gap is the real work.** Shipped algebras are Cl(2,0), Cl(3,0)
+  (+ Cl(3,0,1) PGA in flash-clifford). NO Cl(1,3). flash-kingdon's pitch is exactly
+  the answer: kingdon's `Algebra(1, 3)` + its symbolic compile/CSE generates the
+  Triton-compatible kernel source, so the Lorentz port is spec-writing, not
+  kernel-writing. That makes flash-kingdon the route to evaluate first even though
+  flash-clifford is the upstream with the benchmark numbers.
+- **Integration frictions, in cost order:** (1) memory layout is
+  `(MV_DIM, batch, features)` blade-MAJOR — the whole CGENN package (and the
+  Phase-1 rewrites) is blade-minor `(..., 16)`; adopting means marshalling at the
+  boundary (reintroducing the copies Phase 1 killed) or a package-wide relayout.
+  (2) Their fused primitive is GELU→GP→RMSNorm; CGENN's stack is
+  MVSiLU→GP→MVLayerNorm — different activation AND norm, so a faithful port
+  generates OUR ops with kingdon rather than reusing their fused modules.
+  (3) `torch.autograd.Function` wrappers around raw Triton — graph breaks under
+  torch.compile unless re-wrapped as torch.library custom ops (our posture is
+  0-break compiled). (4) `tl.atomic_add` in the fc-norm accumulations —
+  nondeterministic float accumulation, weaker than what 2.2b just bought us.
+  (5) CUDA-only: the CPU BIT/TOL gate tier cannot see these kernels; gating moves
+  to the GPU GATE DAY infrastructure, with the existing eager paths kept as the
+  reference implementation (a `gp_impl=flash` fourth arm fits the existing knob).
+  (6) **Neither repo ships a LICENSE file** — before any vendoring, ask the
+  authors (an issue or email); until then it is read-and-learn only.
+- **Verdict for later:** the promising shape is NOT importing their modules but
+  using kingdon codegen to emit OUR Cl(1,3) fused primitives (MVSiLU/GP/
+  MVLayerNorm, blade-minor at the boundary, custom-op-wrapped, atomics-free
+  backward like our hand-written sparse backward). Price it against the
+  post-campaign baseline that already includes blockdiag + a possible
+  SortedGather; the marshalling tax of layout conversion is the number to
+  measure first.
+
 ### Workflow: are the gates a fair check for this program? Assessment and the additions
 
 What exists and suffices: the BIT/TOL/DET class taxonomy with gates per class; β-PERF for
