@@ -188,8 +188,12 @@ class Lookahead(Optimizer):
             "pullback_momentum": self.pullback_momentum,
         }
 
-    def zero_grad(self):
-        self.optimizer.zero_grad()
+    def zero_grad(self, set_to_none=True):
+        # signature matches torch.optim.Optimizer so callers using the modern kwarg
+        # (find_lr's batch-size probe, since the 2026-08-16 recipe alignment routed
+        # Ranger through it) work; the inner optimizer's own default was already
+        # set_to_none=True, so the plain-call behavior is unchanged.
+        self.optimizer.zero_grad(set_to_none=set_to_none)
 
     def state_dict(self):
         return self.optimizer.state_dict()

@@ -103,3 +103,22 @@ def test_bare_compose_defaults_to_adamw(compose_toptagging):
     changes, the alignment docstring's history needs updating too."""
     cfg = compose_toptagging(["model=tag_particlenet"])
     assert cfg.training.optimizer == "AdamW"
+
+
+def test_ranger_zero_grad_accepts_set_to_none():
+    """Alignment routes Ranger through find_lr's batch-size probe, whose step calls
+    `zero_grad(set_to_none=True)` -- weaver's Lookahead wrapper predated that kwarg
+    and crashed the first aligned H100 sweep (2026-08-16). Pin the modern signature
+    on the wrapper, and that the plain call still works."""
+    import torch
+
+    from experiments.ranger import Ranger
+
+    p = torch.nn.Parameter(torch.randn(4))
+    opt = Ranger([p], lr=1e-3, betas=(0.95, 0.999), eps=1e-5, alpha=0.5, k=6)
+    (p * 2).sum().backward()
+    opt.step()
+    opt.zero_grad(set_to_none=True)
+    assert p.grad is None, "set_to_none=True must clear grads to None"
+    (p * 2).sum().backward()
+    opt.zero_grad()  # legacy call path (base_experiment's training loop)
