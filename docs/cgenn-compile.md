@@ -3034,19 +3034,31 @@ resubmit (minutes old), so the jc table stays uniform.
 2. **eta_min** (above) — free at the boundary, uniform, ~0.03pp-class upside.
 
 **DON'T — closed forever, with reasons:**
-- **Flash port F0–F5**: F2–F5 (Triton, custom ops, adoption races, licensing) cannot
-  land responsibly before a launching queue, and with no post-campaign the port is
-  dead — so the F0–F1 spike, whose only value was de-risking F2–F5, is dead with it.
-  (Reverses the earlier "I'll do F0–F1 now": groundwork for a port that will never
-  run is pure cost.) The scouting record remains for any future repo.
-- **Bucketing / GPS host-tax**: needs the mask-aware theta_h/readout semantics change
-  plus its own validation runs — days of delay and accuracy risk against a launching
-  queue. The GPS rows train correctly, just slower; accepted.
-- **gp_impl sparse→matmul flip for tag_cgenn**: post-blockdiag expected gain is ~2%
-  (304 vs ~297 jets/s), inside bperf's own ±3% noise band, against fixture churn and
-  a queue blocker. Keep sparse; the re-race itself is cancelled. (The tag_cgenn
-  recipe bs=128 / lr=5.57e-04 stays valid — 5.57e-04 is sqrt-scaled 1e-3 at bs128,
-  independently corroborating both numbers.)
+- ~~Flash port~~ **OVERRIDDEN by the operator (2026-08-16, same day): the flash port
+  is DO — see THE FLASH PLAN v2 below.** What changed: (a) the CGENN rows have not
+  launched, so "before campaign" is real for them and the operator accepts the delay;
+  (b) the licensing blocker dissolves under the generate-don't-vendor route — the
+  kernels are OUR code emitted via kingdon (pip-installable, citable via its own
+  BibTeX, its license governing), with the flash repos used as design reference only.
+  The earlier DON'T reasoning was correct under its assumption (a launching queue);
+  the assumption was wrong for the CGENN rows.
+- **Bucketing / GPS host-tax — stays DON'T, and here is the accuracy answer asked
+  for: YES, bucketing changes accuracy, by either route.** (a) Keeping the shipped
+  quirk semantics while bucketing changes the numbers anyway: `theta_h` BatchNorm
+  runs over PADDED nodes and the tag_cgenn readout divides by the padded width, so
+  the model literally computes different values at different padded widths — that
+  dependence is WHY it was frozen. (b) Fixing the quirks (mask-aware BN, true-length
+  readout) is cleaner and probably slightly better, but it changes the model relative
+  to the upstream-faithful reproduction and needs its own validation runs. Both
+  routes touch accuracy; combined with it being the largest engineering item and
+  walltime-only in payoff, it stays closed. (The flash port does not moot it — the
+  GPS host tax is Python/launch overhead, not kernel time.)
+- **gp_impl sparse→matmul re-race: superseded, folded into the flash race.** The
+  decision point becomes flash-vs-current-best at plan step F4 (below), raced before
+  any CGENN model or hybrid trains — the operator's preferred shape. If flash fails
+  the bar, sparse stays (matmul's ~2% is inside the noise band, as recorded). The
+  tag_cgenn recipe bs=128 / lr=5.57e-04 stays valid — 5.57e-04 is sqrt-scaled 1e-3
+  at bs128, independently corroborating both numbers.
 - **Shield retirement**: needs the NGC container upgrade; shields are ~free
   insurance — they simply stay on for the whole campaign.
 - **TF32 table-wide**: a precision cut with unmeasured accuracy cost cannot be
@@ -3056,6 +3068,61 @@ resubmit (minutes old), so the jc table stays uniform.
   lands clearly below its weaver-class expectation).
 - Remaining user-optional cosmetics (upstream inductor issue, scratch-branch
   deletions) are unaffected by the constraint and stay optional.
+
+### THE FLASH PLAN v2 (2026-08-16) — executable, step-driven, before any CGENN row trains
+
+**NEXT STEP: 1**  ← the state marker; each executed step advances it and records
+results directly under its entry. The operator drives with "do step N, then audit";
+the sandbox has no GPU, so every step ends either CPU-verified or with the exact
+pastable GPU commands and a hard stop until the operator pastes results back.
+
+Ground rules carried from the whole program: measure before adopt (the >10%
+adopt-or-close bar), state every class change, gates before launch, kill switches
+over reverts, OUR CliffordAlgebra cayley is the reference for all generated math.
+Scope note: this ports the GP CONTRACTIONS (`gp_impl=flash` fourth arm — weighted GP
+dim-2 and fc-GP dim-3). The fused act→GP→norm stacks are a stretch goal ONLY if F4
+adopts and time remains; the contraction arm alone targets the measured GP share.
+
+- **Step 0 (operator GPU, ~15 min, independent of flash):** SortedGather gate day —
+  runbook above. Green → the non-CGENN rows launch posture is complete; CGENN rows
+  additionally wait for F4/F5.
+- **Step 1 (sandbox, CPU):** F0 foundations. `pip install kingdon` (pin the version);
+  record its license + BibTeX in the docs (generate-don't-vendor legal basis);
+  machine-check `kingdon.Algebra(1, 3)` against `CliffordAlgebra((1,-1,-1,-1))`:
+  blade order, sign conventions, and the full 16x16x16 cayley equality, as a
+  committed test. DELIVERABLE: tests/internal/test_kingdon_conventions.py green, or
+  a documented conversion table if conventions differ.
+- **Step 2 (sandbox, CPU):** F1 codegen. Generate the 35-path weighted-GP (dim-2)
+  and fc-GP (dim-3) forward + all three gradients as pure-Python/CSE'd expression
+  lists via kingdon's symbolic compile; gate vs `sparse_gp_expression` at fp64
+  (<=1e-13) + gradcheck, including the masked-path case. DELIVERABLE: the generator
+  script + generated reference module + gates green. This is the mathematical
+  content of the kernels, fully verified before any Triton exists.
+- **Step 3 (sandbox authors, operator verifies on GPU):** F2 kernels. Transcribe the
+  step-2 expressions into triton.jit kernels wrapped as torch.library custom ops
+  (fake-tensor shapes registered, backward registered, NO atomics in dL/dx / dL/dy;
+  dL/dweight via a fixed-order two-stage reduction — determinism is a ship
+  requirement, matching SortedGather/2.2b). CPU deliverable: import-clean module,
+  meta-shape tests, and a CUDA-gated parity test file. OPERATOR: one pastable
+  command running GPU parity (vs einsum ref, fp32+fp64), determinism pair-run, and
+  a microbenchmark vs the blockdiag contraction at campaign shapes.
+- **Step 4 (mixed):** F3+F4 wiring and the race. `gp_impl=flash` behind the existing
+  knob (CUDA-only guard, eager+compiled through the custom op); full gate battery
+  (BREAKS/RECOMP/TOL/DET + soak) on the operator's GPU; then the adopt-or-close
+  race: bperf tag_cgenn flash-vs-sparse(+blockdiag+SortedGather) and profile_sync,
+  pinned precision, >10%-everywhere bar. ADOPT → set `gp_impl: flash` in the three
+  CGENN model yamls (config + config_quick), TOL-verify + re-record hybrid pins and
+  explain (class change stated). CLOSE → sparse stays, record the price, no yaml
+  churn.
+- **Step 5:** launch the three CGENN rows (top + jc CGENN recipes) under whichever
+  arm won, with find_bs re-run for them ONLY if F4 adopted (kernel fusion can only
+  grow the fitting batch, but measure rather than assume).
+
+Schedule honesty: steps 1-2 are one working session; step 3 is the risk
+concentration (Triton iteration without a local GPU — mitigated by step 2 making
+the math pre-verified and by a torch-reference twin for every kernel so GPU parity
+failures localize); expect 2-3 operator GPU round-trips across steps 3-4. The CGENN
+rows launch a few days late; the operator has accepted that trade explicitly.
 
 ### Scheduler verdict for the GT table at 20 epochs (2026-08-16, theory review)
 
