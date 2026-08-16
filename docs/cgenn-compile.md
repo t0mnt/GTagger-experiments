@@ -3071,7 +3071,7 @@ resubmit (minutes old), so the jc table stays uniform.
 
 ### THE FLASH PLAN v2 (2026-08-16) — executable, step-driven, before any CGENN row trains
 
-**NEXT STEP: 1**  ← the state marker; each executed step advances it and records
+**NEXT STEP: 2**  ← the state marker; each executed step advances it and records
 results directly under its entry. The operator drives with "do step N, then audit";
 the sandbox has no GPU, so every step ends either CPU-verified or with the exact
 pastable GPU commands and a hard stop until the operator pastes results back.
@@ -3092,6 +3092,17 @@ adopts and time remains; the contraction arm alone targets the measured GP share
   blade order, sign conventions, and the full 16x16x16 cayley equality, as a
   committed test. DELIVERABLE: tests/internal/test_kingdon_conventions.py green, or
   a documented conversion table if conventions differ.
+
+  *DONE (2026-08-16).* kingdon **2.1.1** pinned (test-enforced). **License: MIT**
+  (c) 2022 Martin Roelfs; **citation: arXiv:2503.10451** + the repo CITATION.cff
+  (github.com/tBuLi/kingdon) — generated kernels are OUR code produced with a
+  citable MIT tool; the flash repos remain design reference only. Convention gates
+  ALL GREEN, and better than hoped: `Algebra(1, 3)` signature [+1,-1,-1,-1], blade
+  order short-lex matching ours under the IDENTITY mapping (kingdon e_{k+1} <-> our
+  vector k), and the full multiplication table coefficient-exact against our cayley
+  in its [left, out, right] orientation — all 4096 entries, 256 nonzeros, one output
+  blade per (left, right) pair (the quasigroup property re-proven from kingdon's
+  side). No conversion table needed anywhere in the generator.
 - **Step 2 (sandbox, CPU):** F1 codegen. Generate the 35-path weighted-GP (dim-2)
   and fc-GP (dim-3) forward + all three gradients as pure-Python/CSE'd expression
   lists via kingdon's symbolic compile; gate vs `sparse_gp_expression` at fp64
