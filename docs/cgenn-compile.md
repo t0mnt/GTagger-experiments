@@ -3071,7 +3071,7 @@ resubmit (minutes old), so the jc table stays uniform.
 
 ### THE FLASH PLAN v2 (2026-08-16) — executable, step-driven, before any CGENN row trains
 
-**NEXT STEP: 2**  ← the state marker; each executed step advances it and records
+**NEXT STEP: 3**  ← the state marker; each executed step advances it and records
 results directly under its entry. The operator drives with "do step N, then audit";
 the sandbox has no GPU, so every step ends either CPU-verified or with the exact
 pastable GPU commands and a hard stop until the operator pastes results back.
@@ -3109,6 +3109,21 @@ adopts and time remains; the contraction arm alone targets the measured GP share
   (<=1e-13) + gradcheck, including the masked-path case. DELIVERABLE: the generator
   script + generated reference module + gates green. This is the mathematical
   content of the kernels, fully verified before any Triton exists.
+
+  *DONE (2026-08-16).* `utils/flash_gen.py` → committed
+  `experiments/baselines/cgenn/flash_ref_p1m3.py`: forward 256 terms / 73 CSE
+  temps, one grad function with all 67 outputs (16+16+35) / 108 CSE temps, flat
+  arithmetic bodies in flash-clifford's kernel style, repo compact-path weight
+  order (checkpoint-compatible). Terms SOURCED from kingdon's `Algebra(1,3)`
+  products and asserted term-by-term against `sparse_gp_tables`/`gp_k_idx` at
+  generation time. Gates (tests/internal/test_flash_ref_p1m3.py) ALL GREEN at
+  ~3e-16: dim-2 fwd vs the einsum expression, dim-3/fc fwd vs the shipped
+  blockdiag path, generated grads vs autograd, cross-grads vs the expression's
+  autograd, gradcheck, and a regeneration-consistency pin (committed module must
+  byte-match what the pinned generator emits; parity gates are torch-only and
+  never skip). Deviation from the plan text, stated: the masked-path variant is
+  NOT generated — the shipped Lorentz algebra masks nothing (all 35 paths live,
+  asserted in the generator); reduced-path algebras are out of the port's scope.
 - **Step 3 (sandbox authors, operator verifies on GPU):** F2 kernels. Transcribe the
   step-2 expressions into triton.jit kernels wrapped as torch.library custom ops
   (fake-tensor shapes registered, backward registered, NO atomics in dL/dx / dL/dy;
