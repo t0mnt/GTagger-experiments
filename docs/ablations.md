@@ -94,6 +94,25 @@ ParT pairwise-bias features, PE/SE, depth) live in `todo.md` §3 and are not rep
   `dropout_p` on stock lgatr too. Only the *pure* LGATr/Transformer taggers default to the
   xformers backend, which needs a `dropout_p`→`p` rename upstream (flex/varlen have no
   dropout at all — small lgatr+lloca PRs, drafted in the campaign notes).
+- **ParticleNet multi-scale fusion, `model.net.use_fusion=true`** (currently `false` in both
+  `tag_ParticleNetParTGraphTrans` and the `tag_particlenet` reference). Off, the transformer
+  half receives only the LAST EdgeConv block's output (256 ch). On, ParticleNet's original
+  fusion block concatenates EVERY block's output and 1x1-convs it down —
+  `[64,128,256] → concat 448 → clip((448//128)*128, 128, 1024) = 384 ch` — so the GNN half
+  hands over multi-scale features instead of its deepest ones alone.
+  Not free and not config-only in effect: it adds the fusion conv + BN and WIDENS the bridge
+  input 256 → 384, so parameters and the bridge shape both move. Treat it as a capacity
+  ablation, not a switch, and report the parameter count beside it.
+  Motivation: the local branch is where a GraphTrans hybrid's inductive bias lives, and its
+  early blocks see a different receptive field than its last. Cheap to run (one override on a
+  3.1 h top-tagging job) and it targets the GNN→transformer interface, which is the part of
+  the architecture the hybrids actually introduce.
+  **Applies unchanged to future Clifford-based models** (undisclosed follow-on work): the knob
+  is a property of the *stacked-local-branch → bridge* pattern, not of EdgeConv, so any model
+  that stacks equivariant message-passing blocks before a global stage inherits the same
+  choice — hand the bridge the last block's features, or all of them fused. Worth deciding
+  deliberately there rather than defaulting, since the fused variant is what the original
+  ParticleNet shipped.
 - `num_heads` 4/8/16; `head_scale` off; `multi_query` on (L-GATr attention).
 - `head_layers` 1/2/3 for the SAN-style GPS heads; unify their GELU (equivariant) vs ReLU
   (non-equivariant) activation.
