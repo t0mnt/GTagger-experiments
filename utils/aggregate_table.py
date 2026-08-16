@@ -31,22 +31,87 @@ from glob import glob
 COLUMNS = {
     # toptagging / toptagxl (binary): the TaggingExperiment row format
     "toptagging": (
-        r"model & frames & iters & params & accuracy & AUC & "
-        r"$1/\epsilon_B$(0.3) & (0.5) & (0.8) & time & FLOPs & kNN"
+        r"model & frames & iters & jets & params & accuracy & AUC & "
+        r"$1/\epsilon_B$(0.3) & (0.5) & (0.8) & time(h) & FLOPs & kNN"
     ),
     "toptagxl": (
-        r"model & frames & iters & params & accuracy & AUC & "
-        r"$1/\epsilon_B$(0.3) & (0.5) & (0.8) & time & FLOPs & kNN"
+        r"model & frames & iters & jets & params & accuracy & AUC & "
+        r"$1/\epsilon_B$(0.3) & (0.5) & (0.8) & time(h) & FLOPs & kNN"
     ),
     # jctagging (10-class): per-class rejections. Column set MUST match
     # TaggingExperiment._log_table_row's output exactly (... & time & FLOPs & kNN) --
     # a legend narrower than the row silently mislabels every column after the gap.
     "jctagging": (
-        r"model & frames & iters & params & accuracy & AUC(ovo) & "
+        r"model & frames & iters & jets & params & accuracy & AUC(ovo) & "
         r"$1/\epsilon_B$: HBB & HCC & HGG & H4Q & HQQL & TBQQ & TBL & WQQ & ZQQ & "
-        r"time & FLOPs & kNN"
+        r"time(h) & FLOPs & kNN"
     ),
 }
+
+
+def training_batchsize(run_dir):
+    """`training.batchsize` from a run's config.yaml, or None.
+
+    Scoped to the `training:` block on purpose: the dump also carries
+    `evaluation.batchsize` (2048 in the tagging configs), and a bare
+    `^\s*batchsize:` search matches whichever comes first. Regex rather than
+    OmegaConf because this module is stdlib-only -- that is what lets it run on a
+    login node's system python without the container.
+    """
+    try:
+        with open(os.path.join(run_dir, "config.yaml")) as f:
+            txt = f.read()
+    except OSError:
+        return None
+    blk = re.search(r"^training:\n((?:[ \t]+.*\n)*)", txt, re.M)
+    if blk is None:
+        return None
+    m = re.search(r"^\s+batchsize:\s*(\d+)", blk.group(1), re.M)
+    return int(m.group(1)) if m else None
+
+
+def seconds_to_hours(cell):
+    """Rewrite a train-time cell from seconds to hours, pooled or not.
+
+    `9415s` -> `2.61h`; `$9415.0 \\pm 12.3$s` -> `$2.61 \\pm 0.00$h`. Anything that
+    matches neither form is returned untouched rather than mangled.
+    """
+    m = re.fullmatch(r"\$(-?[\d.]+) \\pm (-?[\d.]+)\$s", cell)
+    if m:
+        return f"${float(m.group(1)) / 3600:.2f} \\pm {float(m.group(2)) / 3600:.2f}$h"
+    m = re.fullmatch(r"(-?[\d.]+)s", cell)
+    if m:
+        return f"{float(m.group(1)) / 3600:.2f}h"
+    return cell
+
+
+def _sole(values):
+    """The single value in a set, or None if it is empty, unknown, or contradictory."""
+    if not values:
+        return None
+    clean = {v for v in values if v is not None}
+    return clean.pop() if len(clean) == 1 else None
+
+
+def augment_row(row, batchsize):
+    """Add a `jets seen` cell after `iters`, and put the train time in hours.
+
+    Applied at RENDER time, after pooling, so no column index used by the invariant
+    check or the averaging shifts. jets = iters x batchsize, which is the fair-budget
+    number (equal epochs, not equal steps): a batch-512 row and a batch-128 row with
+    4x the iterations have seen the SAME data, and the iters column alone hides that.
+    Falls back to `n/a` when the batchsize is unknown or the trials disagree on it,
+    rather than guessing.
+    """
+    cells = [c.strip() for c in row.split("&")]
+    if len(cells) >= 3:  # ... & time & FLOPs & kNN -- time is always third from the end
+        cells[-3] = seconds_to_hours(cells[-3])
+    jets = "n/a"
+    m = re.match(r"^\s*(\d+)", cells[2]) if len(cells) > 2 else None
+    if m is not None and batchsize:
+        jets = f"{int(m.group(1)) * batchsize / 1e6:.1f}M"
+    cells.insert(3, jets)
+    return " & ".join(cells)
 
 
 def latest_row(run_dir, split):
@@ -179,6 +244,7 @@ def main():
     # variant the row with the NEWEST log mtime wins (run-dir names carry a random
     # suffix, so lexicographic path order says nothing about which run is current).
     rows = {}  # key -> (mtime, row, run_dir)
+    batchsizes = {}  # key -> {training.batchsize}; a set, so disagreement is visible
     for d in run_dirs:
         row, mtime = latest_row(d, args.split)
         if row is None:
@@ -199,6 +265,7 @@ def main():
         # columns -> group into SEPARATE tables keyed by the run's exp_type
         key = (etype, model, frames, knn)
         rows.setdefault(key, []).append((mtime, row, d))
+        batchsizes.setdefault(key, set()).add(training_batchsize(d))
 
     # Trials of the same variant are INDEPENDENT run dirs (see GUIDE section 8) -- three
     # plain submissions, no warm start, no shared directory. Group them here and form
@@ -216,10 +283,13 @@ def main():
     etypes = sorted({k[0] for k in rows})
     tables = []
     for et in etypes:
-        body = " \\\\\n".join(rows[k][1] for k in sorted(rows) if k[0] == et) + " \\\\"
-        first = next(rows[k][1] for k in sorted(rows) if k[0] == et)
-        ncols = first.count("&") + 1
-        colspec = "l l r r " + "c " * max(0, ncols - 7) + "r r l"
+        keys = [k for k in sorted(rows) if k[0] == et]
+        # one batchsize per key, or None -> augment_row writes `n/a` rather than guessing
+        shown = [augment_row(rows[k][1], _sole(batchsizes.get(k))) for k in keys]
+        body = " \\\\\n".join(shown) + " \\\\"
+        ncols = shown[0].count("&") + 1
+        # model frames | iters jets params | metrics... | time flops | knn
+        colspec = "l l r r r " + "c " * max(0, ncols - 8) + "r r l"
         legend = COLUMNS.get(et, " & ".join(["col"] * ncols))
         tables.append(
             f"% task: {et}\n"
