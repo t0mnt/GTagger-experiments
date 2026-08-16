@@ -10,6 +10,7 @@ from experiments.baselines.cgenn.gp import SteerableGeometricProductLayer
 from experiments.baselines.cgenn.linear import MVLinear
 from experiments.baselines.cgenn.mvlayernorm import MVLayerNorm
 from experiments.baselines.cgenn.mvsilu import MVSiLU
+from experiments.baselines.cgenn.sorted_gather import sorted_gather
 
 
 def get_invariants(algebra, input):
@@ -280,11 +281,14 @@ class CGLayer(nn.Module):
     def forward(self, h, x, edges, node_attr_h, node_attr_x, edge_attr_h, edge_attr_x,
                 edge_counts=None):
         i, j = edges
-        m_x = self.message_x(x[i], x[j], edge_attr_x)
+        # receiver gathers: BIT-identical forward, deterministic segment-sum backward
+        # (sorted_gather; i is sorted and edge_counts is its degree vector -- 2.2a/2.2b's
+        # own invariant). Sender gathers x[j]/h[j] keep plain autograd (j unsorted).
+        m_x = self.message_x(sorted_gather(x, i, edge_counts), x[j], edge_attr_x)
         m_invariants = get_invariants(self.algebra, m_x).flatten(1)
 
         if h is not None:
-            m_h = self.message_h(h[i], h[j], m_invariants, edge_attr_h)
+            m_h = self.message_h(sorted_gather(h, i, edge_counts), h[j], m_invariants, edge_attr_h)
         else:
             m_h = None
 

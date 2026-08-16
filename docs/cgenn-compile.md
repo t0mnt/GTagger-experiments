@@ -3011,6 +3011,26 @@ resubmit (minutes old), so the jc table stays uniform.
    battery; the CGENN rows need one 15-min GPU gate day before launch. Launch the
    five non-CGENN top rows immediately; hold tag_cgenn + the two CGENN hybrids for
    the gate.
+
+   *Executed (same day):* `experiments/baselines/cgenn/sorted_gather.py`, wired at
+   the two receiver gathers (`x[i]`, `h[i]`) of both CGL twins (the GPS layer
+   delegates to the hybrid's CGL, so all three CGENN-family models are covered);
+   senders keep plain autograd. Gates green:
+   tests/experiments/test_sorted_gather.py — BIT forward, backward vs autograd
+   1e-13 fp64 incl. exact-zero rows for zero-degree nodes, gradcheck +
+   gradgradcheck, fallback paths (counts=None and the kill switch), compiled 0
+   breaks / <=2 graphs over three shapes with 1e-13 compiled-vs-eager grads; plus
+   the model-level BACKWARD-TOL and full compile battery re-run with the feature
+   ACTIVE (dynamo_explain re-recorded — graph gains the Function; invariants stand).
+   **GPU GATE DAY for the three CGENN rows (~15 min, then launch):**
+
+       CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 CGENN_SMOKE_STEPS=100 \
+       python -m pytest tests/experiments/test_training_smoke.py \
+           -k "cgenn or CGENNLGATr" -q
+       # optional pricing: python utils/profile_sync.py -cn toptagging model=tag_cgenn \
+       #     save=false data.dataset=mini training.batchsize=64
+       # revert switch if anything is off: CGENN_SORTED_GATHER=0 (env, no code change)
+
 2. **eta_min** (above) — free at the boundary, uniform, ~0.03pp-class upside.
 
 **DON'T — closed forever, with reasons:**
