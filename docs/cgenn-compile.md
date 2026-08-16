@@ -3132,6 +3132,33 @@ adopts and time remains; the contraction arm alone targets the measured GP share
   meta-shape tests, and a CUDA-gated parity test file. OPERATOR: one pastable
   command running GPU parity (vs einsum ref, fp32+fp64), determinism pair-run, and
   a microbenchmark vs the blockdiag contraction at campaign shapes.
+
+  *CPU SIDE DONE (2026-08-16); GPU ROUND-TRIP PENDING — the step's hard stop.*
+  `flash_kernels_p1m3.py`: `cgenn_flash::fcgp` custom op — the fc contraction, the
+  shipped hot path (gpmlp-only dim-2 out of scope, stated). No transcription
+  happened at all: the kernels call `triton.jit(flash_ref_p1m3._wgp_fwd/_wgp_grad)`
+  — flash-kingdon's trick — so the 3e-16-gated reference IS the kernel body.
+  Forward: one program per (row-block, m), n-loop register accumulation
+  (flash-clifford's fc shape). Backward: one program per (row-block, n), m-loop for
+  gx/gy, dL/dw per-(block, m, n) partial slots + a torch `.sum(0)` stage-2 — the
+  stated departure from flash-clifford's `tl.atomic_add`. CPU composite (the
+  reference wrappers) registered for the op so wiring is fully gated without a GPU:
+  `torch.library.opcheck`, fwd 2.8e-16 and all grads ~2e-16 vs the shipped
+  expression, dynamo 0 breaks through the op — 5/5 green. Residual GPU-day risk is
+  ONLY kernel-internal (trace-time Triton semantics, register pressure at
+  BLOCK 64/32) — wiring cannot be the failure. Audit fixes landed with this step:
+  regeneration pin now stamps + checks BOTH kingdon and sympy versions (would have
+  misfired on the container's different sympy), and the codegen-mechanism deviation
+  is stated in the generated header.
+
+  **OPERATOR — the step-3 GPU round-trip (paste results back):**
+
+      git pull origin main
+      pip install kingdon==2.1.1   # venv, one-time (conventions test; kernels don't need it)
+      python -m pytest tests/experiments/test_flash_kernels_cuda.py -q -s
+
+  Expected: parity fp64<=1e-13 / fp32<=1e-5, DET bit-equal pair-run, three
+  BENCH-FLASH lines vs blockdiag (the step-4 race inputs). Paste the full output.
 - **Step 4 (mixed):** F3+F4 wiring and the race. `gp_impl=flash` behind the existing
   knob (CUDA-only guard, eager+compiled through the custom op); full gate battery
   (BREAKS/RECOMP/TOL/DET + soak) on the operator's GPU; then the adopt-or-close

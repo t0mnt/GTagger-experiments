@@ -118,12 +118,17 @@ HEADER = '''"""Cl(1,3) weighted geometric product -- GENERATED, DO NOT EDIT.
 
 Generator: utils/flash_gen.py (FLASH PLAN v2 step 2), terms sourced from kingdon
 {kver} (`Algebra(1, 3)` blade products; MIT, arXiv:2503.10451) and asserted against
-this repo's `CliffordAlgebra` cayley + `sparse_gp_tables` at generation time.
-Weight order = the repo's 35-entry compact-path order: checkpoint-compatible with
-every sparse-GP weight tensor. Flat arithmetic bodies (flash-clifford kernel style)
-so step 3 transcribes them into `triton.jit` mechanically; the torch wrappers below
-are the CPU reference / parity twin. Gates: tests/internal/test_flash_ref_p1m3.py.
+this repo's `CliffordAlgebra` cayley + `sparse_gp_tables` at generation time; the
+expression assembly, differentiation and CSE run in sympy {sver} (a stated deviation
+from kingdon's own compile() printer pipeline -- sourcing terms from the product
+algebra keeps kingdon the mathematical authority while the repo controls weight
+order and emission style). Weight order = the repo's 35-entry compact-path order:
+checkpoint-compatible with every sparse-GP weight tensor. Flat arithmetic bodies
+(flash-clifford kernel style) so step 3 wraps them with `triton.jit` directly
+(flash-kingdon's trick); the torch wrappers below are the CPU reference / parity
+twin. Gates: tests/internal/test_flash_ref_p1m3.py.
 """
+# generated-with: kingdon={kver} sympy={sver}
 
 import torch
 
@@ -154,13 +159,14 @@ def wgp_grads(x, y, w, go):
 
 def main():
     kver = importlib.metadata.version("kingdon")
+    sver = importlib.metadata.version("sympy")
     args, fwd, gx, gy, gw = _build_expressions()
     x, y, w, g = args
 
     fwd_src, n_fwd = _emit_function("_wgp_fwd", (*x, *y, *w), fwd, "_f")
     grad_src, n_grad = _emit_function("_wgp_grad", (*x, *y, *w, *g), (*gx, *gy, *gw), "_b")
 
-    src = HEADER.format(kver=kver) + fwd_src + "\n\n" + grad_src + WRAPPERS
+    src = HEADER.format(kver=kver, sver=sver) + fwd_src + "\n\n" + grad_src + WRAPPERS
     with open(OUT_PATH, "w") as fh:
         fh.write(src)
     print(f"wrote {OUT_PATH}")

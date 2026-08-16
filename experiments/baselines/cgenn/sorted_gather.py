@@ -22,7 +22,8 @@ breaks/recomp); the model-level BACKWARD-TOL and compile batteries run with this
 active by default.
 
 KILL SWITCH: CGENN_SORTED_GATHER=0 reverts to plain `x[idx]` (the shield pattern) --
-one env var, no code change, for the GPU gate day.
+one env var, no code change, for the GPU gate day. Read ONCE at import: set it in the
+environment before the process launches (as the runbook does), not mid-process.
 """
 
 import os
