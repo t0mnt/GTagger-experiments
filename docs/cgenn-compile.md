@@ -2936,6 +2936,13 @@ Residual limitations, acknowledged not fixed: mtime is fragile across rsync/copi
 and the invariant comparison is string-exact (a formatter change would refuse pooling
 — conservative direction, visible note).
 
+Addendum, same day: 0d4e70f (jets-seen column + train time in hours) reviewed on
+arrival — correctly layered (render-time `augment_row` AFTER `_consolidate`, so no
+invariant/averaging index shifts; jets falls back to `n/a` when trial batchsizes
+disagree), and the five guard pins pass against it unchanged. One watch-item: the
+jets parser reads leading digits of the iters cell (`^\s*(\d+)`), so eyeball the
+first real table for a k-formatted iters cell misparsing (48k -> 48 jets-seen).
+
 ### Scheduler verdict for the GT table at 20 epochs (2026-08-16, theory review)
 
 Question: best schedule for the GT hybrids (GraphTrans + GPS families), 20 epochs,
