@@ -26,8 +26,16 @@ CUDA only in effect: on CPU the search is a no-op and reports the configured siz
 import argparse
 import os
 import sys
+import warnings
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Dynamo warns once PER TRACED CALL SITE PER COMPILE about lru_cache-wrapped functions
+# (lgatr/primitives/{bilinear,linear}.py -- cached `.to(...)` of constant basis tensors,
+# the benign pure case; compiled-vs-eager TOL and DET gates pin the soundness). Over a
+# multi-model sizing pass that is thousands of identical lines drowning the numbers this
+# tool exists to print. "once" keeps a single instance visible rather than hiding it.
+warnings.filterwarnings("once", message=".*functools.lru_cache.*")
 
 import hydra
 import torch

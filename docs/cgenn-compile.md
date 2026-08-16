@@ -2943,6 +2943,47 @@ disagree), and the five guard pins pass against it unchanged. One watch-item: th
 jets parser reads leading digits of the iters cell (`^\s*(\d+)`), so eyeball the
 first real table for a k-formatted iters cell misparsing (48k -> 48 jets-seen).
 
+### Batch sizes MEASURED and shipped (H100 NVL, 2026-08-16) — and why pending speedups don't invalidate them
+
+find_bs first full pass (own-recipe compose, shipped compile posture, worst-case
+probe, 512 ceiling): **512 for seven rows, 256 for CGENNLGATrGraphGPS** (69.7 GB peak
+at 256 with activation budget 0.5 — consistent with bperf's independent 256 finding).
+All eight values are pasted into the top_ yamls; every row now passes the sweep guard
+and the queue is launchable at lr 1e-3. Note LorentzNetLGATrSlimGraphGPS runs 78.7 GB
+at 512 (~84% of the card) — sized against the worst-case probe, so real batches sit
+below it; do not move these rows to a smaller card without re-running find_bs.
+CGENN-GPS trains at 256 with the table lr 1e-3: readings were measured at 512, but the
+optimum's ~2x-flat basin comfortably covers a 2x batch reduction (sqrt-scaling purism
+would say ~7e-4; comparability keeps 1e-3).
+
+**Do pending speedups outdate these sizes? No, for the campaign.** SortedGather
+changes the backward KERNEL, not what autograd retains — peak unmoved. The gp_impl
+question concerns tag_cgenn (a baseline outside these eight), and its compiled-path
+retention is ~equal across impls anyway. eta_min/scheduler/TF32 touch no memory.
+The two things that WOULD move memory are both post-campaign and both re-measured by
+design: flash fusion (removes intermediates — batches could only grow, so today's
+values err safe; F4's gate includes a vram row) and bucketing (pads wider — its plan
+already includes re-sizing). One command re-derives everything if ever in doubt:
+`python utils/find_bs.py`.
+
+### Warning triage (2026-08-16): the Dynamo lru_cache wall is benign — and now deduplicated
+
+The hundreds-of-lines warning during compiled sizing/sweeps is Dynamo noting it
+traces THROUGH `functools.lru_cache` wrappers. Source located: lgatr's
+`primitives/{bilinear,linear}.py` — cached `.to(device/dtype)` helpers over
+module-level CONSTANT basis tensors, i.e. pure functions of immutable state, exactly
+the case where trace-through is sound. The warning is generic ("may not be sound if
+it reads outside state"); ours reads none, and the compiled-vs-eager TOL (<=1e-10),
+DET (bit-equal repeat calls), and hybrid-pin gates are the machine check of that
+soundness. It fires once per traced call site per compile, hence the wall.
+find_lr/find_bs now install `warnings.filterwarnings("once", ...)` for that message —
+one visible instance instead of thousands, no blanket suppression. Also from the same
+log: the inductor TF32 hint is the EXPECTED reminder of the deliberate
+`highest` pin (a recorded table-wide pending decision, not an oversight); the
+`torch._prims_common.check` FutureWarning is torch-internal; and the GradScaler
+FutureWarning is fixed at the source (`torch.amp.GradScaler("cuda", ...)`, same
+class, identical behavior).
+
 ### Scheduler verdict for the GT table at 20 epochs (2026-08-16, theory review)
 
 Question: best schedule for the GT hybrids (GraphTrans + GPS families), 20 epochs,

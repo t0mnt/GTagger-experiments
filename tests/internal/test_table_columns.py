@@ -24,8 +24,11 @@ REPO = Path(__file__).resolve().parents[2]
 
 # experiments/tagging/experiment.py::_log_table_row always emits, in order:
 #   model & frames & iters & params & <task metrics...> & time & flops & knn
-LEADING = ["model", "frames", "iters", "params"]
-TRAILING = ["time", "flops", "knn"]
+# and aggregate_table.augment_row (0d4e70f) bridges that RAW row to the RENDERED one
+# the legend describes: `jets` inserted after iters, the time cell rewritten to hours.
+# The legend must therefore frame the AUGMENTED row -- raw + exactly those two edits.
+LEADING = ["model", "frames", "iters", "jets", "params"]
+TRAILING = ["time(h)", "flops", "knn"]
 
 
 def _cells(legend):

@@ -52,39 +52,60 @@ def _run(overrides):
         gen.close()
 
 
+import contextlib
+
+
+@contextlib.contextmanager
+def _unswept_recipe():
+    """A temporary recipe carrying `???` for batchsize and lr.
+
+    Since the 2026-08-16 table-wide fill (lr 1e-3 + measured batchsizes) NO shipped
+    top_* recipe is unswept anymore -- which is the guard succeeding, not the guard
+    becoming untestable. These tests manufacture the on-disk unswept state instead of
+    borrowing a shipped file whose swept-ness is a campaign decision, not a fixture."""
+    path = CONFIG / "training" / "top_ZZZSweepGuardFixture.yaml"
+    path.write_text(
+        "# test fixture (auto-deleted): the unswept state the guard exists to refuse\n"
+        "defaults:\n  - tag_gts_and_friends_default\n\nbatchsize: ???\nlr: ???\n"
+    )
+    try:
+        yield "top_ZZZSweepGuardFixture"
+    finally:
+        path.unlink()
+
+
 def test_unswept_recipe_is_refused():
     """FIRES: the whole point — 512/1e-3 in the results table is worse than a dead launch."""
-    with pytest.raises(SystemExit) as exc:
-        _run(["model=tag_PlainGraphGPS", "training=top_PlainGraphGPS", "save=false"])
+    with _unswept_recipe() as name:
+        with pytest.raises(SystemExit) as exc:
+            _run(["model=tag_PlainGraphGPS", f"training={name}", "save=false"])
     msg = str(exc.value)
-    assert "top_PlainGraphGPS.yaml" in msg
+    assert f"{name}.yaml" in msg
     assert "batchsize" in msg and "lr" in msg
 
 
 def test_command_line_values_count_as_filled():
     """CLI: overriding on the command line is a legitimate way to supply the value."""
-    _run([
-        "model=tag_PlainGraphGPS",
-        "training=top_PlainGraphGPS",
-        "training.batchsize=256",
-        "training.lr=3e-4",
-        "save=false",
-    ])
+    with _unswept_recipe() as name:
+        _run([
+            "model=tag_PlainGraphGPS",
+            f"training={name}",
+            "training.batchsize=256",
+            "training.lr=3e-4",
+            "save=false",
+        ])
 
 
 def test_partial_override_still_refuses_the_rest():
-    """CLI: filling one key must not excuse the other.
-
-    Since the 2026-08-16 table-wide lr decision every top_<hybrid>.yaml ships
-    lr: 1e-3, so the live unswept key on this recipe is batchsize -- the CLI
-    supplies lr and the guard must still refuse for batchsize."""
-    with pytest.raises(SystemExit) as exc:
-        _run([
-            "model=tag_PlainGraphGPS",
-            "training=top_PlainGraphGPS",
-            "training.lr=1e-3",
-            "save=false",
-        ])
+    """CLI: filling one key must not excuse the other."""
+    with _unswept_recipe() as name:
+        with pytest.raises(SystemExit) as exc:
+            _run([
+                "model=tag_PlainGraphGPS",
+                f"training={name}",
+                "training.lr=1e-3",
+                "save=false",
+            ])
     listed = str(exc.value).split("unswept keys: ")[1].split(".")[0]
     assert listed == "batchsize", listed  # not the key already supplied on the command line
 

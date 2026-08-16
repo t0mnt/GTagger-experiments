@@ -144,10 +144,17 @@ long job.
 import os
 import sys
 import time
+import warnings
 
 # living in utils/, the repo root is no longer the script dir (= sys.path[0]);
 # put it back so the `experiments` package resolves without needing an install
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Dynamo's lru_cache warning fires once per traced call site per compile (source:
+# lgatr's cached constant-basis `.to(...)` helpers -- the benign pure case, soundness
+# pinned by the compiled-vs-eager TOL/DET gates). A compiled-model sweep emits it
+# hundreds of times; "once" keeps a single visible instance instead of a wall.
+warnings.filterwarnings("once", message=".*functools.lru_cache.*")
 
 import hydra
 import numpy as np

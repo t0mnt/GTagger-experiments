@@ -12,7 +12,7 @@ import torch
 import torch.distributed as dist
 from hydra.utils import instantiate
 from omegaconf import OmegaConf, errors, open_dict
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler
 from torch_ema import ExponentialMovingAverage
 
 import experiments.logger
@@ -696,7 +696,9 @@ class BaseExperiment:
 
     def _init_scaler(self):
         use_amp = OmegaConf.select(self.cfg.model, "use_amp", default=False)
-        self.scaler = GradScaler(enabled=use_amp)
+        # torch.amp.GradScaler("cuda", ...) is the same class the deprecated
+        # torch.cuda.amp alias wrapped -- identical behavior, silences the FutureWarning
+        self.scaler = GradScaler("cuda", enabled=use_amp)
 
         if self.warm_start and self.warm_load and use_amp:
             model_path = os.path.join(
