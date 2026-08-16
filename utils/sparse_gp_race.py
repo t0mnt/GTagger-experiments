@@ -21,9 +21,17 @@ otherwise the einsum stays and this question CLOSES for the campaign.
 """
 import torch
 
+# Campaign posture: the repo trains with matmul precision "highest" (no TF32), so
+# the race must be run under the same setting -- an unpinned probe on NGC images
+# (which default this to a TF32-enabled mode) hands the GEMM-shaped challengers a
+# TF32 speedup the shipped model would never see, and the ~3e-04 rel-vs-einsum
+# error of such a run is the tell. The 2026-08-15 first run had exactly that tell.
+torch.set_float32_matmul_precision("highest")
+
 nb = 16
 dev = "cuda" if torch.cuda.is_available() else "cpu"
-print(f"torch {torch.__version__} | device {dev}"
+print(f"torch {torch.__version__} | device {dev} | "
+      f"float32_matmul_precision={torch.get_float32_matmul_precision()}"
       + ("" if dev == "cuda" else "  (CPU: numbers are NOT the decision input)"))
 
 

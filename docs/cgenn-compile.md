@@ -2635,6 +2635,69 @@ posture-vs-environment, and the finding graduates to its own investigation. Do N
 transcribe today's pair either way: it fails the tool's own >10x rule (37x) with no
 interior minimum, which per the docstring remedy means neither number is a recipe.
 
+### Gate day, round 4 — H100, 2026-08-16: 2.2b priced (KEEP), GPS β-PERF lands, race sent back once
+
+All three commands ran on the campaign card (`lgouskos-h100-gcondo`, H100 NVL, NGC 25.08).
+
+**1. profile_sync: the scatter kernel did NOT disappear — and the reason rewrites the
+round-3 expectation, not the 2.2b verdict.** tag_cgenn 251 ms/step with
+`triton_poi_fused_index_put_mul_new_zeros` at 27.88%; GPS 1448 ms/step with the same
+kernel at 22.65% — statistically unchanged vs round 2, and NO segment_reduce kernel in
+either hot table. The round-3 prediction ("the scatter kernel should be gone from both
+tables") was WRONG, for a mechanism now machine-verified locally:
+
+- **Inductor never lowers segment_reduce.** Both torch 2.13 and torch 2.8 register
+  `make_fallback(aten.segment_reduce.default)` (and its backward) in
+  `_inductor/lowering.py` — the op always runs as an extern ATen kernel call, so it
+  can never appear as a Triton kernel in the table. TORCH_COMPILE_DEBUG output-code
+  checks on both local versions confirm the call survives (no decomposition back to
+  scatter: 17 and 14 `segment_reduce` mentions, 0 `index_put`/`scatter`, forward graph).
+- **The hot Triton kernel is the BACKWARD of the edge gathers, which no forward-side
+  rewrite touches.** A gather+segment-mean toy compiled fwd+bwd shows the forward
+  output code has ZERO index_put/scatter while the backward has the index_put
+  scatter-add — the autograd of `x[recv]` (index_select backward) scattering edge
+  gradients into node slots, fused with the chain-rule `mul` and the `new_zeros`
+  grad buffer: exactly the kernel name on the H100 table. That backward scatter
+  existed before 2.2b, was never its target, and dominates the scatter share.
+
+**2.2b verdict: KEEP.** The revert condition was "slower"; compiled-mode cost is
+~neutral (the forward aggregation it replaced was never the hot scatter), the eager
+path measurably won on it (round-2 numbers stand), and the FORWARD aggregation is now
+deterministic on CUDA. The docs' determinism claim stays scoped to the forward — the
+gather-backward atomics were non-deterministic before 2.2b and remain so.
+
+*Post-campaign candidate recorded (NOT for now — it changes gradient arithmetic, so
+campaign-frozen):* receivers are provably sorted (tests/experiments/test_edge_builders.py),
+so the recv-side gathers could use a custom `SortedGather` autograd Function whose
+backward is a `segment_reduce` sum instead of atomic scatter-add — removing the
+27.9%/22.7% kernel AND making those gradients deterministic. Send-side gathers
+(`x[i_send]`, unsorted) keep atomics either way.
+
+Step-wall drift note: tag_cgenn ~251 ms/step vs round 2's reading (~10% apart) with
+an unchanged kernel mix — treated as run-to-run/thermal noise, not a regression signal.
+
+**2. GPS β-PERF row COMPLETE.** With `activation_memory_budget: 0.5` in the model
+yaml the round-2 OOM is gone: bs256, eager 0.17 it/s → compiled 0.56 it/s,
+**3.203×**, `compile: true` verdict. The budget-0.5 adoption stands (the escape-hatch
+comment's trigger fired and this run closes it).
+
+**3. sparse_gp_race: first run VOIDED on numerics, probe fixed, one 2-minute rerun
+owed.** The NGC run read blockdiag at 0.22-0.25× of einsum (ADOPT-candidate bar met;
+ctg-bmm stays un-adopted) — but the challengers' rel-vs-einsum error was 3.0-3.5e-04,
+which is the TF32 signature, not fp32 (CPU control: ~5e-07). The probe did not pin
+`float32_matmul_precision`, and NGC images default it TF32-enabled — so the einsum
+raced in fp32 while the GEMM respellings got TF32 Tensor-Core throughput the shipped
+model (repo pins "highest") would never see. Under the campaign's own rule — precision
+is not a knob applied unfairly to one arm — the 4× is not a clean verdict.
+`utils/sparse_gp_race.py` now pins `torch.set_float32_matmul_precision("highest")`
+and prints the setting; rerun in the container after a pull:
+
+    python utils/sparse_gp_race.py
+
+If the pinned run still clears >10% at every shape, blockdiag is adopted into
+`sparse_gp_expression` (TOL class, fixtures re-recorded); if not, the einsum stays
+and the question closes. This is the last open measurement of the in-campaign scope.
+
 ### Workflow: are the gates a fair check for this program? Assessment and the additions
 
 What exists and suffices: the BIT/TOL/DET class taxonomy with gates per class; β-PERF for
