@@ -2685,10 +2685,12 @@ comment's trigger fired and this run closes it).
 owed.** The NGC run read blockdiag at 0.22-0.25× of einsum (ADOPT-candidate bar met;
 ctg-bmm stays un-adopted) — but the challengers' rel-vs-einsum error was 3.0-3.5e-04,
 which is the TF32 signature, not fp32 (CPU control: ~5e-07). The probe did not pin
-`float32_matmul_precision`, and NGC images default it TF32-enabled — so the einsum
-raced in fp32 while the GEMM respellings got TF32 Tensor-Core throughput the shipped
-model (repo pins "highest") would never see. Under the campaign's own rule — precision
-is not a knob applied unfairly to one arm — the 4× is not a clean verdict.
+`float32_matmul_precision`, and NGC images default it TF32-enabled — both arms ran
+under that mode (the einsum's bmm slices are TF32-eligible too), but TF32 accelerates
+one flat Tensor-Core-shaped GEMM far more than 16 thin bmm slices, inflating the
+ratio with a speedup the shipped model (repo pins "highest") never sees on either
+arm. Under the campaign's own rule — precision is not a knob applied unfairly, and
+here it also distorts the comparison itself — the 4× is not a clean verdict.
 `utils/sparse_gp_race.py` now pins `torch.set_float32_matmul_precision("highest")`
 and prints the setting; rerun in the container after a pull:
 
@@ -2704,8 +2706,10 @@ and the question closes. This is the last open measurement of the in-campaign sc
 2026-08-16): blockdiag 0.76x / 0.72x / 0.81x of einsum — clears the >10%-everywhere
 bar with clean fp32 numerics (rel 5.8e-07 to 1.0e-06, no TF32 tell). ADOPTED.**
 ctg-bmm read 0.93-0.98x and stays un-adopted; the un-pinned run's 4x was indeed
-TF32 vapor (0.22-0.25x collapsed to 0.72-0.81x once precision was pinned — the
-einsum recovered 15-23 ms/call of the difference). The question is CLOSED.
+TF32 vapor (0.22-0.25x collapsed to 0.72-0.81x once precision was pinned: turning
+TF32 off cost blockdiag 0.9/11.8/22.3 ms/call across the three shapes vs the
+einsum's 0.3/3.9/1.7 -- the flat GEMM was the arm TF32 had been flattering).
+The question is CLOSED.
 
 What shipped (commit of this entry):
 
