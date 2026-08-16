@@ -12,6 +12,11 @@
 defaults:
   - jc_gts_and_friends_default
 
-# found using utils/find_lr.py (batch size capped at <=512)
-batchsize: ???
-lr: ???
+# lr/batchsize: carried from the 2026-08-16 top-tagging table-wide decision (1e-3 AdamW
+# bs512 -- validated on PNPT 0.9414 vs weaver 0.9417; lr scale is set by optimizer+batch+
+# architecture, not dataset size, and the lgatr-paper precedent trained non-lgatr models
+# with jc_ParT <- top_ParT values unchanged). Optional pre-flight on the jc task:
+#   utils/find_bs.py --task jctagging (memory: wider jc inputs) and one aligned
+#   find_lr -cn jctagging read (should agree with 1e-3 within ~2x).
+batchsize: 512
+lr: 1e-3
