@@ -3177,6 +3177,40 @@ the math pre-verified and by a torch-reference twin for every kernel so GPU pari
 failures localize); expect 2-3 operator GPU round-trips across steps 3-4. The CGENN
 rows launch a few days late; the operator has accepted that trade explicitly.
 
+### Scheduler bake-off MEASURED (PNPT, 6 arms, n=1 each, 2026-08-16): STICK with CosineAnnealingWarmup
+
+Operator ran all six schedulers at lr 1e-3 / bs 512 / 20 epochs. Readings (test acc /
+rej0.3): OneCycle 0.9417/1803; **CosineAnnealingWarmup 0.9414/1771 (highest train acc
+0.9458)**; WarmRestarts 0.9413/1836 (best val 0.9408); flat+decay 0.9409/1771;
+"ReduceLROnPlateau" 0.9407/1530; CosineAnnealingLR 0.9405/1771. Verdict and grounds:
+
+- **KEEP CosineAnnealingWarmup — the FINAL marker stands.** The top four arms span
+  0.0004 test acc = exactly the measured two-seed spread at fixed config, and the
+  rejection spread (1771–1836) sits inside the measured 79-point seed noise. At n=1
+  nothing separates them; the incumbent is one of them, is the GraphGPS-family
+  precedent, and is what already-launched rows run.
+- **The two effects the table DOES support both endorse the incumbent.** (1) Warmup:
+  the cosine-vs-cosine+warmup pair is the cleanest single-variable measurement in the
+  set — +0.0009 acc (~3 sigma of single-run noise) for the 5% ramp, matching the
+  Adam-second-moment mechanism. (2) Annealing: the accidental constant-lr arm
+  (ReduceLROnPlateau, patience 50 vs 20 validations — operator-diagnosed as inert,
+  correctly) is the flat baseline, and every annealed arm beats it by 13–16%
+  REJECTION at near-equal accuracy. Any anneal buys the rejection; the shape barely
+  matters.
+- **OneCycle's headline is confounded and sub-noise**: `cycle_momentum` defaulted
+  True, so that arm cycled beta1 alongside lr (two variables), and its +0.0003 over
+  the incumbent is under seed spread. Its weaver-matching 0.9417 is coincidence, not
+  corroboration (weaver used flat+decay, 4th here). If post-table polish is ever
+  wanted: 3-seed OneCycle with `cycle_momentum=False` vs incumbent — recorded, not
+  scheduled.
+- **flat+decay's 4th place carries no external-validity alarm**: the top-tagging
+  variant is a coarse 6-step staircase (the 15-step smoothing is jc-gated,
+  base_experiment.py:666), and its low train acc (0.9428) says it under-optimized —
+  the published smooth version is a different arm than the one measured here.
+- WarmRestarts' best-rejection reading (1836, +2% over runner-up) is one seed inside
+  a 79-point noise band on the metric with 5x leverage — the one arm worth a second
+  seed IF any rerun budget appears; not otherwise.
+
 ### Scheduler verdict for the GT table at 20 epochs (2026-08-16, theory review)
 
 Question: best schedule for the GT hybrids (GraphTrans + GPS families), 20 epochs,
