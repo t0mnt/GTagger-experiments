@@ -476,7 +476,11 @@ def fcgp_bwd(x: torch.Tensor, y: torch.Tensor, weight: torch.Tensor,
 
 @fcgp_bwd.register_fake
 def _(x, y, weight, go):
-    return [torch.empty_like(x), torch.empty_like(y), torch.empty_like(weight)]
+    # contiguous_format: the real branches always return contiguous tensors, and a
+    # fake that inherits exotic input strides would misdescribe them to AOT (audit)
+    return [torch.empty_like(x, memory_format=torch.contiguous_format),
+            torch.empty_like(y, memory_format=torch.contiguous_format),
+            torch.empty_like(weight, memory_format=torch.contiguous_format)]
 
 
 def _backward(ctx, go):
