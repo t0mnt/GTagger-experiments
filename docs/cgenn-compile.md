@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**NEXT STEP: 0 — HALF-READ (GPS table in: mm = 77.7% → PRECISION RACE opened, see record; still owed: the tag_cgenn table from the same run + a 10-min re-profile at float32_matmul_precision=high)** ← state marker,
+**NEXT STEP: 0 COMPLETE — both tables read, same verdict (mm 74-78% on non-TC fp32). PRECISION RACE is the plan: run the 4 re-profiles (high / high+amp × both models), then re-decide the kernel on the new denominator** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3456,6 +3456,45 @@ success target ≥1.5x, else record why and close.
   the edge share RISES, so re-profile after the precision verdict before any
   kernel work. (3) The item()/sync surplus is a standing free-lunch candidate
   (~10-20% wall) — chase after precision lands.
+
+  *Step 0 COMPLETE — tag_cgenn half (bs128 compiled, median 410 ms/step wall,
+  CUDA 358 ms = 87% busy): same verdict, higher contrast.* `aten::mm` = **74.45%
+  of self-CUDA** (1.334 of 1.792 s, 156 calls/step), all on the same
+  `sm80_xmma f32f32` / `simt_sgemm` non-tensor-core kernels — at bs128 the
+  blockdiag GP contractions are 15-17 ms GEMMs, 4/step each. Edge-attributable
+  total ≈ 21%: scatter-backward 251.7 ms = 14.05% (4/step × 12.6 ms — this is
+  the compiled backward of the indexed reads INSIDE sparse_gp_expression, the
+  very thing the flash arm's bwd kernel eliminates), index_mul 4.2%, small
+  index/add/segment kernels the rest. Sync surplus here: ~353 aten::item/step
+  but only ~80 cudaStreamSynchronize/step and 87% CUDA-busy → ceiling ~13% on
+  this model (GPS's ~24% gap is the bigger prize); model forwards grep CLEAN of
+  host reads (the historical fixes hold), driver knowns ≈ 4/step, builder is
+  vectorized (1 implicit sync) — remaining attribution needs the chrome trace's
+  stack table, deferred until after precision. **FUSED-KERNEL CEILINGS, now
+  measured:** at today's denominator the kernel buys ~1.20x on tag_cgenn (kill
+  ~80% of the 21%) and ~1.13x on GPS — BELOW its own ≥1.5x success target: at
+  current precision the kernel is dead on both. Post-TF32 the denominator
+  shrinks ~2x and the edge share on tag_cgenn rises to ~44%, putting the kernel
+  back at ~1.4-1.5x (borderline) — so the kernel go/no-go is decided by the
+  post-precision re-profile, not before. A cheaper targeted alternative is
+  queued ahead of it: a scatter-free respelling of sparse_gp_expression's
+  BACKWARD (the 14% kernel), same TOL discipline as the forward blockdiag
+  respelling, a fraction of the fused kernel's cost. Also queued from the
+  step-0 readings, cheapest first: (a) inductor max-autotune on the precision
+  round-trip (TORCHINDUCTOR_MAX_AUTOTUNE=1 — triton TF32 GEMMs can beat cuBLAS
+  on the odd blockdiag shapes, and it retunes the scatter kernel); (b)
+  split-linear node-hoisting audit — any per-edge LINEAR over gathered node
+  features satisfies W[x_i;x_j;e] = (W_i x)|_i + (W_j x)|_j + W_e e, so those
+  mm's can run at node count (16x fewer rows) and gather after — per-site
+  audit, TOL/BIT per site; (c) validation overhead: the operator's own
+  PlainGPS log shows 1049 s val / 7531 s train ≈ 12% — subsampled-val
+  checkpoint selection + full val at end is config-only and worth days on
+  weeks-long jc rows; (d) DDP for the jc CGENN rows — the single biggest
+  wall-clock lever (×GPU count), currently unreachable (world_size always 1);
+  real wiring work + a SyncBN class-change decision on theta_h BatchNorm;
+  operator's call, scopable on request. NOT queued: bucketing (closed —
+  accuracy), padding-free BatchNorm surgery (faithfulness pin), TF32 in the
+  gate batteries (pins stay 'highest' by design).
 - **Step 1 (sandbox, CPU):** design freeze + generated math. Re-read the fc CGL
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
