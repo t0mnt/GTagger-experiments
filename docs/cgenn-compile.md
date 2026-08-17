@@ -3071,7 +3071,7 @@ resubmit (minutes old), so the jc table stays uniform.
 
 ### THE FLASH PLAN v2 (2026-08-16) — executable, step-driven, before any CGENN row trains
 
-**NEXT STEP: 5 — LAUNCH, after the FLASH-2 re-race (one GPU round-trip; record below)**  ← the state marker; each executed step advances it and records
+**NEXT STEP: 5 — LAUNCH (FLASH-2 re-race CLOSED ×2, verdict final; nothing pends on flash)**  ← the state marker; each executed step advances it and records
 results directly under its entry. The operator drives with "do step N, then audit";
 the sandbox has no GPU, so every step ends either CPU-verified or with the exact
 pastable GPU commands and a hard stop until the operator pastes results back.
@@ -3336,6 +3336,55 @@ adopts and time remains; the contraction arm alone targets the measured GP share
   other global is the `tl` module, which the #6 traceback itself shows resolving
   fine. Soak + race were never reached (`set -e`). **Round-trip #7, one
   allocation, same four commands** decides adopt-or-close.
+
+  *FLASH-2 VERDICT (2026-08-17, round-trip #7): **CLOSE — twice-confirmed, final.
+  Sparse stays; the CGENN rows are CLEARED TO LAUNCH with nothing pending on
+  flash.*** Gates first, all green: kernel 6/6 (parity/DET/bench unchanged, as a
+  name-only fix demands), compile battery 6/6 (the binding-name fix verified on
+  the NGC build end-to-end), soak 3/3 (losses 0.69→0.58 / 0.72→0.51 / 0.69→0.58,
+  100% nonzero-grad params). The race: sparse-compiled **313 jets/s** @128
+  (3.99x compile speedup) vs flash-compiled **329** @512 (1.11x) = **+5.1%**,
+  statistically the same as #5's +5.4%. SCIENCE OF THE NULL: #6 proved the
+  kernel is now EMBEDDED in inductor's generated module (the NameError came from
+  inside the embedding path) and #7 shows embedding recovered nothing — the
+  step-4 "opaque op blocks fusion" theory is REFUTED as the dominant mechanism.
+  The per-512-jet costs expose what actually binds: sparse-eager 6557 ms,
+  flash-eager 1724, sparse-compiled 1639, flash-compiled 1562. Three of four sit
+  on the SAME ~1.6 s floor — hand-fusing the GP (flash) and letting inductor
+  fuse the graph (sparse) are two routes to one destination, and stacking them
+  buys ~5-9% because (a) visibility ≠ fusibility: inductor cannot fuse
+  elementwise chains INTO or ACROSS a user kernel call, so the ~32 GP calls per
+  step still partition fusion regions the sparse arm keeps whole, and (b) the
+  compiled step is bounded by (E, C, 16) edge-tensor traffic plus the
+  activation stash, which neither arm reduces. COROLLARY, now measured twice:
+  the GP contraction is no longer a lever on this model — any further win must
+  REDUCE TRAFFIC, not speed math. Sender-gather (FLASH-2b): race-neutral as
+  predicted (both arms carry it; 313/329 vs #5's 314/331 = noise), kept for its
+  actual claim — deterministic gradients. Flash's standing, real win is memory:
+  0.146 vs 0.537 GB/jet (3.7x), the in-tree escape hatch if a bigger variant or
+  dataset ever OOMs sparse.
+
+  *Breakthrough assessment (operator asked "is a dramatic speedup possible?" —
+  answered and recorded as **DON'T before campaign** under the
+  after-campaign-is-never constraint).* The floor arithmetic endorses exactly
+  one structure-level project: the FUSED MESSAGE KERNEL — flash-attention's
+  never-materialize trick applied to edges. One kernel per edge-block that
+  gathers x_i/x_j by index in-kernel, computes GP + invariants + gate in
+  registers, and segment-sums straight into node slots (receivers are SORTED,
+  so the in-kernel reduction is atomic-free and deterministic — the SortedGather
+  invariant becomes a kernel feature), with a recompute-in-backward custom
+  gradient so the (E, C, 16) intermediates are NEVER written to HBM in either
+  pass. It attacks both floor terms at once (edge-tensor traffic AND the
+  stash); plausible yield 1.5-3x on tag_cgenn plus 2-4x batch ceilings; honest
+  cost 5-10x the flash-GP port — which itself took 7 GPU round-trips — with a
+  custom joint-kernel gradcheck/DET battery and real risk of never clearing the
+  bars. Cheap alternatives priced and rejected: per-CGL activation
+  checkpointing (equivalence-preserving, but ~+40% recompute vs ~+30-50%
+  bs-efficiency by the measured probe curves — a wash); kernel autotune (caps
+  at the GP's ~9% residual share); hand-written triton MVSiLU/MVLayerNorm as
+  standalone ops (REGRESSIVE — inductor already fuses them for free, standalone
+  ops would add the very partitions that capped flash). The campaign launches
+  on sparse now.
 
 Schedule honesty: steps 1-2 are one working session; step 3 is the risk
 concentration (Triton iteration without a local GPU — mitigated by step 2 making
