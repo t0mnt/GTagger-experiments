@@ -197,10 +197,11 @@ inherited from the standalone references (equivariant backbones rescale manually
 canonicalize via `TaggerWrapper` + BatchNorm). Equivariance 32/32 (both frames), `test_amplitudes` fixed,
 training smoke (`PlainGraphTrans + learnedpd`) ran end-to-end through evaluation.
 
-- [ ] **`torch.cuda.amp.autocast(...)` deprecation in 4 active baseline files** (plaingraphtrans.py:300,
-      plaingraphgps.py:403, particlenetpartgraphgps.py:229, particlenettransformer.py:812; mipart.py
-      has 2 more in commented-out code). `FutureWarning` today, error in some future torch. Mechanical
-      migration to `torch.amp.autocast('cuda', ...)`; will not change current numerics.
+- [x] **`torch.cuda.amp.autocast(...)` deprecation in 4 active baseline files** — DONE
+      2026-08-17: all 4 live sites (plaingraphtrans.py, plaingraphgps.py,
+      particlenetpartgraphgps.py, particlenettransformer.py) migrated to
+      `torch.amp.autocast("cuda", ...)`. Alias-level swap, numerics identical; mipart.py's
+      2 commented-out occurrences left as-is.
 - [ ] **ParT-GPS mixed-type attention mask deprecation** at particlenetpartgraphgps.py:110 — float
       `attn_mask=attn_bias` paired with bool `key_padding_mask` triggers torch's "mismatched
       key_padding_mask and attn_mask is deprecated" warning. Functionally correct today (padding still

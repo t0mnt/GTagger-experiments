@@ -130,20 +130,21 @@ per-run `table …:` log line that the regex reads.
   (lnΔ, ln kT, ln z, ln m² routed through the MPNN edge channel, ParticleNeXt-style); structural encoding `model.net.use_rwse=true|false`
   (+`model.net.rwse_k=K`); norm `model.net.norm=batch|layer`. CGENN GraphGPS relative edge features:
   `model.net.use_explicit_edge_features=true|false`.
-  - [ ] Add general RWSE support to all GPS models (currently PlainGraphGPS-only) if it shows
-        success on Plain. Note on `rwse_k`: GraphGPS uses k=20 on sparse molecular graphs
-        (ZINC, ~23 nodes, diameter ~10); jet kNN is dense and small-diameter so the walk mixes
-        fast and ~4–8 steps likely capture the useful return-probability structure (higher k adds
-        near-saturated, redundant dims) — sweep `{4,8,16}` on Plain before generalizing.
-  - [ ] **PE/SE is a PRE-campaign gate, not a post-hoc ablation** (decided): whether the
-        headline GPS rows ship with RWSE changes what those models ARE, so decide it before
-        the primary runs — Plain-GPS ± RWSE (k=8) at tuned lr/batch on top tagging; if RWSE
-        wins meaningfully, port it to the other three GPS models (item above) BEFORE the
-        campaign; if null/negative, keep off and report as the ablation. LapPE stays post-hoc
-        only (expected negative, O(P^3) — never gates the campaign). A Plain-GPS result
-        transfers to the other **static-graph** GPS models (CGENN, LorentzNet); ParticleNet-ParT
-        GPS rebuilds its kNN per layer, so a static structural encoding means something else
-        there — test it separately or leave it off.
+  - [x] ~~Add general RWSE support to all GPS models if it shows success on Plain~~ —
+        **WON'T DO: the gate below measured RWSE as null on Plain**, so it is not ported
+        anywhere. (The `rwse_k` mixing-speed note below was consistent with the outcome:
+        a dense small-diameter kNN graph leaves return probabilities nearly
+        degree-determined — little signal beyond what edges already carry.)
+  - [x] **PE/SE PRE-campaign gate MEASURED (2026-08-17, Plain-GPS ± RWSE k=8, top
+        tagging, 20 epochs, n=1 each, paired): NULL — `use_rwse: false` stands for the
+        whole campaign.** OFF vs ON: test acc 0.9399 vs 0.9401 (+0.0002 = 0.5σ of the
+        404k-event binomial noise, σ≈0.00037), AUC 0.9857 vs 0.9858, rej@0.5 395 vs 399,
+        rej@0.8 58 vs 58. The one large-looking mover, test rej@0.3 1485 → 1642 (+10.6%),
+        is ~1.2σ of its own Poisson band (~130 passing bg events → ~9%) AND val moved the
+        OPPOSITE way (1429 → 1352) — the classic noise signature, not signal. The runs are
+        cleanly paired (identical best-val iteration 35489 in both). Cost of ON: +1040
+        params, +1.4% train time. Per the pre-registered rule: null → keep OFF and report
+        as the ablation; the paper cites this controlled A/B. LapPE stays post-hoc only.
 - **Depth (transformer / GPS blocks).** `model.net.num_layers=N` (Plain, ParticleNet-ParT) /
   `model.net.num_blocks=N` (CGENN, LorentzNet). The depth curve is the "can the transformer
   compensate for a weaker GNN" story → a performance/efficiency section (room to discuss BigBird /
@@ -280,7 +281,9 @@ verdict; the GraphTrans-vs-GPS dropout ledger; the JetClass/plots/trials infrast
 the jet_frames pre-publication sweep) moved to `docs/audit-ledger.md` -- they are resolved or
 decided, and several back the paper's fidelity claims. Still OPEN from those sweeps:
 
-- [ ] `torch.cuda.amp.autocast(...)` deprecation in 4 baseline files (mechanical migration).
+- [x] ~~`torch.cuda.amp.autocast(...)` deprecation in 4 baseline files~~ — migrated
+      2026-08-17 to `torch.amp.autocast("cuda", ...)` (same implementation, alias-level;
+      numerics identical), all 4 live sites.
 - [ ] ParT-GPS float attn_mask + bool key_padding_mask deprecation (merge masks before torch
       makes it fatal).
 - [ ] xformers pin note for the SLURM target (docs/SLURM.md install step).
@@ -667,7 +670,9 @@ the split is not by importance, it is by whether the change can touch a number.
 
 **Should do — safe now, no arithmetic touched:**
 
-- [ ] **`torch.cuda.amp.autocast(...)` migration**, 4 live sites — and it is the MORE urgent
+- [x] **`torch.cuda.amp.autocast(...)` migration** — DONE 2026-08-17, all 4 live sites
+      swapped to `torch.amp.autocast("cuda", enabled=X)`. (Historical note kept:) it was
+      the MORE urgent
       of the two deprecations, which inverts an earlier note here. Torch classes them
       differently, checked: autocast raises **FutureWarning** ("this will change"), the
       ParT-GPS mask raises only **UserWarning**. The earlier text had it backwards, saying

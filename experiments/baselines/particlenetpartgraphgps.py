@@ -238,7 +238,7 @@ class ParticleNetParTGraphGPS(nn.Module):
             self.lloca_attn.prepare_frames(frames)
         block_lloca = self.lloca_attn if do_transport else None
 
-        with torch.cuda.amp.autocast(enabled=self.use_amp):
+        with torch.amp.autocast("cuda", enabled=self.use_amp):
             # ParT pairwise interaction bias U_ij, computed once and shared across layers.
             # PairEmbed pads a CLS slot at index 0; we mean-pool (no CLS) so we drop it. Keep
             # it (B, num_heads, P, P); the layer reshapes to (B*num_heads, P, P) for plain MHA.

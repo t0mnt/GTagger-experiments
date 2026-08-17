@@ -913,7 +913,7 @@ class ParticleNetParTGraphTrans(nn.Module):
                     # Rebuild dense (N, C', P, P)
                     uu = build_sparse_tensor(uu, uu_idx, features.size(-1))
 
-        with torch.cuda.amp.autocast(enabled=self.use_amp):
+        with torch.amp.autocast("cuda", enabled=self.use_amp):
             if self.use_fts_bn:
                 fts = self.bn_fts(features) * mask
             else:

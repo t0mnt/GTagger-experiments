@@ -400,7 +400,7 @@ class PlainGraphGPS(nn.Module):
             self.lloca_attn.prepare_frames(frames)
         block_lloca = self.lloca_attn if do_transport else None
 
-        with torch.cuda.amp.autocast(enabled=self.use_amp):
+        with torch.amp.autocast("cuda", enabled=self.use_amp):
             # static kNN graph (built once, reused by every GPS layer)
             if self.knn_metric == "minkowski" and v is not None:
                 idx = knn(v, self.knn_k, metric="minkowski", mask=mask_p)

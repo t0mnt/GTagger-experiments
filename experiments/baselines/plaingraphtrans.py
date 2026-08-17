@@ -347,7 +347,7 @@ class PlainGraphTrans(nn.Module):
         do_transport = frames is not None and not frames.is_global
         frames_flat = frames.reshape(-1, 4, 4) if do_transport else None
 
-        with torch.cuda.amp.autocast(enabled=self.use_amp):
+        with torch.amp.autocast("cuda", enabled=self.use_amp):
             # static kNN graph (built once, reused by every GNN block)
             if self.knn_metric == 'minkowski' and v is not None:
                 idx = knn(v, self.knn_k, metric='minkowski', mask=mask_p,

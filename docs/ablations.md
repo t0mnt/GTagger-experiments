@@ -162,6 +162,10 @@ deviation, is covered in "Capacity and shape" above.)
   synthesized via LocalDegreeProfile), so encodings are the only signal — whereas jet
   constituents arrive with rich per-node kinematics, which is why PE/SE stays off by default
   here (headline PE/SE ablation in todo §3: RWSE first, LapPE as the expected negative).
+  **MEASURED (2026-08-17, Plain-GPS ± RWSE k=8, top tagging, paired n=1): NULL** — test
+  acc +0.0002 (0.5σ binomial), AUC +0.0001, rej@0.5/0.8 flat; the +10.6% test rej@0.3 is
+  ~1.2σ Poisson and val moved the opposite way. `use_rwse: false` stands campaign-wide and
+  RWSE is not ported to the other GPS models; full record in todo §3's PE/SE gate entry.
   If LapPE ever shows signal, **SignNet** (LapPE with a sign-invariant DeepSets/MLP encoder
   instead of training-time sign flips) is the canonical next step — not currently implemented.
 - **Edge features.** Official GatedGCN *requires* edge inputs, so edge-free datasets get
