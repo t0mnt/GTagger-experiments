@@ -44,7 +44,11 @@ if _HAS_TRITON:
 
     @triton.jit
     def _fcgp_fwd_kernel(xp, yp, wp, op, B, N: tl.constexpr, M: tl.constexpr,
-                         NB: tl.constexpr, NP: tl.constexpr, BLOCK: tl.constexpr):
+                         BLOCK: tl.constexpr):
+        # fully explicit loads/stores (flash-clifford ops/fc_p3m0.py style): this
+        # Triton frontend has no tuple()/comprehension support inside @jit (GPU
+        # round-trip #2 finding); only the tuple RETURN from the generated body is
+        # relied on (flash-kingdon's proven pattern).
         pid = tl.program_id(0)
         m = tl.program_id(1)
         rows = pid * BLOCK + tl.arange(0, BLOCK)
@@ -66,54 +70,343 @@ if _HAS_TRITON:
         o14 = tl.zeros([BLOCK], dtype=tl.float32)
         o15 = tl.zeros([BLOCK], dtype=tl.float32)
         for n in range(N):
-            xb = xp + rows * (N * NB) + n * NB
-            yb = yp + rows * (N * NB) + n * NB
-            wb = wp + m * (N * NP) + n * NP
-            x = tuple(tl.load(xb + i, mask=mask, other=0.0) for i in range(NB))
-            y = tuple(tl.load(yb + i, mask=mask, other=0.0) for i in range(NB))
-            w = tuple(tl.load(wb + i) for i in range(NP))
-            o = _fwd_body(*x, *y, *w)
-            o0 += o[0]; o1 += o[1]; o2 += o[2]; o3 += o[3]
-            o4 += o[4]; o5 += o[5]; o6 += o[6]; o7 += o[7]
-            o8 += o[8]; o9 += o[9]; o10 += o[10]; o11 += o[11]
-            o12 += o[12]; o13 += o[13]; o14 += o[14]; o15 += o[15]
-        ob = op + rows * (M * NB) + m * NB
-        outs = (o0, o1, o2, o3, o4, o5, o6, o7, o8, o9, o10, o11, o12, o13, o14, o15)
-        for j in tl.static_range(NB):
-            tl.store(ob + j, outs[j], mask=mask)
+            xb = xp + rows * (N * 16) + n * 16
+            yb = yp + rows * (N * 16) + n * 16
+            wb = wp + m * (N * 35) + n * 35
+            x0 = tl.load(xb + 0, mask=mask, other=0.0)
+            x1 = tl.load(xb + 1, mask=mask, other=0.0)
+            x2 = tl.load(xb + 2, mask=mask, other=0.0)
+            x3 = tl.load(xb + 3, mask=mask, other=0.0)
+            x4 = tl.load(xb + 4, mask=mask, other=0.0)
+            x5 = tl.load(xb + 5, mask=mask, other=0.0)
+            x6 = tl.load(xb + 6, mask=mask, other=0.0)
+            x7 = tl.load(xb + 7, mask=mask, other=0.0)
+            x8 = tl.load(xb + 8, mask=mask, other=0.0)
+            x9 = tl.load(xb + 9, mask=mask, other=0.0)
+            x10 = tl.load(xb + 10, mask=mask, other=0.0)
+            x11 = tl.load(xb + 11, mask=mask, other=0.0)
+            x12 = tl.load(xb + 12, mask=mask, other=0.0)
+            x13 = tl.load(xb + 13, mask=mask, other=0.0)
+            x14 = tl.load(xb + 14, mask=mask, other=0.0)
+            x15 = tl.load(xb + 15, mask=mask, other=0.0)
+            y0 = tl.load(yb + 0, mask=mask, other=0.0)
+            y1 = tl.load(yb + 1, mask=mask, other=0.0)
+            y2 = tl.load(yb + 2, mask=mask, other=0.0)
+            y3 = tl.load(yb + 3, mask=mask, other=0.0)
+            y4 = tl.load(yb + 4, mask=mask, other=0.0)
+            y5 = tl.load(yb + 5, mask=mask, other=0.0)
+            y6 = tl.load(yb + 6, mask=mask, other=0.0)
+            y7 = tl.load(yb + 7, mask=mask, other=0.0)
+            y8 = tl.load(yb + 8, mask=mask, other=0.0)
+            y9 = tl.load(yb + 9, mask=mask, other=0.0)
+            y10 = tl.load(yb + 10, mask=mask, other=0.0)
+            y11 = tl.load(yb + 11, mask=mask, other=0.0)
+            y12 = tl.load(yb + 12, mask=mask, other=0.0)
+            y13 = tl.load(yb + 13, mask=mask, other=0.0)
+            y14 = tl.load(yb + 14, mask=mask, other=0.0)
+            y15 = tl.load(yb + 15, mask=mask, other=0.0)
+            w0 = tl.load(wb + 0)
+            w1 = tl.load(wb + 1)
+            w2 = tl.load(wb + 2)
+            w3 = tl.load(wb + 3)
+            w4 = tl.load(wb + 4)
+            w5 = tl.load(wb + 5)
+            w6 = tl.load(wb + 6)
+            w7 = tl.load(wb + 7)
+            w8 = tl.load(wb + 8)
+            w9 = tl.load(wb + 9)
+            w10 = tl.load(wb + 10)
+            w11 = tl.load(wb + 11)
+            w12 = tl.load(wb + 12)
+            w13 = tl.load(wb + 13)
+            w14 = tl.load(wb + 14)
+            w15 = tl.load(wb + 15)
+            w16 = tl.load(wb + 16)
+            w17 = tl.load(wb + 17)
+            w18 = tl.load(wb + 18)
+            w19 = tl.load(wb + 19)
+            w20 = tl.load(wb + 20)
+            w21 = tl.load(wb + 21)
+            w22 = tl.load(wb + 22)
+            w23 = tl.load(wb + 23)
+            w24 = tl.load(wb + 24)
+            w25 = tl.load(wb + 25)
+            w26 = tl.load(wb + 26)
+            w27 = tl.load(wb + 27)
+            w28 = tl.load(wb + 28)
+            w29 = tl.load(wb + 29)
+            w30 = tl.load(wb + 30)
+            w31 = tl.load(wb + 31)
+            w32 = tl.load(wb + 32)
+            w33 = tl.load(wb + 33)
+            w34 = tl.load(wb + 34)
+            o = _fwd_body(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15, w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15, w16, w17, w18, w19, w20, w21, w22, w23, w24, w25, w26, w27, w28, w29, w30, w31, w32, w33, w34)
+            o0 += o[0]
+            o1 += o[1]
+            o2 += o[2]
+            o3 += o[3]
+            o4 += o[4]
+            o5 += o[5]
+            o6 += o[6]
+            o7 += o[7]
+            o8 += o[8]
+            o9 += o[9]
+            o10 += o[10]
+            o11 += o[11]
+            o12 += o[12]
+            o13 += o[13]
+            o14 += o[14]
+            o15 += o[15]
+        ob = op + rows * (M * 16) + m * 16
+        tl.store(ob + 0, o0, mask=mask)
+        tl.store(ob + 1, o1, mask=mask)
+        tl.store(ob + 2, o2, mask=mask)
+        tl.store(ob + 3, o3, mask=mask)
+        tl.store(ob + 4, o4, mask=mask)
+        tl.store(ob + 5, o5, mask=mask)
+        tl.store(ob + 6, o6, mask=mask)
+        tl.store(ob + 7, o7, mask=mask)
+        tl.store(ob + 8, o8, mask=mask)
+        tl.store(ob + 9, o9, mask=mask)
+        tl.store(ob + 10, o10, mask=mask)
+        tl.store(ob + 11, o11, mask=mask)
+        tl.store(ob + 12, o12, mask=mask)
+        tl.store(ob + 13, o13, mask=mask)
+        tl.store(ob + 14, o14, mask=mask)
+        tl.store(ob + 15, o15, mask=mask)
 
     @triton.jit
     def _fcgp_bwd_kernel(xp, yp, wp, gp, gxp, gyp, pwp, B,
-                         N: tl.constexpr, M: tl.constexpr,
-                         NB: tl.constexpr, NP: tl.constexpr, BLOCK: tl.constexpr):
+                         N: tl.constexpr, M: tl.constexpr, BLOCK: tl.constexpr):
         # one program per (row-block, n): accumulates gx/gy over m in registers and
         # writes this block's dL/dw partial to its OWN (block, m, n) slot -- no atomics.
         pid = tl.program_id(0)
         n = tl.program_id(1)
         rows = pid * BLOCK + tl.arange(0, BLOCK)
         mask = rows < B
-        xb = xp + rows * (N * NB) + n * NB
-        yb = yp + rows * (N * NB) + n * NB
-        x = tuple(tl.load(xb + i, mask=mask, other=0.0) for i in range(NB))
-        y = tuple(tl.load(yb + i, mask=mask, other=0.0) for i in range(NB))
-        gx = tuple(tl.zeros([BLOCK], dtype=tl.float32) for _ in range(NB))
-        gy = tuple(tl.zeros([BLOCK], dtype=tl.float32) for _ in range(NB))
+        xb = xp + rows * (N * 16) + n * 16
+        yb = yp + rows * (N * 16) + n * 16
+        x0 = tl.load(xb + 0, mask=mask, other=0.0)
+        x1 = tl.load(xb + 1, mask=mask, other=0.0)
+        x2 = tl.load(xb + 2, mask=mask, other=0.0)
+        x3 = tl.load(xb + 3, mask=mask, other=0.0)
+        x4 = tl.load(xb + 4, mask=mask, other=0.0)
+        x5 = tl.load(xb + 5, mask=mask, other=0.0)
+        x6 = tl.load(xb + 6, mask=mask, other=0.0)
+        x7 = tl.load(xb + 7, mask=mask, other=0.0)
+        x8 = tl.load(xb + 8, mask=mask, other=0.0)
+        x9 = tl.load(xb + 9, mask=mask, other=0.0)
+        x10 = tl.load(xb + 10, mask=mask, other=0.0)
+        x11 = tl.load(xb + 11, mask=mask, other=0.0)
+        x12 = tl.load(xb + 12, mask=mask, other=0.0)
+        x13 = tl.load(xb + 13, mask=mask, other=0.0)
+        x14 = tl.load(xb + 14, mask=mask, other=0.0)
+        x15 = tl.load(xb + 15, mask=mask, other=0.0)
+        y0 = tl.load(yb + 0, mask=mask, other=0.0)
+        y1 = tl.load(yb + 1, mask=mask, other=0.0)
+        y2 = tl.load(yb + 2, mask=mask, other=0.0)
+        y3 = tl.load(yb + 3, mask=mask, other=0.0)
+        y4 = tl.load(yb + 4, mask=mask, other=0.0)
+        y5 = tl.load(yb + 5, mask=mask, other=0.0)
+        y6 = tl.load(yb + 6, mask=mask, other=0.0)
+        y7 = tl.load(yb + 7, mask=mask, other=0.0)
+        y8 = tl.load(yb + 8, mask=mask, other=0.0)
+        y9 = tl.load(yb + 9, mask=mask, other=0.0)
+        y10 = tl.load(yb + 10, mask=mask, other=0.0)
+        y11 = tl.load(yb + 11, mask=mask, other=0.0)
+        y12 = tl.load(yb + 12, mask=mask, other=0.0)
+        y13 = tl.load(yb + 13, mask=mask, other=0.0)
+        y14 = tl.load(yb + 14, mask=mask, other=0.0)
+        y15 = tl.load(yb + 15, mask=mask, other=0.0)
+        gx0 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx1 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx2 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx3 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx4 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx5 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx6 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx7 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx8 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx9 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx10 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx11 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx12 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx13 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx14 = tl.zeros([BLOCK], dtype=tl.float32)
+        gx15 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy0 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy1 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy2 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy3 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy4 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy5 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy6 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy7 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy8 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy9 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy10 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy11 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy12 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy13 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy14 = tl.zeros([BLOCK], dtype=tl.float32)
+        gy15 = tl.zeros([BLOCK], dtype=tl.float32)
         for m in range(M):
-            wb = wp + m * (N * NP) + n * NP
-            gb = gp + rows * (M * NB) + m * NB
-            w = tuple(tl.load(wb + i) for i in range(NP))
-            g = tuple(tl.load(gb + i, mask=mask, other=0.0) for i in range(NB))
-            outs = _grad_body(*x, *y, *w, *g)
-            gx = tuple(gx[i] + outs[i] for i in range(NB))
-            gy = tuple(gy[i] + outs[NB + i] for i in range(NB))
-            pb = pwp + pid * (M * N * NP) + m * (N * NP) + n * NP
-            for p in tl.static_range(NP):
-                tl.store(pb + p, tl.sum(outs[2 * NB + p], axis=0))
-        gxb = gxp + rows * (N * NB) + n * NB
-        gyb = gyp + rows * (N * NB) + n * NB
-        for i in tl.static_range(NB):
-            tl.store(gxb + i, gx[i], mask=mask)
-            tl.store(gyb + i, gy[i], mask=mask)
+            wb = wp + m * (N * 35) + n * 35
+            gb = gp + rows * (M * 16) + m * 16
+            w0 = tl.load(wb + 0)
+            w1 = tl.load(wb + 1)
+            w2 = tl.load(wb + 2)
+            w3 = tl.load(wb + 3)
+            w4 = tl.load(wb + 4)
+            w5 = tl.load(wb + 5)
+            w6 = tl.load(wb + 6)
+            w7 = tl.load(wb + 7)
+            w8 = tl.load(wb + 8)
+            w9 = tl.load(wb + 9)
+            w10 = tl.load(wb + 10)
+            w11 = tl.load(wb + 11)
+            w12 = tl.load(wb + 12)
+            w13 = tl.load(wb + 13)
+            w14 = tl.load(wb + 14)
+            w15 = tl.load(wb + 15)
+            w16 = tl.load(wb + 16)
+            w17 = tl.load(wb + 17)
+            w18 = tl.load(wb + 18)
+            w19 = tl.load(wb + 19)
+            w20 = tl.load(wb + 20)
+            w21 = tl.load(wb + 21)
+            w22 = tl.load(wb + 22)
+            w23 = tl.load(wb + 23)
+            w24 = tl.load(wb + 24)
+            w25 = tl.load(wb + 25)
+            w26 = tl.load(wb + 26)
+            w27 = tl.load(wb + 27)
+            w28 = tl.load(wb + 28)
+            w29 = tl.load(wb + 29)
+            w30 = tl.load(wb + 30)
+            w31 = tl.load(wb + 31)
+            w32 = tl.load(wb + 32)
+            w33 = tl.load(wb + 33)
+            w34 = tl.load(wb + 34)
+            g0 = tl.load(gb + 0, mask=mask, other=0.0)
+            g1 = tl.load(gb + 1, mask=mask, other=0.0)
+            g2 = tl.load(gb + 2, mask=mask, other=0.0)
+            g3 = tl.load(gb + 3, mask=mask, other=0.0)
+            g4 = tl.load(gb + 4, mask=mask, other=0.0)
+            g5 = tl.load(gb + 5, mask=mask, other=0.0)
+            g6 = tl.load(gb + 6, mask=mask, other=0.0)
+            g7 = tl.load(gb + 7, mask=mask, other=0.0)
+            g8 = tl.load(gb + 8, mask=mask, other=0.0)
+            g9 = tl.load(gb + 9, mask=mask, other=0.0)
+            g10 = tl.load(gb + 10, mask=mask, other=0.0)
+            g11 = tl.load(gb + 11, mask=mask, other=0.0)
+            g12 = tl.load(gb + 12, mask=mask, other=0.0)
+            g13 = tl.load(gb + 13, mask=mask, other=0.0)
+            g14 = tl.load(gb + 14, mask=mask, other=0.0)
+            g15 = tl.load(gb + 15, mask=mask, other=0.0)
+            outs = _grad_body(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15, w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15, w16, w17, w18, w19, w20, w21, w22, w23, w24, w25, w26, w27, w28, w29, w30, w31, w32, w33, w34, g0, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15)
+            gx0 += outs[0]
+            gx1 += outs[1]
+            gx2 += outs[2]
+            gx3 += outs[3]
+            gx4 += outs[4]
+            gx5 += outs[5]
+            gx6 += outs[6]
+            gx7 += outs[7]
+            gx8 += outs[8]
+            gx9 += outs[9]
+            gx10 += outs[10]
+            gx11 += outs[11]
+            gx12 += outs[12]
+            gx13 += outs[13]
+            gx14 += outs[14]
+            gx15 += outs[15]
+            gy0 += outs[16]
+            gy1 += outs[17]
+            gy2 += outs[18]
+            gy3 += outs[19]
+            gy4 += outs[20]
+            gy5 += outs[21]
+            gy6 += outs[22]
+            gy7 += outs[23]
+            gy8 += outs[24]
+            gy9 += outs[25]
+            gy10 += outs[26]
+            gy11 += outs[27]
+            gy12 += outs[28]
+            gy13 += outs[29]
+            gy14 += outs[30]
+            gy15 += outs[31]
+            pb = pwp + pid * (M * N * 35) + m * (N * 35) + n * 35
+            tl.store(pb + 0, tl.sum(outs[32], axis=0))
+            tl.store(pb + 1, tl.sum(outs[33], axis=0))
+            tl.store(pb + 2, tl.sum(outs[34], axis=0))
+            tl.store(pb + 3, tl.sum(outs[35], axis=0))
+            tl.store(pb + 4, tl.sum(outs[36], axis=0))
+            tl.store(pb + 5, tl.sum(outs[37], axis=0))
+            tl.store(pb + 6, tl.sum(outs[38], axis=0))
+            tl.store(pb + 7, tl.sum(outs[39], axis=0))
+            tl.store(pb + 8, tl.sum(outs[40], axis=0))
+            tl.store(pb + 9, tl.sum(outs[41], axis=0))
+            tl.store(pb + 10, tl.sum(outs[42], axis=0))
+            tl.store(pb + 11, tl.sum(outs[43], axis=0))
+            tl.store(pb + 12, tl.sum(outs[44], axis=0))
+            tl.store(pb + 13, tl.sum(outs[45], axis=0))
+            tl.store(pb + 14, tl.sum(outs[46], axis=0))
+            tl.store(pb + 15, tl.sum(outs[47], axis=0))
+            tl.store(pb + 16, tl.sum(outs[48], axis=0))
+            tl.store(pb + 17, tl.sum(outs[49], axis=0))
+            tl.store(pb + 18, tl.sum(outs[50], axis=0))
+            tl.store(pb + 19, tl.sum(outs[51], axis=0))
+            tl.store(pb + 20, tl.sum(outs[52], axis=0))
+            tl.store(pb + 21, tl.sum(outs[53], axis=0))
+            tl.store(pb + 22, tl.sum(outs[54], axis=0))
+            tl.store(pb + 23, tl.sum(outs[55], axis=0))
+            tl.store(pb + 24, tl.sum(outs[56], axis=0))
+            tl.store(pb + 25, tl.sum(outs[57], axis=0))
+            tl.store(pb + 26, tl.sum(outs[58], axis=0))
+            tl.store(pb + 27, tl.sum(outs[59], axis=0))
+            tl.store(pb + 28, tl.sum(outs[60], axis=0))
+            tl.store(pb + 29, tl.sum(outs[61], axis=0))
+            tl.store(pb + 30, tl.sum(outs[62], axis=0))
+            tl.store(pb + 31, tl.sum(outs[63], axis=0))
+            tl.store(pb + 32, tl.sum(outs[64], axis=0))
+            tl.store(pb + 33, tl.sum(outs[65], axis=0))
+            tl.store(pb + 34, tl.sum(outs[66], axis=0))
+        gxb = gxp + rows * (N * 16) + n * 16
+        gyb = gyp + rows * (N * 16) + n * 16
+        tl.store(gxb + 0, gx0, mask=mask)
+        tl.store(gxb + 1, gx1, mask=mask)
+        tl.store(gxb + 2, gx2, mask=mask)
+        tl.store(gxb + 3, gx3, mask=mask)
+        tl.store(gxb + 4, gx4, mask=mask)
+        tl.store(gxb + 5, gx5, mask=mask)
+        tl.store(gxb + 6, gx6, mask=mask)
+        tl.store(gxb + 7, gx7, mask=mask)
+        tl.store(gxb + 8, gx8, mask=mask)
+        tl.store(gxb + 9, gx9, mask=mask)
+        tl.store(gxb + 10, gx10, mask=mask)
+        tl.store(gxb + 11, gx11, mask=mask)
+        tl.store(gxb + 12, gx12, mask=mask)
+        tl.store(gxb + 13, gx13, mask=mask)
+        tl.store(gxb + 14, gx14, mask=mask)
+        tl.store(gxb + 15, gx15, mask=mask)
+        tl.store(gyb + 0, gy0, mask=mask)
+        tl.store(gyb + 1, gy1, mask=mask)
+        tl.store(gyb + 2, gy2, mask=mask)
+        tl.store(gyb + 3, gy3, mask=mask)
+        tl.store(gyb + 4, gy4, mask=mask)
+        tl.store(gyb + 5, gy5, mask=mask)
+        tl.store(gyb + 6, gy6, mask=mask)
+        tl.store(gyb + 7, gy7, mask=mask)
+        tl.store(gyb + 8, gy8, mask=mask)
+        tl.store(gyb + 9, gy9, mask=mask)
+        tl.store(gyb + 10, gy10, mask=mask)
+        tl.store(gyb + 11, gy11, mask=mask)
+        tl.store(gyb + 12, gy12, mask=mask)
+        tl.store(gyb + 13, gy13, mask=mask)
+        tl.store(gyb + 14, gy14, mask=mask)
+        tl.store(gyb + 15, gy15, mask=mask)
 
 
 def _reference_forward(x, y, weight):
@@ -146,7 +439,7 @@ def fcgp(x: torch.Tensor, y: torch.Tensor, weight: torch.Tensor) -> torch.Tensor
     out = x.new_empty(B, M, NB)
     BLOCK = 64
     grid = (triton.cdiv(B, BLOCK), M)
-    _fcgp_fwd_kernel[grid](x, y, weight, out, B, N=N, M=M, NB=NB, NP=NP, BLOCK=BLOCK)
+    _fcgp_fwd_kernel[grid](x, y, weight, out, B, N=N, M=M, BLOCK=BLOCK)
     return out
 
 
@@ -169,7 +462,7 @@ def _backward(ctx, go):
     nblk = triton.cdiv(B, BLOCK)
     partial = x.new_empty(nblk, M, N, NP)
     grid = (nblk, N)
-    _fcgp_bwd_kernel[grid](x, y, weight, go, gx, gy, partial, B, N=N, M=M, NB=NB, NP=NP, BLOCK=BLOCK)
+    _fcgp_bwd_kernel[grid](x, y, weight, go, gx, gy, partial, B, N=N, M=M, BLOCK=BLOCK)
     return gx, gy, partial.sum(dim=0)  # fixed-order stage-2: deterministic
 
 

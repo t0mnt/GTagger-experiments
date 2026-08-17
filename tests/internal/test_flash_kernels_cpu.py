@@ -83,3 +83,32 @@ def test_kernels_present_when_triton_is():
         assert hasattr(mod, "_fcgp_fwd_kernel") and hasattr(mod, "_fcgp_bwd_kernel")
     else:  # pragma: no cover
         pytest.skip("triton not installed; CPU composite only")
+
+
+def test_kernel_bodies_use_only_portable_triton_syntax():
+    """Tripwire from GPU round-trips #1-2: the NGC container's Triton frontend has no
+    tuple()/comprehension/generator support inside @jit, and module globals must be
+    constexpr. Pin the kernels to the fully-explicit flash-clifford style: no tuple()
+    calls, no comprehensions, no starred call args, no bare NB/NP global reads. The
+    one non-explicit pattern allowed is the tuple RETURN of the generated bodies
+    (flash-kingdon's proven trick), which lives in the generated module, not here."""
+    import ast
+    from pathlib import Path
+
+    src = Path("experiments/baselines/cgenn/flash_kernels_p1m3.py").read_text()
+    tree = ast.parse(src)
+    kernels = [n for n in ast.walk(tree)
+               if isinstance(n, ast.FunctionDef) and n.name.startswith("_fcgp")]
+    assert len(kernels) == 2
+    for fn in kernels:
+        arg_names = {a.arg for a in fn.args.args}
+        for node in ast.walk(fn):
+            assert not isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp,
+                                         ast.DictComp)), f"{fn.name}: comprehension"
+            assert not isinstance(node, ast.Starred), f"{fn.name}: starred arg"
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                assert node.func.id not in ("tuple", "list", "dict", "zip", "map"), (
+                    f"{fn.name}: python builtin {node.func.id}() inside @jit")
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                assert not (node.id in ("NB", "NP") and node.id not in arg_names), (
+                    f"{fn.name}: bare global {node.id} inside @jit")

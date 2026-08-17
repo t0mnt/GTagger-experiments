@@ -99,7 +99,7 @@ def test_benchmark_vs_blockdiag(tables64, B, N, M):
         torch.cuda.synchronize()
         return t0.elapsed_time(t1) / reps
 
-    t_ref = bench(lambda a, b, c: sparse_gp_expression(a, b, c, alg.gp_k_idx, spath32, spval32))
+    t_ref = bench(lambda a, b, c: sparse_gp_expression(a, b, c, kidx, spath, spval32))
     t_op = bench(fcgp)
     print(f"BENCH-FLASH B={B} N={N} M={M}: blockdiag {t_ref:.2f} ms  flash {t_op:.2f} ms  "
           f"ratio {t_op / t_ref:.2f}x  (adopt bar per race discipline: < 0.90x everywhere)")
