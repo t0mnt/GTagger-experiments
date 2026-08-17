@@ -40,8 +40,17 @@ except Exception:  # pragma: no cover - exercised only on triton-less installs
 NB, NP = 16, 35
 
 if _HAS_TRITON:
-    _fwd_body = triton.jit(_ref._wgp_fwd)
-    _grad_body = triton.jit(_ref._wgp_grad)
+    # NAMING IS LOAD-BEARING (GPU round-trip #6): these must be bound under the wrapped
+    # function's OWN def name. Inductor's user-defined-kernel embedding
+    # (user_defined_triton_kernel_transitive_closure_source_code) re-emits each called
+    # JITFunction's `src` -- whose def line carries the ORIGINAL name -- and, unlike its
+    # ConstexprFunction branch, writes no alias for a mismatched binding. A kernel calling
+    # `_fwd_body` while the emitted def says `_wgp_fwd` dies at ast_to_ttir with
+    # NameError('_fwd_body is not defined') -- but only on the triton_op/compile path,
+    # never at raw launch (which resolves via module __globals__), and never on CPU
+    # (the composite branch). Gated: test_flash_kernels_cpu.py binding-name gates.
+    _wgp_fwd = triton.jit(_ref._wgp_fwd)
+    _wgp_grad = triton.jit(_ref._wgp_grad)
 
     @triton.jit
     def _fcgp_fwd_kernel(xp, yp, wp, op, B, N: tl.constexpr, M: tl.constexpr,
@@ -141,7 +150,7 @@ if _HAS_TRITON:
             w32 = tl.load(wb + 32)
             w33 = tl.load(wb + 33)
             w34 = tl.load(wb + 34)
-            o = _fwd_body(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15, w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15, w16, w17, w18, w19, w20, w21, w22, w23, w24, w25, w26, w27, w28, w29, w30, w31, w32, w33, w34)
+            o = _wgp_fwd(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15, w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15, w16, w17, w18, w19, w20, w21, w22, w23, w24, w25, w26, w27, w28, w29, w30, w31, w32, w33, w34)
             o0 += o[0]
             o1 += o[1]
             o2 += o[2]
@@ -305,7 +314,7 @@ if _HAS_TRITON:
             g13 = tl.load(gb + 13, mask=mask, other=0.0)
             g14 = tl.load(gb + 14, mask=mask, other=0.0)
             g15 = tl.load(gb + 15, mask=mask, other=0.0)
-            outs = _grad_body(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15, w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15, w16, w17, w18, w19, w20, w21, w22, w23, w24, w25, w26, w27, w28, w29, w30, w31, w32, w33, w34, g0, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15)
+            outs = _wgp_grad(x0, x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, x12, x13, x14, x15, y0, y1, y2, y3, y4, y5, y6, y7, y8, y9, y10, y11, y12, y13, y14, y15, w0, w1, w2, w3, w4, w5, w6, w7, w8, w9, w10, w11, w12, w13, w14, w15, w16, w17, w18, w19, w20, w21, w22, w23, w24, w25, w26, w27, w28, w29, w30, w31, w32, w33, w34, g0, g1, g2, g3, g4, g5, g6, g7, g8, g9, g10, g11, g12, g13, g14, g15)
             gx0 += outs[0]
             gx1 += outs[1]
             gx2 += outs[2]

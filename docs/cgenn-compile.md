@@ -3303,11 +3303,39 @@ adopts and time remains; the contraction arm alone targets the measured GP share
   promise. The >10% adopt bar vs sparse-compiled **314 jets/s** stands. The CGENN
   rows HOLD for this ONE re-race (operator's ledger override: flash-before-campaign
   is fine and citable); everything else about the launch posture is unchanged.
-  **Round-trip #6, one allocation, same four commands as #5** (kernel gates →
-  compile -k flash → flash soak → trimmed race, the step-4 block above verbatim);
   ADOPT flips the three yamls to `gp_impl: flash` + re-records pins (forward
   changes: fc contraction evaluation order — pins are TOL-class re-records, stated),
   CLOSE launches on sparse with flash kept as the memory escape hatch.
+
+  *Round-trip #6 (2026-08-17): kernel gates 6/6; compile battery flash 3/6 — ONE
+  new frontend rule, found and fixed, and the failure is the fusion path ENGAGING.*
+  Kernel gates unchanged-green (fp64 3.6e-16, DET bit-equal, bench
+  0.18x/0.20x/0.20x — matching #5, as they must: raw launches resolve the
+  subfunction from module `__globals__`). The three inductor-visible gates
+  (compiled backward, TOL-DET compiled, breaks-and-recomp) all died in inductor's
+  compile worker at `ast_to_ttir` with `NameError('_fwd_body is not defined')` —
+  note dynamo itself printed `GATE-BREAKS[flash] graph_break_count = 0` first.
+  MECHANISM (read from torch source, both 2.8 and 2.13): with `triton_op`,
+  inductor EMBEDS the kernel into its generated module via
+  `user_defined_triton_kernel_transitive_closure_source_code`, which re-emits each
+  called JITFunction's `src` — whose def line carries the wrapped function's
+  ORIGINAL name (`def _wgp_fwd`) — and, unlike its ConstexprFunction branch, the
+  JITFunction branch writes NO alias line for a mismatched binding. So
+  `_fwd_body = triton.jit(_ref._wgp_fwd)` works at raw launch and NameErrors under
+  embedding. That this path ran AT ALL is the positive signal: the opaque-op era
+  never embedded anything — the fusion tax remedy is live, it just tripped on the
+  alias. FIX (name-only, cannot move the gated numbers): bind the jit-wrapped
+  generated bodies under their own def names (`_wgp_fwd`/`_wgp_grad`) and call
+  those in the kernels. Two new CPU gates pin the rule forever:
+  binding-name==`fn.__name__` invariant (vacuous-proof: asserts each kernel HAS a
+  jit dependency) and an end-to-end run of torch's actual emitter asserting the
+  emitted closure parses with a def for every called name (10/10 CPU flash gates).
+  Audited the whole class: repo grep shows these were the only two JITFunction
+  bindings anywhere; both generated bodies have EMPTY `co_names` (self-contained
+  arithmetic — the closure recursion terminates at depth 1); the kernels' only
+  other global is the `tl` module, which the #6 traceback itself shows resolving
+  fine. Soak + race were never reached (`set -e`). **Round-trip #7, one
+  allocation, same four commands** decides adopt-or-close.
 
 Schedule honesty: steps 1-2 are one working session; step 3 is the risk
 concentration (Triton iteration without a local GPU — mitigated by step 2 making

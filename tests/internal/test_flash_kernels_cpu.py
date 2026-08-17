@@ -153,3 +153,66 @@ def test_kernel_bodies_use_only_portable_triton_syntax():
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                 assert not (node.id in ("NB", "NP") and node.id not in arg_names), (
                     f"{fn.name}: bare global {node.id} inside @jit")
+
+
+def _kernel_jit_deps():
+    """(kernel, {co_name: JITFunction}) for both kernels; asserts each has >= 1 dep
+    so the binding-name gates below can never pass vacuously."""
+    from experiments.baselines.cgenn import flash_kernels_p1m3 as mod
+
+    if not mod._HAS_TRITON:
+        pytest.skip("triton not installed; CPU composite only")
+    from triton.runtime.jit import JITFunction
+
+    out = []
+    for kernel in (mod._fcgp_fwd_kernel, mod._fcgp_bwd_kernel):
+        deps = {name: kernel.fn.__globals__[name]
+                for name in kernel.fn.__code__.co_names
+                if isinstance(kernel.fn.__globals__.get(name), JITFunction)}
+        assert deps, f"{kernel.fn.__name__}: expected a generated-body subfunction call"
+        out.append((kernel, deps))
+    return out
+
+
+def test_jit_subfunction_bindings_match_their_def_names():
+    """GPU round-trip #6 rule: a JITFunction a kernel calls must be bound under the
+    wrapped function's OWN __name__. Inductor's user-defined-kernel embedding re-emits
+    each dependency's `src` -- whose def line carries the original name -- and its
+    JITFunction branch (unlike ConstexprFunction) writes no alias for a mismatched
+    binding, so `_fwd_body = triton.jit(_wgp_fwd)` compiles at raw launch but dies at
+    ast_to_ttir (NameError) the moment inductor sees the kernel via triton_op. CUDA-only
+    failure mode, machine-checked here on CPU."""
+    for kernel, deps in _kernel_jit_deps():
+        for name, jitfn in deps.items():
+            assert name == jitfn.fn.__name__, (
+                f"{kernel.fn.__name__} calls '{name}' but the emitted def is "
+                f"'{jitfn.fn.__name__}' -- inductor's closure embedding will NameError")
+
+
+def test_inductor_closure_embedding_resolves_all_calls():
+    """The same rule, end-to-end through torch's actual emitter: the transitive-closure
+    source inductor would generate for each kernel must contain a def for every
+    JITFunction name the kernel calls (this is the exact text ast_to_ttir re-parses in
+    the compile worker)."""
+    import ast as ast_mod
+
+    try:  # moved between releases: _inductor.utils (2.8 era) -> codegen.wrapper (2.13)
+        from torch._inductor.codegen.wrapper import (
+            user_defined_triton_kernel_transitive_closure_source_code as closure_src,
+        )
+    except ImportError:
+        try:
+            from torch._inductor.utils import (
+                user_defined_triton_kernel_transitive_closure_source_code as closure_src,
+            )
+        except ImportError:
+            pytest.skip("inductor closure emitter not importable on this torch")
+
+    for kernel, deps in _kernel_jit_deps():
+        src = closure_src(kernel)
+        defs = {n.name for n in ast_mod.walk(ast_mod.parse(src))
+                if isinstance(n, ast_mod.FunctionDef)}
+        missing = set(deps) - defs
+        assert not missing, (
+            f"{kernel.fn.__name__}: emitted closure lacks defs for {sorted(missing)}; "
+            f"defs present: {sorted(defs)}")
