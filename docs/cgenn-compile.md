@@ -3071,7 +3071,7 @@ resubmit (minutes old), so the jc table stays uniform.
 
 ### THE FLASH PLAN v2 (2026-08-16) — executable, step-driven, before any CGENN row trains
 
-**NEXT STEP: 5 — LAUNCH (FLASH-2 re-race CLOSED ×2, verdict final; nothing pends on flash)**  ← the state marker; each executed step advances it and records
+**NEXT STEP: 5 — LAUNCH for the non-CGENN table (FLASH-2 CLOSED ×2); the CGENN rows go LAST and their arm is decided by FLASH-3 (see plan below, currently at step 0)**  ← the state marker; each executed step advances it and records
 results directly under its entry. The operator drives with "do step N, then audit";
 the sandbox has no GPU, so every step ends either CPU-verified or with the exact
 pastable GPU commands and a hard stop until the operator pastes results back.
@@ -3385,6 +3385,80 @@ adopts and time remains; the contraction arm alone targets the measured GP share
   standalone ops (REGRESSIVE — inductor already fuses them for free, standalone
   ops would add the very partitions that capped flash). The campaign launches
   on sparse now.
+
+  *OVERRIDE (2026-08-17, operator, same day): the DON'T's two premises were
+  wrong, so the verdict flips to GO — recorded as FLASH-3 below.* The operator
+  clarified: (1) the campaign has NOT started, and its order runs every
+  non-CGENN model first — the three CGENN rows go LAST, so a kernel built in
+  parallel blocks nothing; (2) the jc CGENN rows cost ~100x the other JetClass
+  rows (weeks vs days) — a 1.5-2x on them saves WEEKS of wall-clock, which
+  dwarfs the build cost even at flash-port-times-ten. Both facts were the
+  conditions the DON'T itself named for flipping. The cheap-alternative
+  rejections above stand unchanged; only the schedule calculus moved.
+
+### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
+
+**NEXT STEP: 0 — PROFILE (two ~10-min runs; paste both outputs)** ← state marker,
+same protocol as FLASH v2: operator drives step-by-step; every step ends
+CPU-verified or with exact pastable GPU commands. The campaign launches its
+non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
+last, and their `gp_impl`/CGL arm is decided by whichever of {sparse, fused} has
+cleared all gates when their turn comes. Ship rules carried over: TOL gates
+(fp64 1e-13 vs the eager composite), DET pair-run bit-equal, gradcheck at fp64,
+empty-segment nodes, the binding-name rule (test-pinned), kill switch
+(CGENN_FUSED_CGL=0), arm-not-rewrite (the composite path stays; main always
+shippable), adopt bar >10% own-best vs sparse-compiled — with the project's own
+success target ≥1.5x, else record why and close.
+
+- **Step 0 (operator GPU, 2×~10 min, one allocation):** measure the edge share
+  the 1.5-3x estimate assumes (50-70%). Existing tool, sized batches:
+
+      python utils/profile_sync.py -cn toptagging model=tag_cgenn save=false \
+          training.batchsize=128 +prof.warm=8 +prof.active=5
+      python utils/profile_sync.py -cn toptagging model=tag_CGENNLGATrGraphGPS save=false \
+          training.batchsize=256 +prof.warm=8 +prof.active=5
+
+  Deliverable back: both printed tables. I sum the edge-attributable kernels
+  (messages fwd+bwd, gathers, segment reduces, their elementwise) into a
+  measured ceiling per model, and the hot list picks what the kernel must fuse
+  first. Top-tagging profiles stand in for jc architecturally (same code, same
+  graph builder); one optional jc profile can confirm later. This step also
+  re-baselines AFTER SortedGather/2.2b, which the 27.9% round-4 number predates.
+- **Step 1 (sandbox, CPU):** design freeze + generated math. Re-read the fc CGL
+  message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
+  invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
+  in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs
+  no gradient (static, from raw momenta). Extend utils/flash_gen.py to emit the
+  per-edge fused body (gather→GP→invariants→gate) + its analytic gradient as
+  generated, CSE'd, kingdon-checked functions — same generate-don't-transcribe
+  basis as flash, so the math is 3e-16-gated before any kernel exists. CSR
+  offsets for receiver segments = cumsum(edge_counts), computed once per
+  forward beside the existing degree hoist.
+- **Step 2 (sandbox → 1 GPU round-trip):** FORWARD kernel: one program per
+  (receiver-segment block); loads node arrays via indices, computes messages in
+  registers, segment-sums into node slots (sorted receivers → atomic-free,
+  deterministic). CPU composite twin + parity/AST/binding-name gates first;
+  then the round-trip runs parity fp64/fp32 + DET + bench.
+- **Step 3 (sandbox → 1-2 GPU round-trips):** BACKWARD, recompute-based: saves
+  only node arrays + weight + indices; recomputes per-edge quantities;
+  receiver-grad via the sorted segment sum, sender-grad via send_perm (the
+  FLASH-2b machinery), dL/dw via partial buffers + fixed-order torch sum(0)
+  (the flash determinism pattern). gradcheck/gradgradcheck fp64, joint-compile,
+  FakeTensor, empty-segment gates.
+- **Step 4 (1 GPU round-trip):** net integration as a gated arm at the CGL
+  boundary (composite path untouched), compile battery + 100-step soak + the
+  race: `bperf --models tag_cgenn/sparse tag_cgenn/fused --find-batchsize`
+  (+ hybrid row if step 0 shows the hybrids' share supports it). ADOPT re-records
+  hybrid pins (forward evaluation order changes: TOL-class re-record, stated).
+- **Step 5:** the CGENN rows launch on the winning arm — fused if adopted by the
+  time the campaign queue reaches them, sparse otherwise. Either way the rows
+  never wait on this plan.
+
+Schedule honesty, FLASH-3 edition: flash's 7 round-trips priced a far simpler
+kernel; plan for ~10-15 round-trips over 1-2 weeks, front-loaded to CPU so GPU
+failures localize (the strategy that caught every flash failure in one line).
+The window is the non-CGENN campaign's own runtime; if the kernel misses the
+window, sparse ships and the work closes with a recorded race, not a loss.
 
 Schedule honesty: steps 1-2 are one working session; step 3 is the risk
 concentration (Triton iteration without a local GPU — mitigated by step 2 making
