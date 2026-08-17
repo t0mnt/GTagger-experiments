@@ -3071,7 +3071,7 @@ resubmit (minutes old), so the jc table stays uniform.
 
 ### THE FLASH PLAN v2 (2026-08-16) — executable, step-driven, before any CGENN row trains
 
-**NEXT STEP: 5 — LAUNCH (race CLOSED, verdict below; all gates green)**  ← the state marker; each executed step advances it and records
+**NEXT STEP: 5 — LAUNCH, after the FLASH-2 re-race (one GPU round-trip; record below)**  ← the state marker; each executed step advances it and records
 results directly under its entry. The operator drives with "do step N, then audit";
 the sandbox has no GPU, so every step ends either CPU-verified or with the exact
 pastable GPU commands and a hard stop until the operator pastes results back.
@@ -3255,6 +3255,59 @@ adopts and time remains; the contraction arm alone targets the measured GP share
   finder value, sqrt-consistent with the table's 1e-3@512), jc CGENN-Trans
   512 / 1e-3, jc CGENN-GPS 256 / 1e-3 (top-tagging measurement; jc inputs are
   wider — find_bs pre-flight advised). **The CGENN rows are cleared to launch.**
+
+  *FLASH-2 (2026-08-17, same day, CPU-verified — re-opens the race ONCE, on the
+  operator's call: "the model takes up 89% of my runtime... anything you can do to
+  make flash worth it?").* Two changes, both forward-preserving, both aimed at the
+  measured mechanisms rather than new speculation:
+
+  1. **`triton_op` conversion (attacks the step-4 CLOSE mechanism head-on).** Both
+     flash ops (`cgenn_flash::fcgp`, `::fcgp_bwd`) are now registered via
+     `torch.library.triton_op` + `wrap_triton` instead of the opaque
+     `torch.library.custom_op` — PyTorch's documented remedy for exactly our
+     verdict: inductor SEES the Triton kernel inside the op and keeps fusing the
+     surrounding graph across its boundary, instead of treating it as a black box
+     (the fusion tax that held flash's compile speedup to 1.112x while sparse got
+     4.01x). Same kernels, same schema, same CPU composite and autograd
+     registration; the hand-written `register_fake`s are gone (triton_op derives
+     metadata from the now-visible body). Verified on torch 2.13 (sandbox) and
+     available on the NGC container's 2.8. This is also the honest answer to
+     "can sparse and triton be done together": the einsum→inductor route and the
+     handwritten-kernel route were merged by making the kernel visible to the
+     compiler — and it may subsume part of Tier-B (epilogue fusion) for free.
+  2. **Sender-side deterministic gathers (`SortedGatherPermuted`).** SortedGather
+     covered only the RECEIVER half of the 27.9%/22.7% scatter-backward kernel;
+     the sender gathers `x[j]`/`h[j]` still backwarded through atomic
+     scatter-add. A scatter over an UNSORTED index is still a segment sum after a
+     precomputed stable-sort permutation: backward = `grad.index_select(0, perm)`
+     + `torch.segment_reduce` over the sender degrees. The net forwards compute
+     `send_perm = argsort(j, stable=True)` + `send_counts` ONCE per forward next
+     to `edge_counts` (all three nets: package CGENN, hybrid backbone, GPS — the
+     GPS reuses the hybrid's CGLayer, so two CGL forwards thread the extras).
+     CLASS: forward is BIT (it IS `x[idx]`) — hybrid pins stand un-re-recorded,
+     verified; gradients are the same sums reassociated, replacing atomics that
+     were never run-repeatable — a strict determinism upgrade. Same
+     CGENN_SORTED_GATHER kill switch; extras `None` → plain autograd.
+
+  CPU verification, all green: flash CPU gates 8/8 (opcheck, parity ~2e-16, joint
+  compile 1e-13, FakeTensorMode, AST tripwire); sorted_gather 16/16 (8 new
+  permuted-twin gates: BIT fwd, grads-vs-autograd incl. empties fp64/fp32,
+  gradcheck+gradgrad, fallbacks, compile 0-breaks/≤2-graphs, executable
+  perm/counts contract); hybrid BIT pins 11/11 UNCHANGED; full compile battery
+  25/25 under CGENN_COMPILE_GATES=1 (breaks/recomp/backward-TOL, flash arms
+  included); twin-parity/autocast/sparse_gp 72/72.
+
+  Expectation set honestly: GP is ~14% of the compiled sparse step and the
+  send-half of the scatter kernel ~11-14%; with fusion recovery the plausible
+  combined ceiling is ~1.3-1.5x on tag_cgenn — worth one round-trip, not a
+  promise. The >10% adopt bar vs sparse-compiled **314 jets/s** stands. The CGENN
+  rows HOLD for this ONE re-race (operator's ledger override: flash-before-campaign
+  is fine and citable); everything else about the launch posture is unchanged.
+  **Round-trip #6, one allocation, same four commands as #5** (kernel gates →
+  compile -k flash → flash soak → trimmed race, the step-4 block above verbatim);
+  ADOPT flips the three yamls to `gp_impl: flash` + re-records pins (forward
+  changes: fc contraction evaluation order — pins are TOL-class re-records, stated),
+  CLOSE launches on sparse with flash kept as the memory escape hatch.
 
 Schedule honesty: steps 1-2 are one working session; step 3 is the risk
 concentration (Triton iteration without a local GPU — mitigated by step 2 making

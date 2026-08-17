@@ -71,3 +71,44 @@ def sorted_gather(x, idx, counts):
     if counts is None or not _ENABLED:
         return x[idx]
     return SortedGather.apply(x, idx, counts)
+
+
+class SortedGatherPermuted(torch.autograd.Function):
+    """`x[idx]` for an UNSORTED idx, with a deterministic segment-sum backward via a
+    precomputed stable-sort permutation (FLASH-2: the send-side twin of SortedGather).
+
+    scatter_add(grad, idx) == segment_sum(grad[perm]) over the sorted runs of
+    idx[perm]: within a segment the addends are the same set whatever their order, so
+    the value is exact-equal in expectation class and DETERMINISTIC by construction
+    (fixed perm + torch.segment_reduce), where autograd's scatter atomics were not.
+    REQUIRES: perm = argsort(idx, stable=True) and counts = bincount(idx) -- computed
+    once per forward next to the receiver degrees and threaded the same way.
+    """
+
+    generate_vmap_rule = True
+
+    @staticmethod
+    def forward(x, idx, perm, counts):
+        return x.index_select(0, idx)
+
+    @staticmethod
+    def setup_context(ctx, inputs, output):
+        x, idx, perm, counts = inputs
+        ctx.save_for_backward(perm, counts)
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        perm, counts = ctx.saved_tensors
+        lengths = counts.view(-1).to(torch.int64)
+        g = grad_out.index_select(0, perm).contiguous()
+        gx = torch.segment_reduce(g, "sum", lengths=lengths, axis=0)
+        return gx, None, None, None
+
+
+def sorted_gather_perm(x, idx, perm, counts):
+    """`x[idx]` for an unsorted idx with the permutation-based deterministic backward.
+    Falls back to plain autograd when the permutation/counts were not threaded or the
+    kill switch is set (same CGENN_SORTED_GATHER switch as the receiver side)."""
+    if perm is None or counts is None or not _ENABLED:
+        return x[idx]
+    return SortedGatherPermuted.apply(x, idx, perm, counts)

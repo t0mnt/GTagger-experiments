@@ -23,7 +23,7 @@ from experiments.baselines.cgenn.normalization import NormalizationLayer
 from experiments.baselines.cgenn.mvsilu import MVSiLU
 from experiments.baselines.cgenn.mvlayernorm import MVLayerNorm
 from experiments.baselines.cgenn.gp import SteerableGeometricProductLayer
-from experiments.baselines.cgenn.sorted_gather import sorted_gather
+from experiments.baselines.cgenn.sorted_gather import sorted_gather, sorted_gather_perm
 from experiments.baselines.cgenn.fcgp import FullyConnectedSteerableGeometricProductLayer
 from experiments.baselines.cgenn.utils import unsqueeze_like
 
@@ -374,15 +374,20 @@ class CGLayer(nn.Module):
         return self.theta_h(input)
 
     def forward(self, h, x, edges, node_attr_h, node_attr_x, edge_attr_h, edge_attr_x,
-                edge_counts=None):
+                edge_counts=None, send_perm=None, send_counts=None):
         i, j = edges
         # receiver gathers: BIT-identical forward, deterministic segment-sum backward
         # (sorted_gather; i is sorted and edge_counts is its degree vector -- 2.2a/2.2b's
-        # own invariant). Sender gathers x[j]/h[j] keep plain autograd (j unsorted).
-        m_x = self.message_x(sorted_gather(x, i, edge_counts), x[j], edge_attr_x)
+        # own invariant). Sender gathers x[j]/h[j]: same forward, backward routed through
+        # the stable-sort permutation (sorted_gather_perm, FLASH-2) -- deterministic
+        # segment sum instead of atomic scatter-add. Falls back to plain autograd when
+        # the extras are None.
+        x_j = sorted_gather_perm(x, j, send_perm, send_counts)
+        m_x = self.message_x(sorted_gather(x, i, edge_counts), x_j, edge_attr_x)
         m_invariants = get_invariants(self.algebra, m_x).flatten(1)
         if h is not None:
-            m_h = self.message_h(sorted_gather(h, i, edge_counts), h[j], m_invariants, edge_attr_h)
+            h_j = sorted_gather_perm(h, j, send_perm, send_counts)
+            m_h = self.message_h(sorted_gather(h, i, edge_counts), h_j, m_invariants, edge_attr_h)
         else:
             m_h = None
         if self.use_invariants_to_update:
@@ -493,6 +498,12 @@ class CGENNBackbone(nn.Module):
         i_recv = edges[0]
         edge_counts = x.new_zeros(x.size(0), 1).index_add_(
             0, i_recv, x.new_ones(i_recv.size(0), 1))
+        # Sender-side twin (FLASH-2): stable-sort permutation + degrees of the unsorted
+        # sender index, once per forward -- see the package twin (cgenn.py) for rationale.
+        j_send = edges[1]
+        send_perm = torch.argsort(j_send, stable=True)
+        send_counts = x.new_zeros(x.size(0), 1).index_add_(
+            0, j_send, x.new_ones(j_send.size(0), 1))
         for i in range(self.n_layers):
             h, x = self.CGLs[i](
                 h,
@@ -503,6 +514,8 @@ class CGENNBackbone(nn.Module):
                 edge_attr_x=edge_attr_x,
                 edge_attr_h=edge_attr_h,
                 edge_counts=edge_counts,
+                send_perm=send_perm,
+                send_counts=send_counts,
             )
         return h, x
 

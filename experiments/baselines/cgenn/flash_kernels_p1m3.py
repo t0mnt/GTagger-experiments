@@ -25,6 +25,7 @@ tests/internal/test_flash_kernels_cpu.py.
 """
 
 import torch
+from torch.library import triton_op, wrap_triton
 
 from experiments.baselines.cgenn import flash_ref_p1m3 as _ref
 
@@ -428,9 +429,15 @@ def _reference_backward(x, y, weight, go):
     return gx.sum(dim=1), gy.sum(dim=1), gw.sum(dim=0)
 
 
-@torch.library.custom_op("cgenn_flash::fcgp", mutates_args=())
+@triton_op("cgenn_flash::fcgp", mutates_args=())
 def fcgp(x: torch.Tensor, y: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
-    """out[b, m, j] = sum_{n, i} w[m, n, path(i, j)] * s(i, j) * x[b, n, i] * y[b, n, k(i, j)]"""
+    """out[b, m, j] = sum_{n, i} w[m, n, path(i, j)] * s(i, j) * x[b, n, i] * y[b, n, k(i, j)]
+
+    TRITON_OP, not custom_op (FLASH-2): the step-4 race showed the opaque custom op
+    costs more fusion than the kernel wins (sparse 4.01x from compile vs flash 1.112x).
+    `triton_op` + `wrap_triton` is the documented remedy -- inductor SEES the kernel,
+    keeps fusing the surrounding graph, and no fake kernels are needed (the body's
+    allocations are visible torch code). The CPU branch stays the gated reference."""
     B, N = x.shape[0], x.shape[1]
     M = weight.shape[0]
     if not x.is_cuda:
@@ -439,16 +446,11 @@ def fcgp(x: torch.Tensor, y: torch.Tensor, weight: torch.Tensor) -> torch.Tensor
     out = x.new_empty(B, M, NB)
     BLOCK = 64
     grid = (triton.cdiv(B, BLOCK), M)
-    _fcgp_fwd_kernel[grid](x, y, weight, out, B, N=N, M=M, BLOCK=BLOCK)
+    wrap_triton(_fcgp_fwd_kernel)[grid](x, y, weight, out, B, N=N, M=M, BLOCK=BLOCK)
     return out
 
 
-@fcgp.register_fake
-def _(x, y, weight):
-    return x.new_empty(x.shape[0], weight.shape[0], NB)
-
-
-@torch.library.custom_op("cgenn_flash::fcgp_bwd", mutates_args=())
+@triton_op("cgenn_flash::fcgp_bwd", mutates_args=())
 def fcgp_bwd(x: torch.Tensor, y: torch.Tensor, weight: torch.Tensor,
              go: torch.Tensor) -> list[torch.Tensor]:
     """(gx, gy, gw) for fcgp. AN OPAQUE OP IN ITS OWN RIGHT, not a plain backward fn
@@ -470,17 +472,8 @@ def fcgp_bwd(x: torch.Tensor, y: torch.Tensor, weight: torch.Tensor,
     nblk = triton.cdiv(B, BLOCK)
     partial = x.new_empty(nblk, M, N, NP)
     grid = (nblk, N)
-    _fcgp_bwd_kernel[grid](x, y, weight, go, gx, gy, partial, B, N=N, M=M, BLOCK=BLOCK)
+    wrap_triton(_fcgp_bwd_kernel)[grid](x, y, weight, go, gx, gy, partial, B, N=N, M=M, BLOCK=BLOCK)
     return [gx, gy, partial.sum(dim=0)]  # fixed-order stage-2: deterministic
-
-
-@fcgp_bwd.register_fake
-def _(x, y, weight, go):
-    # contiguous_format: the real branches always return contiguous tensors, and a
-    # fake that inherits exotic input strides would misdescribe them to AOT (audit)
-    return [torch.empty_like(x, memory_format=torch.contiguous_format),
-            torch.empty_like(y, memory_format=torch.contiguous_format),
-            torch.empty_like(weight, memory_format=torch.contiguous_format)]
 
 
 def _backward(ctx, go):

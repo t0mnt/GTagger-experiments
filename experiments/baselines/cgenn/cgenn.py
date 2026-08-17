@@ -10,7 +10,7 @@ from experiments.baselines.cgenn.gp import SteerableGeometricProductLayer
 from experiments.baselines.cgenn.linear import MVLinear
 from experiments.baselines.cgenn.mvlayernorm import MVLayerNorm
 from experiments.baselines.cgenn.mvsilu import MVSiLU
-from experiments.baselines.cgenn.sorted_gather import sorted_gather
+from experiments.baselines.cgenn.sorted_gather import sorted_gather, sorted_gather_perm
 
 
 def get_invariants(algebra, input):
@@ -279,16 +279,21 @@ class CGLayer(nn.Module):
         return self.theta_h(input)
 
     def forward(self, h, x, edges, node_attr_h, node_attr_x, edge_attr_h, edge_attr_x,
-                edge_counts=None):
+                edge_counts=None, send_perm=None, send_counts=None):
         i, j = edges
         # receiver gathers: BIT-identical forward, deterministic segment-sum backward
         # (sorted_gather; i is sorted and edge_counts is its degree vector -- 2.2a/2.2b's
-        # own invariant). Sender gathers x[j]/h[j] keep plain autograd (j unsorted).
-        m_x = self.message_x(sorted_gather(x, i, edge_counts), x[j], edge_attr_x)
+        # own invariant). Sender gathers x[j]/h[j]: same forward, backward routed through
+        # the stable-sort permutation (sorted_gather_perm, FLASH-2) -- j is unsorted, but
+        # a fixed perm + segment sum is still deterministic where autograd's atomics were
+        # not. Both fall back to plain autograd when the extras are None.
+        x_j = sorted_gather_perm(x, j, send_perm, send_counts)
+        m_x = self.message_x(sorted_gather(x, i, edge_counts), x_j, edge_attr_x)
         m_invariants = get_invariants(self.algebra, m_x).flatten(1)
 
         if h is not None:
-            m_h = self.message_h(sorted_gather(h, i, edge_counts), h[j], m_invariants, edge_attr_h)
+            h_j = sorted_gather_perm(h, j, send_perm, send_counts)
+            m_h = self.message_h(sorted_gather(h, i, edge_counts), h_j, m_invariants, edge_attr_h)
         else:
             m_h = None
 
@@ -447,6 +452,14 @@ class CGENN(nn.Module):
         i_recv = edges[0]
         edge_counts = ref.new_zeros(ref.size(0), 1).index_add_(
             0, i_recv, ref.new_ones(i_recv.size(0), 1))
+        # Sender-side twin (FLASH-2): the stable-sort permutation of the (unsorted) sender
+        # index + its degree vector, once per forward, so every CGL's x[j]/h[j] backward is
+        # a deterministic gather+segment-sum instead of an atomic scatter-add (the other
+        # half of the 27.9% index_put kernel). Forward stays x[idx], so pins stand.
+        j_send = edges[1]
+        send_perm = torch.argsort(j_send, stable=True)
+        send_counts = ref.new_zeros(ref.size(0), 1).index_add_(
+            0, j_send, ref.new_ones(j_send.size(0), 1))
 
         for i in range(self.n_layers):
             h, x = self.CGLs[i](
@@ -458,6 +471,8 @@ class CGENN(nn.Module):
                 edge_attr_x=edge_attr_x,
                 edge_attr_h=edge_attr_h,
                 edge_counts=edge_counts,
+                send_perm=send_perm,
+                send_counts=send_counts,
             )
 
         invariants = get_invariants(self.algebra, x).flatten(1)
