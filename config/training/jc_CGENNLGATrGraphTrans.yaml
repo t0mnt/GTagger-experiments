@@ -12,6 +12,7 @@
 defaults:
   - jc_gts_and_friends_default
 
-# found using utils/find_lr.py (batch size capped at <=512)
-batchsize: ???
-lr: ???
+# lr 1e-3 = the table-wide decision; bs 512 measured on top tagging (33.6 GB peak,
+# ample headroom for jc's wider inputs). Optional pre-flight: utils/find_bs.py --task jctagging
+batchsize: 512
+lr: 1e-3

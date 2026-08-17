@@ -12,6 +12,8 @@
 defaults:
   - jc_gts_and_friends_default
 
-# found using utils/find_lr.py (batch size capped at <=512)
-batchsize: ???
-lr: ???
+# lr 1e-3 = the table-wide decision; bs 256 = the top-tagging measurement (69.7 GB
+# peak with activation budget 0.5 -- near the card, and jc inputs are WIDER: run
+# utils/find_bs.py --task jctagging before queueing if in any doubt).
+batchsize: 256
+lr: 1e-3

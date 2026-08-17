@@ -3071,7 +3071,7 @@ resubmit (minutes old), so the jc table stays uniform.
 
 ### THE FLASH PLAN v2 (2026-08-16) — executable, step-driven, before any CGENN row trains
 
-**NEXT STEP: 4 (GPU battery + race — commands under step 4)**  ← the state marker; each executed step advances it and records
+**NEXT STEP: 5 — LAUNCH (race CLOSED, verdict below; all gates green)**  ← the state marker; each executed step advances it and records
 results directly under its entry. The operator drives with "do step N, then audit";
 the sandbox has no GPU, so every step ends either CPU-verified or with the exact
 pastable GPU commands and a hard stop until the operator pastes results back.
@@ -3230,6 +3230,31 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 - **Step 5:** launch the three CGENN rows (top + jc CGENN recipes) under whichever
   arm won, with find_bs re-run for them ONLY if F4 adopted (kernel fusion can only
   grow the fitting batch, but measure rather than assume).
+
+  *STEP 4 VERDICT (2026-08-17, round-trip #5, uncontended): **CLOSE — sparse stays
+  for the campaign.*** Everything verified first: kernel gates 6/6 (clean bench
+  0.18x/0.20x/0.20x of blockdiag — ~5x at op level), compile battery flash arms 6/6
+  including the compiled backward, and the 100-step compiled varying-shape soak
+  green on ALL THREE CGENN rows under flash (losses 0.69→0.58 / 0.72→0.51 /
+  0.69→0.58, 100% nonzero-grad params) — **which also clears the CGENN rows'
+  pending SortedGather gate day** (the soak ran with it active). Then the race:
+  sparse-compiled 314 jets/s at its bs-128 ceiling vs flash-compiled 331 at bs-512
+  = **+5.4% own-best, below the pre-registered >10% adopt bar.** Mechanism, visible
+  in the speedup column: sparse gains 4.01x from compile (inductor fuses the einsum
+  chain into the whole graph); flash gains only 1.112x — the OPAQUE custom op
+  blocks fusion across its boundary, and that fusion tax eats most of the 5x
+  kernel win. Flash's real victory is MEMORY (~0.14 GB/jet, 4x the batch, 3x
+  headroom at equal batch), which is what nets the +5.4. Per the discipline: not
+  adopted; the arm STAYS in-tree (gated, kill-switchable, checkpoint-compatible,
+  selectable via `model.net.gp_impl=flash`) as the reference implementation and
+  the memory escape hatch. The one continuation that attacks the mechanism itself
+  — Tier-B fusion, moving MVSiLU/MVLayerNorm INSIDE the op boundary so there is
+  nothing left to fuse across — is recorded as the sole flash follow-up that could
+  flip the verdict; it costs 1-2 more kernel round-trips and the campaign does not
+  wait on it. Recipes filled for launch: top_cgenn 128 / 5.57e-4 (sparse ceiling;
+  finder value, sqrt-consistent with the table's 1e-3@512), jc CGENN-Trans
+  512 / 1e-3, jc CGENN-GPS 256 / 1e-3 (top-tagging measurement; jc inputs are
+  wider — find_bs pre-flight advised). **The CGENN rows are cleared to launch.**
 
 Schedule honesty: steps 1-2 are one working session; step 3 is the risk
 concentration (Triton iteration without a local GPU — mitigated by step 2 making

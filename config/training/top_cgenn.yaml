@@ -37,9 +37,12 @@
 defaults:
   - tag_gts_and_friends_default
 
-# found using utils/find_lr.py (batch size capped at <=512)
-batchsize: ???
-lr: ???
+# bs 128 = the sparse-impl H100 ceiling (bperf 2026-08-17: 256 OOM at 68.8 GB/128);
+# lr 5.57e-4 from the aligned finder at bs 128 -- sqrt-consistent with the table's
+# 1e-3 @ 512, mutually corroborating (docs/cgenn-compile.md). gp_impl stays sparse:
+# the flash race CLOSED at +5.4% own-best (< the 10% adopt bar; opaque-op fusion tax).
+batchsize: 128
+lr: 5.57e-4
 
 # weight_decay: 0.01          # inherited from tag_gts_and_friends_default; official CGENN uses 0
 # optimizer: Adam             # inherited AdamW; official CGENN uses Adam (one flat group)
