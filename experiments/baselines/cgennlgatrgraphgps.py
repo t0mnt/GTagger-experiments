@@ -208,8 +208,8 @@ class CGENNLGATrGraphGPS(nn.Module):
         if knn_metric not in ("deltaR", "minkowski"):
             raise ValueError(f"knn_metric must be 'deltaR' or 'minkowski', got '{knn_metric}'")
         self.algebra = CliffordAlgebra((1.0, -1.0, -1.0, -1.0))
-        if gp_impl not in ("einsum", "matmul", "sparse"):
-            raise ValueError(f"gp_impl must be einsum|matmul|sparse, got {gp_impl!r}")
+        if gp_impl not in ("einsum", "matmul", "sparse", "flash"):
+            raise ValueError(f"gp_impl must be einsum|matmul|sparse|flash, got {gp_impl!r}")
         self.algebra.gp_impl = gp_impl
         self.k = k
         self.knn_metric = knn_metric

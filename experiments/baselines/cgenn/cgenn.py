@@ -370,8 +370,8 @@ class CGENN(nn.Module):
         #             MACs (lgatr 2.0's sparse_gp, adapted to per-path weights).
         # matmul/sparse reorder the same arithmetic -> TOL-class (docs/cgenn-compile.md);
         # layers read this off the shared algebra instance at construction.
-        if gp_impl not in ("einsum", "matmul", "sparse"):
-            raise ValueError(f"gp_impl must be einsum|matmul|sparse, got {gp_impl!r}")
+        if gp_impl not in ("einsum", "matmul", "sparse", "flash"):
+            raise ValueError(f"gp_impl must be einsum|matmul|sparse|flash, got {gp_impl!r}")
         self.algebra.gp_impl = gp_impl
         self.n_layers = n_layers
         self.embedding_h = nn.Linear(in_features_h, hidden_features_h)

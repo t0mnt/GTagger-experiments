@@ -149,7 +149,7 @@ def test_fixture_content_hashes():
         assert live == expected, f"{fname}: fixture content changed"
 
 
-GP_IMPLS = ["matmul", "sparse"]
+GP_IMPLS = ["matmul", "sparse", "flash"]
 
 
 @pytest.mark.parametrize("impl", GP_IMPLS)

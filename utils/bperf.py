@@ -79,6 +79,7 @@ MATRIX = [
     ("tag_cgenn/einsum", ["model=tag_cgenn", "model.net.gp_impl=einsum"], "model.compile", "config/model/tag_cgenn.yaml"),
     ("tag_cgenn/matmul", ["model=tag_cgenn", "model.net.gp_impl=matmul"], "model.compile", "config/model/tag_cgenn.yaml"),
     ("tag_cgenn/sparse", ["model=tag_cgenn", "model.net.gp_impl=sparse"], "model.compile", "config/model/tag_cgenn.yaml"),
+    ("tag_cgenn/flash", ["model=tag_cgenn", "model.net.gp_impl=flash"], "model.compile", "config/model/tag_cgenn.yaml"),
     ("tag_lorentznet", ["model=tag_lorentznet"], "model.compile", "config/model/tag_lorentznet.yaml"),
     ("tag_slim", ["model=tag_slim"], "model.net.compile", "config/model/tag_slim.yaml"),
     ("tag_lgatr", ["model=tag_lgatr"], "model.net.compile", "config/model/tag_lgatr.yaml"),

@@ -3071,7 +3071,7 @@ resubmit (minutes old), so the jc table stays uniform.
 
 ### THE FLASH PLAN v2 (2026-08-16) — executable, step-driven, before any CGENN row trains
 
-**NEXT STEP: 3**  ← the state marker; each executed step advances it and records
+**NEXT STEP: 4 (GPU battery + race — commands under step 4)**  ← the state marker; each executed step advances it and records
 results directly under its entry. The operator drives with "do step N, then audit";
 the sandbox has no GPU, so every step ends either CPU-verified or with the exact
 pastable GPU commands and a hard stop until the operator pastes results back.
@@ -3167,6 +3167,35 @@ adopts and time remains; the contraction arm alone targets the measured GP share
   CGENN model yamls (config + config_quick), TOL-verify + re-record hybrid pins and
   explain (class change stated). CLOSE → sparse stays, record the price, no yaml
   churn.
+
+  *Round-trip #3 (2026-08-16): the kernels RUN, and the op-level race is a
+  landslide.* 5/6 gates green on first compile of the explicit kernels: fp32 parity
+  ~2e-07 fwd and all grads, DETERMINISM bit-equal (forward + all three gradients —
+  the no-atomics design paying off), and **BENCH-FLASH 0.25x / 0.21x / 0.16x of
+  blockdiag** (4-6x faster, fwd+bwd, adopt bar <0.90x cleared everywhere at op
+  level). The one failure was the fp64 VERIFICATION path: Triton requires
+  loop-carried accumulators to keep one type, and the fp32-zeros init got
+  reassigned fp64 — all 48 accumulators in both kernels now init as
+  `xp.dtype.element_ty` (fp32 path semantics unchanged).
+
+  *Step-4 wiring COMPLETE (same day, CPU-verified):* `gp_impl: flash` is a live
+  fourth arm — fcgp.py routes the fc contraction to the custom op (same compact
+  weight, checkpoint-compatible); gp.py raises loudly if flash reaches a gpmlp
+  site; all three nets accept the value; GP_IMPLS in test_cgenn_compile gains
+  "flash", and the CPU battery already passes it: TOL-IMPL 3.95e-15 fp64 /
+  4.1e-06 fp32, BACKWARD-TOL worst 2.3e-10 — the same bars sparse holds. bperf's
+  MATRIX gains the `tag_cgenn/flash` row (the `--models tag_cgenn CGENN` pin
+  updated to four gp_impl rows). Remaining before adopt-or-close, ONE allocation:
+
+      # 1. kernel gates (fp64 parity now expected green too)
+      python -m pytest tests/experiments/test_flash_kernels_cuda.py -q -s
+      # 2. model-level compile battery, flash arms included
+      CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_cgenn_compile.py -q -k flash
+      # 3. the model-level race (four gp_impl rows, sized+seeded identically)
+      python utils/bperf.py --models tag_cgenn --find-batchsize
+
+  Paste all three outputs; ADOPT flips the yamls + re-records pins, CLOSE keeps
+  sparse — either way step 5 (launch the CGENN rows) follows immediately.
 - **Step 5:** launch the three CGENN rows (top + jc CGENN recipes) under whichever
   arm won, with find_bs re-run for them ONLY if F4 adopted (kernel fusion can only
   grow the fitting batch, but measure rather than assume).

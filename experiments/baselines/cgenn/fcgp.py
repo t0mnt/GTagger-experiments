@@ -8,6 +8,7 @@ from experiments.baselines.cgenn.cliffordalgebra import sparse_gp_tables
 from experiments.baselines.cgenn.linear import MVLinear
 from experiments.baselines.cgenn.normalization import NormalizationLayer
 from experiments.baselines.cgenn.sparse_gp import sparse_geometric_product
+from experiments.baselines.cgenn.flash_kernels_p1m3 import fcgp as fcgp_flash
 from .autocast import minimum_autocast_precision
 
 
@@ -84,6 +85,11 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
             product = sparse_geometric_product(
                 input, input_right, self.weight,
                 self.algebra, self._sp_path, self._sp_val, self._sp_sel)
+        elif self.gp_impl == "flash":
+            # generated Cl(1,3) Triton contraction (FLASH PLAN v2, step 4): same compact
+            # weight, same math -- gated at 3e-16 vs the sparse expression; CUDA runs the
+            # kernels, CPU the gated reference composition inside the custom op.
+            product = fcgp_flash(input, input_right, self.weight)
         elif self.gp_impl == "matmul":
             # dense outer product + one GEMM (lgatr 2.0 dense form)
             weight = self._get_weight()

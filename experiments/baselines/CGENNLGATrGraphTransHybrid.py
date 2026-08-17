@@ -443,8 +443,8 @@ class CGENNBackbone(nn.Module):
         # geometric-product contraction for the weighted GP layers: einsum (BIT reference)
         # | matmul (dense GEMM) | sparse (quasigroup gather; lgatr 2.0 sparse_gp posture).
         # matmul/sparse are TOL-class -- see docs/cgenn-compile.md and baselines/cgenn.
-        if gp_impl not in ("einsum", "matmul", "sparse"):
-            raise ValueError(f"gp_impl must be einsum|matmul|sparse, got {gp_impl!r}")
+        if gp_impl not in ("einsum", "matmul", "sparse", "flash"):
+            raise ValueError(f"gp_impl must be einsum|matmul|sparse|flash, got {gp_impl!r}")
         self.algebra.gp_impl = gp_impl
         self.n_layers = n_layers
         self.embedding_h = nn.Linear(in_features_h, hidden_features_h)

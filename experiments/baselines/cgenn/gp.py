@@ -66,6 +66,11 @@ class SteerableGeometricProductLayer(nn.Module):
             product = sparse_geometric_product(
                 input, input_right, self.weight,
                 self.algebra, self._sp_path, self._sp_val, self._sp_sel)
+        elif self.gp_impl == "flash":
+            raise ValueError(
+                "gp_impl=flash implements the fully-connected contraction only (fcgp); "
+                "this SteerableGeometricProductLayer site exists in the gpmlp layer type "
+                "-- use einsum|matmul|sparse there")
         elif self.gp_impl == "matmul":
             # dense outer product + per-feature bmm (lgatr 2.0 dense form)
             weight = self._get_weight()

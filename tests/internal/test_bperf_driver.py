@@ -54,8 +54,9 @@ def test_every_row_points_at_a_real_yaml_with_exactly_one_knob_line():
 def test_row_names_are_unique_and_substring_filtering_is_documented_accurately():
     """`--models` is substring matching, so a name that is a prefix of another over-selects.
 
-    todo.md tells the reader `--models CGENN` is the two hybrids only and that the three
-    gp_impl rows need `--models tag_cgenn CGENN`. That is a claim about this table; pin it.
+    todo.md tells the reader `--models CGENN` is the two hybrids only and that the
+    gp_impl rows (four since the flash arm, FLASH PLAN v2 step 4) need
+    `--models tag_cgenn CGENN`. That is a claim about this table; pin it.
     """
     names = [r[0] for r in bperf.MATRIX]
     assert len(names) == len(set(names)), f"duplicate row names: {names}"
@@ -65,7 +66,7 @@ def test_row_names_are_unique_and_substring_filtering_is_documented_accurately()
 
     assert select("CGENN") == ["CGENNLGATrGraphTrans", "CGENNLGATrGraphGPS"]
     assert select("tag_cgenn", "CGENN") == [
-        "tag_cgenn/einsum", "tag_cgenn/matmul", "tag_cgenn/sparse",
+        "tag_cgenn/einsum", "tag_cgenn/matmul", "tag_cgenn/sparse", "tag_cgenn/flash",
         "CGENNLGATrGraphTrans", "CGENNLGATrGraphGPS",
     ]
 
