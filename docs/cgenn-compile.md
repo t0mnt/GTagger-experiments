@@ -3196,6 +3196,29 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
   Paste all three outputs; ADOPT flips the yamls + re-records pins, CLOSE keeps
   sparse — either way step 5 (launch the CGENN rows) follows immediately.
+
+  *Round-trip #4 (2026-08-17): kernels FULLY green; the race reads adopt-shaped;
+  two fixes + one command mea culpa.* Kernel gates **6/6** — fp64 parity at
+  3.6e-16 (machine epsilon: the kernel IS the generated math), fp32 ~2e-07, DET
+  bit-equal, bench 0.18x/0.05x/0.20x. bperf, converted to the jets/s the
+  differently-sized rows require: einsum-compiled 241, matmul-compiled 294,
+  sparse-compiled 310 — and **flash EAGER 297 at bs512**, the only impl to fit
+  the full 512 ceiling (73.3 GB; ~0.14 GB/jet vs sparse 0.17 capped at 128 and
+  einsum ~1.5 capped at 16). Flash-compiled is the open number; it failed on ONE
+  mechanism: AOT's joint-graph trace runs the registered backward on fake
+  tensors, and a raw Triton launch there dies on data_ptr(). FIXED as the error
+  prescribes — the backward is now its own opaque custom op (`fcgp_bwd`, fake
+  registered, CPU composite kept), and two new CPU gates pin the wiring (joint
+  fwd+bwd compile parity at 1e-13; the bwd op under FakeTensorMode). The
+  backward-TOL failure was test infra, not flash: `_grads`' probe weights were
+  created without a device — first CUDA run of that gate ever; fixed. And the
+  COMMAND was mine to own: `srun -n 4` means 4 TASK REPLICAS, not 4 cores —
+  every round-trip so far ran 4x concurrently on one GPU (the 4x exit codes,
+  the host-OOM that killed einsum's eager arm, and the bench variance between
+  rounds: 6.21 vs 18.69 ms for the same shape). Direction is contention-robust
+  (<0.25x both rounds) but clean numbers need `-n 1 -c 4`. bperf's table now
+  carries bs + jets/s columns so cross-impl rows can never be misread again.
+  **Round-trip #5 (same three commands, fixed srun) decides adopt-or-close.**
 - **Step 5:** launch the three CGENN rows (top + jc CGENN recipes) under whichever
   arm won, with find_bs re-run for them ONLY if F4 adopted (kernel fusion can only
   grow the fitting batch, but measure rather than assume).

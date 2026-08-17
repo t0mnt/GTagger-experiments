@@ -76,6 +76,47 @@ def test_compile_traces_the_op_without_breaks():
     assert explanation.graph_break_count == 0, str(explanation)[:1500]
 
 
+def test_compile_joint_forward_backward():
+    """torch.compile through a TRAINING step of the op -- AOT traces the registered
+    backward into the joint graph. GPU round-trip #4 caught that a raw Triton launch
+    inside the backward dies on fake tensors during that trace; the backward is now
+    its own opaque op (fcgp_bwd). This CPU joint-compile pins the WIRING (the
+    CUDA-branch-under-fake scenario itself is GPU-tier, covered by
+    test_cgenn_compile's compiled-backward gate)."""
+    import torch._dynamo as dynamo
+
+    def f(a, b, c):
+        return fcgp(a, b, c).square().sum()
+
+    x0, y0, w0 = _case(dtype=torch.float64, seed=2)
+    eager = [t.clone().requires_grad_(True) for t in (x0, y0, w0)]
+    f(*eager).backward()
+    dynamo.reset()
+    comp = [t.clone().requires_grad_(True) for t in (x0, y0, w0)]
+    torch.compile(f, dynamic=True)(*comp).backward()
+    dynamo.reset()
+    for nm, a, b in zip(("dL/dx", "dL/dy", "dL/dw"), comp, eager):
+        rel = ((a.grad - b.grad).abs().max() / (1 + b.grad.abs().max())).item()
+        assert rel < 1e-13, f"compiled joint {nm}: rel={rel:.3e}"
+
+
+def test_backward_op_has_a_fake_kernel():
+    """The bwd op must be traceable with fake tensors (the exact round-trip #4
+    failure mode): calling it under FakeTensorMode must hit register_fake, not the
+    real body."""
+    from torch._subclasses.fake_tensor import FakeTensorMode
+
+    with FakeTensorMode():
+        x = torch.empty(6, 5, 16)
+        y = torch.empty(6, 5, 16)
+        w = torch.empty(4, 5, 35)
+        go = torch.empty(6, 4, 16)
+        from experiments.baselines.cgenn.flash_kernels_p1m3 import fcgp_bwd
+
+        gx, gy, gw = fcgp_bwd(x, y, w, go)
+    assert gx.shape == x.shape and gy.shape == y.shape and gw.shape == w.shape
+
+
 def test_kernels_present_when_triton_is():
     from experiments.baselines.cgenn import flash_kernels_p1m3 as mod
 

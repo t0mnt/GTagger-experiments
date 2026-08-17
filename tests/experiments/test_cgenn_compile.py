@@ -198,7 +198,7 @@ def _grads(exp, data):
     y = exp._get_ypred_and_label(data.clone())[0]
     # distinct weight per output element: no gradient component can cancel out of the
     # comparison the way a plain .sum() lets equal-and-opposite rows do
-    w = torch.linspace(-1, 1, y.numel(), dtype=y.dtype).reshape(y.shape)
+    w = torch.linspace(-1, 1, y.numel(), dtype=y.dtype, device=y.device).reshape(y.shape)
     (y * w).sum().backward()
     return {n: p.grad.detach().clone() for n, p in exp.model.named_parameters()
             if p.grad is not None}

@@ -448,11 +448,19 @@ def _(x, y, weight):
     return x.new_empty(x.shape[0], weight.shape[0], NB)
 
 
-def _backward(ctx, go):
-    x, y, weight = ctx.saved_tensors
+@torch.library.custom_op("cgenn_flash::fcgp_bwd", mutates_args=())
+def fcgp_bwd(x: torch.Tensor, y: torch.Tensor, weight: torch.Tensor,
+             go: torch.Tensor) -> list[torch.Tensor]:
+    """(gx, gy, gw) for fcgp. AN OPAQUE OP IN ITS OWN RIGHT, not a plain backward fn
+    (GPU round-trip #4 finding): AOT's joint-graph trace runs the registered backward
+    with fake/functional tensors, and a raw Triton launch there dies on data_ptr().
+    Wrapping the launch in a custom op makes the backward trace as one opaque node --
+    exactly what the PyTorch custom-op guidance prescribes -- while eager behavior is
+    unchanged. CPU keeps the gated reference composition, so the whole autograd wiring
+    stays testable without a GPU."""
     if not x.is_cuda:
         gx, gy, gw = _reference_backward(x, y, weight, go)
-        return gx, gy, gw
+        return [gx, gy, gw]
     B, N = x.shape[0], x.shape[1]
     M = weight.shape[0]
     x, y, weight, go = (t.contiguous() for t in (x, y, weight, go))
@@ -463,7 +471,18 @@ def _backward(ctx, go):
     partial = x.new_empty(nblk, M, N, NP)
     grid = (nblk, N)
     _fcgp_bwd_kernel[grid](x, y, weight, go, gx, gy, partial, B, N=N, M=M, BLOCK=BLOCK)
-    return gx, gy, partial.sum(dim=0)  # fixed-order stage-2: deterministic
+    return [gx, gy, partial.sum(dim=0)]  # fixed-order stage-2: deterministic
+
+
+@fcgp_bwd.register_fake
+def _(x, y, weight, go):
+    return [torch.empty_like(x), torch.empty_like(y), torch.empty_like(weight)]
+
+
+def _backward(ctx, go):
+    x, y, weight = ctx.saved_tensors
+    gx, gy, gw = fcgp_bwd(x, y, weight, go)
+    return gx, gy, gw
 
 
 def _setup_context(ctx, inputs, output):

@@ -323,6 +323,7 @@ def main():
             row_base = row_base + [f"training.batchsize={bs}"]
             print(f"[bperf] {name} batchsize={bs} (sized once eager, used for both "
                   f"states)", flush=True)
+        row_bs = bs if args.find_batchsize else None
         pair = {}
         for state in ("false", "true"):
             print(f"[bperf] {name} {knob}={state} ...", flush=True)
@@ -341,7 +342,7 @@ def main():
                    "within margin -- keep current" if speedup else "INCOMPLETE")
         if name in NO_APPLY and want_true:
             verdict += " -- NOT APPLIED (semantics/backward, see cgenn-compile.md)"
-        results.append((name, e, c, speedup, verdict))
+        results.append((name, e, c, speedup, verdict, row_bs))
         if speedup and (want_true or want_false) and not (name in NO_APPLY and want_true):
             recs.append((yaml_path, knob, "true" if want_true else "false"))
         print(f"[bperf] {name}: eager={e and f'{e:.2f}'} it/s, "
@@ -351,11 +352,16 @@ def main():
         f"\n## beta-PERF {datetime.datetime.now():%Y-%m-%d %H:%M} "
         f"(tree={args.config_path}, iters={args.iters}, window={tuple(args.window)}, "
         f"cuda={'yes' if _cuda() else 'NO -- not decision-grade'})",
-        "", "| row | eager it/s | compiled it/s | speedup | verdict |", "|---|---|---|---|---|",
+        # jets/s = it/s x batchsize: rows are sized PER IMPL, so it/s is not comparable
+        # across rows -- jets/s is (the flash-vs-sparse race read wrong without it, 2026-08-17)
+        "", "| row | bs | eager it/s | compiled it/s | eager jets/s | compiled jets/s | speedup | verdict |",
+        "|---|---|---|---|---|---|---|---|",
     ]
-    for name, e, c, s, v in results:
-        lines.append(f"| {name} | {e and f'{e:.2f}' or '-'} | {c and f'{c:.2f}' or '-'} "
-                     f"| {s and f'{s:.3f}x' or '-'} | {v} |")
+    for name, e, c, s, v, rbs in results:
+        ej = f"{e * rbs:.0f}" if (e and rbs) else "-"
+        cj = f"{c * rbs:.0f}" if (c and rbs) else "-"
+        lines.append(f"| {name} | {rbs or '-'} | {e and f'{e:.2f}' or '-'} | {c and f'{c:.2f}' or '-'} "
+                     f"| {ej} | {cj} | {s and f'{s:.3f}x' or '-'} | {v} |")
     lines += ["", "Recommended one-liners (production tree):"]
     lines += [f"- `{y}`: set `{k.split('.')[-1]}: {v}`" for y, k, v in recs] or ["- none"]
     report = "\n".join(lines)
