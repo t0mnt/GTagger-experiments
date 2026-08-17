@@ -1,3 +1,4 @@
+#morally dubious LR finder to be used at your own risk
 """
     python utils/find_lr.py -cn jctagging model=tag_transformer save=false
     python utils/find_lr.py -cn toptagging model=tag_transformer save=false
