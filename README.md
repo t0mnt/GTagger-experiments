@@ -15,7 +15,7 @@
 
 </div>
 
-This repository contains the experiments code for Lorentz Local Canonicalization (LLoCa) by [Jonas Spinner](mailto:j.spinner@thphys.uni-heidelberg.de), [Luigi Favaro](mailto:luigi.favaro@uclouvain.be), [Peter Lippmann](mailto:peter.lippmann@iwr.uni-heidelberg.de), [Sebastian Pitz](mailto:pitz@thphys.uni-heidelberg.de), [Gerrit Gerhartz](mailto:gerhartz@thphys.uni-heidelberg.de), Tilman Plehn, and Fred A. Hamprecht. Relevant links:
+This repository contain<b>ed</b> the experiments code for Lorentz Local Canonicalization (LLoCa) by [Jonas Spinner](mailto:j.spinner@thphys.uni-heidelberg.de), [Luigi Favaro](mailto:luigi.favaro@uclouvain.be), [Peter Lippmann](mailto:peter.lippmann@iwr.uni-heidelberg.de), [Sebastian Pitz](mailto:pitz@thphys.uni-heidelberg.de), [Gerrit Gerhartz](mailto:gerhartz@thphys.uni-heidelberg.de), Tilman Plehn, and Fred A. Hamprecht. Relevant links:
 
 - Package: https://github.com/heidelberg-hepml/lloca ([documentation](https://heidelberg-hepml.github.io/lloca/))
 - Paper: [Lorentz Local Canonicalization: How to make any Network Lorentz-Equivariant](https://arxiv.org/abs/2505.20280) (computer science audience)
