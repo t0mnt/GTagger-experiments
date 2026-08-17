@@ -28,10 +28,12 @@ torch.set_float32_matmul_precision("highest")
 
 @pytest.fixture(scope="module")
 def tables64():
-    alg = CliffordAlgebra((1.0, -1.0, -1.0, -1.0)).to(torch.float64).cuda()
+    # tables are built on CPU (exactly as model __init__ does) and the three tensors
+    # moved -- sparse_gp_tables itself is CPU-only by design (GPU round-trip finding)
+    alg = CliffordAlgebra((1.0, -1.0, -1.0, -1.0)).to(torch.float64)
     pidx = alg.geometric_product_paths.nonzero().T.contiguous()
     spath, spval, _ = sparse_gp_tables(alg, pidx)
-    return alg, spath.cuda(), spval.to(torch.float64).cuda()
+    return alg.gp_k_idx.cuda(), spath.cuda(), spval.to(torch.float64).cuda()
 
 
 def _case(B, N, M, dtype, seed=0):
@@ -42,13 +44,13 @@ def _case(B, N, M, dtype, seed=0):
 
 @pytest.mark.parametrize("dtype,bar", [(torch.float64, 1e-13), (torch.float32, 1e-5)])
 def test_parity_forward_and_grads(tables64, dtype, bar):
-    alg, spath, spval = tables64
-    spath_d, spval_d = spath, spval.to(dtype)
+    kidx, spath, spval = tables64
+    spval_d = spval.to(dtype)
     x0, y0, w0 = _case(37, 11, 6, dtype)
     go = torch.randn(37, 6, 16, dtype=dtype, device="cuda")
     grads = {}
     for name, fn in (
-        ("expr", lambda a, b, c: sparse_gp_expression(a, b, c, alg.gp_k_idx, spath_d, spval_d)),
+        ("expr", lambda a, b, c: sparse_gp_expression(a, b, c, kidx, spath, spval_d)),
         ("op", fcgp),
     ):
         a, b, c = (t.clone().requires_grad_(True) for t in (x0, y0, w0))
@@ -79,8 +81,8 @@ def test_run_to_run_determinism():
 
 @pytest.mark.parametrize("B,N,M", [(13000, 11, 11), (200000, 11, 11), (200000, 19, 11)])
 def test_benchmark_vs_blockdiag(tables64, B, N, M):
-    alg, spath, spval = tables64
-    spath32, spval32 = spath, spval.to(torch.float32)
+    kidx, spath, spval = tables64
+    spval32 = spval.to(torch.float32)
     x0, y0, w0 = _case(B, N, M, torch.float32, seed=4)
 
     def bench(fn, reps=30):

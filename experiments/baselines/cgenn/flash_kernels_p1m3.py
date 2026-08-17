@@ -44,7 +44,7 @@ if _HAS_TRITON:
 
     @triton.jit
     def _fcgp_fwd_kernel(xp, yp, wp, op, B, N: tl.constexpr, M: tl.constexpr,
-                         BLOCK: tl.constexpr):
+                         NB: tl.constexpr, NP: tl.constexpr, BLOCK: tl.constexpr):
         pid = tl.program_id(0)
         m = tl.program_id(1)
         rows = pid * BLOCK + tl.arange(0, BLOCK)
@@ -84,7 +84,8 @@ if _HAS_TRITON:
 
     @triton.jit
     def _fcgp_bwd_kernel(xp, yp, wp, gp, gxp, gyp, pwp, B,
-                         N: tl.constexpr, M: tl.constexpr, BLOCK: tl.constexpr):
+                         N: tl.constexpr, M: tl.constexpr,
+                         NB: tl.constexpr, NP: tl.constexpr, BLOCK: tl.constexpr):
         # one program per (row-block, n): accumulates gx/gy over m in registers and
         # writes this block's dL/dw partial to its OWN (block, m, n) slot -- no atomics.
         pid = tl.program_id(0)
@@ -145,7 +146,7 @@ def fcgp(x: torch.Tensor, y: torch.Tensor, weight: torch.Tensor) -> torch.Tensor
     out = x.new_empty(B, M, NB)
     BLOCK = 64
     grid = (triton.cdiv(B, BLOCK), M)
-    _fcgp_fwd_kernel[grid](x, y, weight, out, B, N=N, M=M, BLOCK=BLOCK)
+    _fcgp_fwd_kernel[grid](x, y, weight, out, B, N=N, M=M, NB=NB, NP=NP, BLOCK=BLOCK)
     return out
 
 
@@ -168,7 +169,7 @@ def _backward(ctx, go):
     nblk = triton.cdiv(B, BLOCK)
     partial = x.new_empty(nblk, M, N, NP)
     grid = (nblk, N)
-    _fcgp_bwd_kernel[grid](x, y, weight, go, gx, gy, partial, B, N=N, M=M, BLOCK=BLOCK)
+    _fcgp_bwd_kernel[grid](x, y, weight, go, gx, gy, partial, B, N=N, M=M, NB=NB, NP=NP, BLOCK=BLOCK)
     return gx, gy, partial.sum(dim=0)  # fixed-order stage-2: deterministic
 
 

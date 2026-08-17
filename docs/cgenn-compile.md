@@ -3210,6 +3210,23 @@ rej0.3): OneCycle 0.9417/1803; **CosineAnnealingWarmup 0.9414/1771 (highest trai
 - WarmRestarts' best-rejection reading (1836, +2% over runner-up) is one seed inside
   a 79-point noise band on the metric with 5x leverage — the one arm worth a second
   seed IF any rerun budget appears; not otherwise.
+- **Paper note (operator's, agreed):** the paper will state that higher single-run
+  readings were observed under other schedulers (OneCycle 0.9417 acc, WarmRestarts
+  1836 rej) within the measured seed spread — honest reporting of the bake-off
+  without implying a resolved ranking at n=1.
+
+**Step-3 GPU round-trip #1 (2026-08-16): three failures, all localized, none in the
+math — exactly what the CPU-gating strategy promised.** (1) Triton's globals rule:
+kernels cannot read module globals unless instantiated as `tl.constexpr` — NB/NP are
+now constexpr kernel ARGUMENTS at both definitions and launches (AST-checked: no
+stray global reads remain). (2) Test-fixture bug, mine: the fixture moved the
+ALGEBRA to CUDA before `sparse_gp_tables`, which is CPU-only by design (model init
+builds tables on CPU, then buffers move) — the fixture now does what init does and
+moves the three tensors. (3) Operator venv: the `pip install kingdon` pulled
+ipywidgets-family deps into a venv with a stale widgetsnbextension path and broke —
+resolved by REMOVING the install: kingdon is not needed on the cluster at all (the
+CUDA tests never import it; the conventions test importorskips). Round-trip #2 needs
+no pip at all.
 
 ### Scheduler verdict for the GT table at 20 epochs (2026-08-16, theory review)
 
