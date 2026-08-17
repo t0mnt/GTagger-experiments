@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**NEXT STEP: 0 — PROFILE (two ~10-min runs; paste both outputs)** ← state marker,
+**NEXT STEP: 0 — HALF-READ (GPS table in: mm = 77.7% → PRECISION RACE opened, see record; still owed: the tag_cgenn table from the same run + a 10-min re-profile at float32_matmul_precision=high)** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3424,6 +3424,38 @@ success target ≥1.5x, else record why and close.
   first. Top-tagging profiles stand in for jc architecturally (same code, same
   graph builder); one optional jc profile can confirm later. This step also
   re-baselines AFTER SortedGather/2.2b, which the 27.9% round-4 number predates.
+
+  *Step 0, GPS HALF READ (2026-08-17, bs256 compiled, 5 steady steps, median
+  2465 ms/step wall, CUDA busy 1870 ms = 76%): the plan's premise FAILS for the
+  hybrid, and a bigger lever surfaced.* `aten::mm` is **77.7% of self-CUDA
+  (7.26 s of 9.35 s)** at ~1055 calls/step — and the kernels under it are
+  `sm80_xmma_gemm_f32f32` / `cutlass_80_simt_sgemm`: **fp32 WITHOUT tensor
+  cores**, the direct consequence of the pinned `float32_matmul_precision:
+  highest` (config/default.yaml:11). The blockdiag fc respelling routes the GP
+  through mm; MVLinear/EquiLinear/GeoMLP supply the rest. The edge machinery
+  the fused kernel targets reads only ~13-15% here (scatter-backward 879 ms =
+  9.4%, index_mul 218 ms = 2.3%, small index/sum kernels the rest). Sync-hunt
+  surplus beyond the known per-step reads: ~1443 `aten::item`/step and ~165
+  `cudaStreamSynchronize`/step, with a ~24% GPU-idle wall gap — attribution
+  pending (trace on disk). CONSEQUENCES, in order: (1) the **TF32 closure is
+  REOPENED on new evidence** — it was closed as "a precision cut with
+  unmeasured accuracy cost... under queue pressure", and the cost side is now
+  measured: 78% of the slowest model's step is non-TC fp32 mm.
+  `float32_matmul_precision=high` (knob already plumbed, base_experiment.py:443;
+  a pure override, no code) puts every one of those GEMMs on TF32 tensor cores —
+  realistic 3-5x on the big mm's, blended **~2-3x expected on the whole GPS
+  step, for one word**. bf16 AMP (`model.use_amp=true`, wired, shipped off)
+  stacks ~2x more on mm and halves activation traffic. Both are TRAINING-
+  NUMERICS class changes (not equivalence-preserving): each gets ONE
+  speed-confirm profile + accuracy validation against recorded baselines, not
+  blind adoption; the fp64 TOL/BIT gate batteries keep their own explicit
+  'highest' pins (test files set it locally) and are unaffected by the training
+  config. (2) The fused message kernel is NOT the GPS hybrid's lever; its fate
+  now rests on the tag_cgenn table (owed — it printed first in the same
+  allocation) AND on the post-precision denominator: if mm gets 3-5x cheaper,
+  the edge share RISES, so re-profile after the precision verdict before any
+  kernel work. (3) The item()/sync surplus is a standing free-lunch candidate
+  (~10-20% wall) — chase after precision lands.
 - **Step 1 (sandbox, CPU):** design freeze + generated math. Re-read the fc CGL
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
