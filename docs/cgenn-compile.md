@@ -3187,12 +3187,20 @@ adopts and time remains; the contraction arm alone targets the measured GP share
   MATRIX gains the `tag_cgenn/flash` row (the `--models tag_cgenn CGENN` pin
   updated to four gp_impl rows). Remaining before adopt-or-close, ONE allocation:
 
-      # 1. kernel gates (fp64 parity now expected green too)
+      set -e
+      # 1. kernel gates (~2 min): parity, determinism, clean uncontended bench
       python -m pytest tests/experiments/test_flash_kernels_cuda.py -q -s
-      # 2. model-level compile battery, flash arms included
+      # 2. model-level compile battery, flash arms incl. compiled backward (~3 min)
       CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_cgenn_compile.py -q -k flash
-      # 3. the model-level race (four gp_impl rows, sized+seeded identically)
-      python utils/bperf.py --models tag_cgenn --find-batchsize
+      # 3. the works-completely soak (~10 min): 100 varying-shape COMPILED training
+      #    steps, flash on all three CGENN rows, shields + SortedGather active --
+      #    this run IS the CGENN rows' pending SortedGather gate day too
+      CGENN_SMOKE_OVERRIDES="model.net.gp_impl=flash" \
+      CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 CGENN_SMOKE_STEPS=100 \
+      python -m pytest tests/experiments/test_training_smoke.py -q -s -k "cgenn or CGENNLGATr"
+      # 4. ONLY reached if 1-3 green (set -e): the trimmed race -- incumbent vs
+      #    challenger; einsum/matmul keep their round-4 numbers
+      python utils/bperf.py --models tag_cgenn/sparse tag_cgenn/flash --find-batchsize
 
   Paste all three outputs; ADOPT flips the yamls + re-records pins, CLOSE keeps
   sparse — either way step 5 (launch the CGENN rows) follows immediately.
