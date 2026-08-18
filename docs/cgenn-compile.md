@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**NEXT STEP: 0 COMPLETE — both tables read, same verdict (mm 74-78% on non-TC fp32). PRECISION RACE is the plan: run the 4 re-profiles (high / high+amp × both models), then re-decide the kernel on the new denominator** ← state marker,
+**NEXT STEP: 1 — GATHER-COMMUTE HOISTING (the full-precision mm cut; precision race measured and recorded, `highest` STAYS by operator fairness call; then 2: scatter-free backward respelling, 3: sync fixes from the attribution run)** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3495,6 +3495,70 @@ success target ≥1.5x, else record why and close.
   operator's call, scopable on request. NOT queued: bucketing (closed —
   accuracy), padding-free BatchNorm surgery (faithfulness pin), TF32 in the
   gate batteries (pins stay 'highest' by design).
+
+  *PRECISION RACE MEASURED + FAIRNESS RESOLVED + PLAN REVISED (2026-08-17/18).*
+  Measured at `float32_matmul_precision=high`: **tag_cgenn 410→211 ms/step wall
+  (1.94x)**, CUDA 358→164 ms (2.19x), mm 74.5%→42.2% with `sm90_xmma tf32`
+  kernels replacing the sm80 SIMT ones (~3.9x on the mm block; that run also had
+  MAX_AUTOTUNE, whose own benchmark tables show cuBLAS winning nearly every
+  shape — triton_mm at 2-100% of cuBLAS — so the win is TF32's, and
+  **max-autotune is NOT adopted**; its "OutOfMemoryError: out of resource" spam
+  is discarded candidate configs, harmless). **GPS 2465→1676 ms wall (1.47x)**,
+  CUDA 1870→714 ms (2.62x), mm 77.7%→43.2% — and the wall/CUDA gap says GPS is
+  now **SYNC-BOUND: 43% CUDA-busy** (was 76% busy at highest on tag) with the
+  same ~165 syncs + ~1443 items/step. The scatter kernel is the new #1 single
+  kernel on tag_cgenn (31.7% at high; 14% at highest).
+
+  **FAIRNESS (operator challenge, resolved — this sets the precision policy):**
+  per-row mixed precision is REJECTED as unfair, agreeing with the operator: an
+  accuracy delta on a TF32 row is unattributable against fp32 rows, and the
+  table's time(h) column would mix regimes. The two internally-fair spellings
+  are uniform-`highest` (status quo; matches upstream CGENN, which simply
+  inherits torch's own TF32-off default) and uniform-`high` table-wide with a
+  methods disclosure (noting the published baselines themselves train fp16/bf16
+  AMP). **DECISION: `highest` stays** — the operator's discomfort governs, it is
+  scientifically the most defensible spelling, and the full-precision path below
+  recovers most of the measured win anyway. The TF32 numbers above stay recorded
+  as a one-word, table-wide, disclosed option should the calculus ever change.
+
+  *Upstream re-scout (operator asked "have we fused as much as they do?"):*
+  flash-clifford's fused kernels are `gelu→SGP/FCGP→RMSNorm` chains + grade
+  linears — dense point-cloud ops ONLY: no message passing, no scatter/gather,
+  no precision flags anywhere. flash-kingdon generates ONE fused
+  `gelu→wGP→norm` kernel via kingdon+CSE; fully-connected layers are still on
+  its TODO; same absences. So: we match their GP scope (generated,
+  kingdon-checked, same basis as theirs); their signature act→GP→norm fusion is
+  measured-unnecessary HERE because inductor already fuses those chains around
+  the sparse spelling (compiled-sparse ≈ compiled-flash ±5%, races #5 and #7 —
+  their fusion pays off against EAGER baselines, which we are not); and our two
+  dominant costs (edge-gather mm's, scatter backward) do not exist in their
+  workloads at all. Their repos are silent on TF32 because their kernels have
+  no GEMMs for it to touch.
+
+  **THE FULL-PRECISION PATH — step 1: GATHER-COMMUTE HOISTING (from the
+  autotune shape log + fcgp.py read).** `FullyConnectedSteerableGeometricProductLayer`
+  applies `linear_right` (MVLinear, and `linear_left` likewise) to the
+  CONCATENATED GATHERED input `cat[x_i, x_j, x_i−x_j, e]` — a linear over
+  gathers, and linears commute with gathers:
+  `W·cat = (W_A+W_C)x |gathered at i| + (W_B−W_C)x |gathered at j| + W_E·e`
+  (the x_diff slice folds by linearity). The giant EDGE-row mm's the profile
+  names — `mm(393436×432, 432×432)` and `432×128` at bs128, the top mm kernels
+  — become NODE-row mm's (14720 rows, **26.7x fewer**) for the x-slices, plus
+  one gather+add; the `e`-slice is static per forward. The same split applies
+  to phi_h's first Linear (h_i/h_j slices; m_invariants stays edge-level).
+  CLASS: TOL (weight-slice pre-addition + gather reorder = reassociation only);
+  hybrid pins re-record, stated. Estimate at `highest`: the top-3 edge mm
+  families are ~70% of the mm block → mm ~267→~140 ms/step, step 358→~230 =
+  **~1.55x**; with step 2 (scatter-free respelling of the sparse expression's
+  BACKWARD, the 14%/12.6 ms kernel) **~1.9x combined at full fp32** — matching
+  TF32's measured 1.94x without touching precision. Step 3: sync fixes once the
+  new STEP-1c attribution run names the lines (profile_sync now prints the
+  python frame behind every sync/item site; the empty-framesnet
+  clip_grad_norm_ warning wall is also fixed). The FUSED MESSAGE KERNEL is
+  SUPERSEDED unless a post-hoisting re-profile still shows ≥30% edge share:
+  hoisting removes the mm's it would have fused and step 2 removes its other
+  half. Sequenced, gated, and precision-independent — every step stands
+  whatever the table's precision policy.
 - **Step 1 (sandbox, CPU):** design freeze + generated math. Re-read the fc CGL
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream

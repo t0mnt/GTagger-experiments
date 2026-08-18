@@ -920,13 +920,16 @@ class BaseExperiment:
         self.scaler.unscale_(self.optimizer)  # unscale before clipping
 
         if self.cfg.training.log_grad_norm:
+            # IdentityFrames has no parameters: clip_grad_norm_ over an empty generator
+            # warns EVERY step ("no gradient clipping will occur") and returns 0.0 anyway
+            # -- report the exact same 0 without the per-step warning wall.
+            frames_params = list(self.model.framesnet.parameters())
             grad_norm_frames = (
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.framesnet.parameters(),
-                    float("inf"),
-                )
+                torch.nn.utils.clip_grad_norm_(frames_params, float("inf"))
                 .detach()
                 .to(self.device)
+                if frames_params
+                else torch.tensor(0.0, device=self.device)
             )
             grad_norm_net = (
                 torch.nn.utils.clip_grad_norm_(

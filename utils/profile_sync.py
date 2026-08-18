@@ -190,6 +190,31 @@ def main(cfg):
     # ---- STEP 1b: CPU-side table with stacks (names the python line per stall) ------
     LOGGER.info(averages.table(sort_by="self_cpu_time_total", row_limit=30))
 
+    # ---- STEP 1c: stall ATTRIBUTION -- the python line behind each sync/item site ----
+    # The 1b table aggregates per op kind, which is how 353-1443 aten::item/step stayed
+    # unattributed across two gate days: the counts were visible, the call sites were
+    # not. group_by_stack_n rows carry the captured stack; print the top offenders with
+    # their non-library frames so every stall names OUR line.
+    attrib = [e for e in averages
+              if any(k in e.key for k in ("cudaStreamSynchronize", "aten::item",
+                                          "aten::_local_scalar_dense"))
+              and e.self_cpu_time_total > 0]
+    attrib.sort(key=lambda e: -e.self_cpu_time_total)
+    if attrib:
+        LOGGER.info("STEP 1c -- stall attribution (top sync/item sites by self-cpu; "
+                    "frames filtered to this repo)")
+        for e in attrib[:12]:
+            frames = [f for f in (getattr(e, "stack", None) or [])
+                      if "site-packages" not in f and "dist-packages" not in f]
+            frames = frames[:3] or (getattr(e, "stack", None) or [])[:2]
+            LOGGER.info(f"  {e.key}: {e.count} calls, "
+                        f"{e.self_cpu_time_total / 1e3:.1f} ms self-cpu")
+            for f in frames:
+                LOGGER.info(f"      {f.strip()}")
+        if not any(getattr(e, "stack", None) for e in attrib):
+            LOGGER.info("  (no stacks captured on this torch build -- rerun with the "
+                        "chrome trace and read the flow events instead)")
+
     # ---- STEP 2: hot kernels (the census shortlist: clone/permute marshalling, the
     # bmm-over-16-blades family, index/scatter backwards -- match them by name) -------
     if cuda:
