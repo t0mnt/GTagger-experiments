@@ -3807,6 +3807,34 @@ success target ≥1.5x, else record why and close.
   `test_bit_eager_vs_fixtures` did its job — it caught the eager change the
   moment the compile-twin split landed, which is what exposed the
   under-reported step-2 fixture churn corrected above.*
+
+  *AUDIT ROUND 2 (2026-08-18, operator-requested pause): three hardenings,
+  one process gap closed, one new permanent gate.* (1) HAZARD CLOSED:
+  `message_right_left`'s weight slicing is only correct for the
+  cat[x_i,x_j,x_diff,e] layout; called on any other FCGP (e.g. theta_x's) it
+  would mis-slice SILENTLY — `w[:, 2c:3c]` can be empty with no shape error.
+  Now asserted (`e_ch >= 0`); channel dims are static under compile so the
+  assert folds — hoist compile gate still 0 breaks. (2) STALE COMMENT fixed:
+  the hybrid backbone claimed the model passes `min(k, P-1)`; the code
+  deliberately passes k itself (min() on symbolic P = shape guard, the
+  RECOMP ban) — comment now states the design instead of contradicting it.
+  (3) PROCESS GAP: after the compile-twin split landed, only the tag_cgenn
+  battery was re-run — the hybrid/GPS COMPILED posture was not; the
+  compiled training smoke for all three CGENN nets was re-run to close it.
+  (4) NEW GATE `test_degree_zero_node_compiled_vs_eager` (battery,
+  CGENN_COMPILE_GATES=1): a crafted SINGLE-CONSTITUENT jet — real node,
+  zero FC edges, degree-0 receiver AND sender — through forward + parameter
+  gradients, eager vs compiled at fp64. This is where the padded write
+  (compiled), segment_reduce (eager), clamp(min=1) divisor and hoisted
+  gathers all meet, and it is data-reachable (low-multiplicity jets); the
+  RECOMP sweep only pushed that shape through a no_grad forward. First
+  reading: fwd 2.7e-13, grads 2.4e-10, no NaN — PASS under the 1e-12/1e-8
+  bars. CHECKED CLEAN: kNN degree<=k is structural (no clamp needed at
+  P<=k); GPS layer threads slot/K into its cgenn correctly; twin phi_x
+  structures identical; internal suite 266 passed. NOTED, left in place:
+  CGL.__init__ assigns `self.aggregation` a function then overwrites it
+  with the string (upstream artifact; the string drives reduce(), the
+  early raise still validates — dead but harmless).*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs

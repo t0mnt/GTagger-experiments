@@ -109,6 +109,13 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
         alg = self.algebra
         c = x.shape[1]
         e_ch = self.in_features - 3 * c
+        # This slicing is only correct for the message layout cat[x_i, x_j, x_diff, e].
+        # Calling it on any other FCGP (e.g. theta_x's, in_features = node+in+hidden)
+        # would mis-slice SILENTLY -- w[:, 2c:3c] can be empty or misaligned without a
+        # shape error. Channel dims are static under compile, so this folds to a no-op.
+        assert e_ch >= 0, (
+            f"message_right_left requires in_features >= 3*channels "
+            f"(cat[x_i, x_j, x_diff, e] layout); got {self.in_features} vs 3*{c}")
         w_r = self.linear_right.weight
         rA = mv_apply_weight(w_r[:, :c] + w_r[:, 2 * c:3 * c], x, alg)
         rB = mv_apply_weight(w_r[:, c:2 * c] - w_r[:, 2 * c:3 * c], x, alg)

@@ -548,7 +548,9 @@ class CGENNBackbone(nn.Module):
             0, j_send, x.new_ones(j_send.size(0), 1))
         # FLASH-3 step 2: per-edge in-segment rank + static degree bound (see the
         # package twin) -- kNN graphs bound receiver degree by k structurally, so the
-        # model passes min(k, P-1) with no host read. None keeps segment_reduce.
+        # model passes k ITSELF (deliberately NOT min(k, P-1): P is symbolic under
+        # dynamic compile and min() would plant a shape guard -- the RECOMP ban).
+        # None keeps segment_reduce.
         # COMPILED-ONLY (round-trip #5 audit, see package twin): eager materializes
         # the (N, K, C) padded buffer; compiled fuses it. is_compiling() constant-folds.
         if knn_k is not None and torch.compiler.is_compiling():

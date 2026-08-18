@@ -423,3 +423,46 @@ def test_breaks_and_recomp(impl):
     n_compiles = sum(v for k, v in dyn_counters["stats"].items() if k == "unique_graphs")
     print(f"GATE-RECOMP[{impl}] unique_graphs =", n_compiles)
     assert n_compiles <= 2, f"RECOMP[{impl}]: {n_compiles} unique graphs (> 2) across the sweep"
+
+
+@pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile smoke gates: set CGENN_COMPILE_GATES=1")
+def test_degree_zero_node_compiled_vs_eager():
+    """Ragged-edge differential (round-trip #5 audit): a SINGLE-CONSTITUENT jet.
+
+    Its node is real but has ZERO fully-connected edges -- degree-0 receiver, degree-0
+    sender -- the shape where the padded scatter-write (compiled), segment_reduce
+    (eager), the clamp(min=1) mean divisor, and the hoisted gathers all meet. The
+    RECOMP sweep above pushes a 1-constituent jet through the compiled FORWARD only;
+    this gate compares eager-vs-compiled forward AND parameter gradients at fp64.
+    Low-multiplicity jets are data-reachable, so this is a correctness gate, not an
+    exotic: fwd <= 1e-12, grads <= 1e-8 (the taxonomy's TOL bars)."""
+    exp = _build(float64=True)
+    data = _fixed_batch(exp)
+    ptr = data["ptr"]
+    keep = torch.cat([torch.arange(ptr[0], ptr[0] + 1), torch.arange(ptr[1], ptr[-1])])
+    fields = {k: data[k][keep].clone() for k in ("x", "scalars")}
+    sizes = torch.tensor([1] + [int(ptr[i + 1] - ptr[i]) for i in range(1, len(ptr) - 1)])
+    fields["ptr"] = torch.cat([torch.zeros(1, dtype=torch.long), sizes.cumsum(0)])
+    fields["batch"] = torch.repeat_interleave(torch.arange(len(sizes)), sizes)
+    fields["label"] = data["label"].clone()
+    crafted = _rebuild(fields)
+
+    def fwd_bwd(d):
+        exp.model.zero_grad(set_to_none=True)
+        y = exp._get_ypred_and_label(d.clone())[0]
+        w = torch.linspace(-1, 1, y.numel(), dtype=y.dtype).reshape(y.shape)
+        (y * w).sum().backward()
+        g = torch.cat([p.grad.flatten() for p in exp.model.parameters()
+                       if p.grad is not None])
+        return y.detach().clone(), g.clone()
+
+    exp.model.train()
+    y_e, g_e = fwd_bwd(crafted)
+    exp.model.net = torch.compile(exp.model.net, dynamic=True)
+    y_c, g_c = fwd_bwd(crafted)
+    fd = (y_e - y_c).abs().max().item()
+    gd = (g_e - g_c).abs().max().item()
+    print(f"GATE-DEG0 fwd max|diff|={fd:.3e} grad max|diff|={gd:.3e}")
+    assert torch.isfinite(y_c).all() and torch.isfinite(g_c).all(), "DEG0: non-finite"
+    assert fd < 1e-12, f"DEG0 fwd: {fd:.3e} >= 1e-12"
+    assert gd < 1e-8, f"DEG0 grads: {gd:.3e} >= 1e-8"
