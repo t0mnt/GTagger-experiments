@@ -330,7 +330,7 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   gets the vendored copy's on-device index tensors (live per forward via MVLayerNorm;
   was a per-forward host→device transfer on GPU eager); vendored `MVSiLU` switched to
   `grades_list[1:]` per cliffordalgebra's own compiled-region convention (identical
-  values). `scripts/bperf.py` added — the post-merge β-PERF matrix runner
+  values). `utils/bperf.py` added — the post-merge β-PERF matrix runner
   (measures the 10→100-iteration steady-state window, emits the table + one-line knob
   recommendations, `--apply` edits the yamls; scheduled for deletion in cleanup.md once
   its numbers land in the log). BREAK_BARS annotated as torch-2.13-measured pins.
@@ -344,3 +344,60 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   (lineage-keyed raw scalars in `table_metrics_*.json`); `utils/aggregate_table.py` also
   groups independent run dirs at parse time with refuse-to-pool guards (disagreeing
   iters/params/FLOPs, identical-metric seed clones, mixed in-run rows). GUIDE §8 + OSCAR §6.
+
+## CGENN performance program + campaign tooling (2026-08-14/18)
+
+Fork-only; the measurement log and every verdict live in `docs/cgenn-compile.md`.
+
+- **`experiments/baselines/cgenn/autocast.py`** — lgatr 2.0's `minimum_autocast_precision`
+  vendored (copied, not imported, so the package stays transplantable to the official CGENN
+  repo) and applied at 8 sites (`CliffordAlgebra.{geometric_product,b,q}`, `FCGP.forward`,
+  `SteerableGeometricProductLayer.forward`, `MVLinear`/`MVLayerNorm`/`NormalizationLayer`).
+  The geometric product keeps an fp32 island under AMP; the unguarded bf16 control drifts
+  4.5e-2. `tests/internal/test_cgenn_autocast.py` also diffs the copy against the installed
+  lgatr, so the two cannot silently part.
+- **`sorted_gather.py` — deterministic segment-sum backwards for the edge gathers.**
+  `x[idx]`'s autograd backward is an atomic scatter-add, the top CUDA kernel on both H100
+  profiles (27.9% tag_cgenn / 22.7% CGENN-GPS). `SortedGather` (receivers, which arrive
+  sorted from both edge builders) and `SortedGatherPermuted` (senders, via a stable-sort
+  permutation) replace it with `torch.segment_reduce`. Forward is `index_select`, so BIT
+  pins stand; gradients are the same sum reassociated and **deterministic where the atomics
+  were not**. Degrees come from `index_add_` over the full node range, so zero-degree and
+  padded nodes get exact-zero rows. Kill switch `CGENN_SORTED_GATHER=0`.
+- **`sparse_gp.py`, the blockdiag contraction, and a fourth `gp_impl`.** The sparse arm's
+  fully-connected contraction is respelled block-diagonal (TOL class, race-pinned), and
+  `gp_impl` is now `einsum | matmul | sparse | flash` — `flash` being a Triton `triton_op`
+  arm (`flash_kernels_p1m3.py`, eager reference `flash_ref_p1m3.py`, codegen
+  `utils/flash_gen.py`, blade order/signs machine-checked against kingdon's `Algebra(1,3)`
+  by `test_kingdon_conventions.py`). **`sparse` remains the shipped default**: flash closed
+  twice at +5.4%, below the pre-registered >10% adopt bar.
+- **Gather-commute hoisting (`CGENN_HOIST`)** — `W @ cat[x_i, x_j, x_i-x_j, e]` re-associated
+  as `(W_A+W_C)x|_i + (W_B-W_C)x|_j + W_E e`, so the fully-connected message's linear halves
+  are computed at NODE level and gathered rather than formed per edge: the dominant matmul
+  drops from E ≈ k·N rows to N rows at unchanged fp32 precision. `fc` path only — the
+  quadratic GP keeps the plain edge concat. TOL class: hybrid BIT pins re-recorded, fp32
+  impl bar 1e-5 → 1e-4 with the fp64 arbiter unmoved at ~1e-13.
+- **New tools**: `utils/find_bs.py` (batch-size-only doubling search, for the fixed-lr
+  campaign), `utils/profile_sync.py` (device-sync census), `utils/gp_memory_probe.py`,
+  `utils/seg_reduce_probe.py`, `utils/sparse_gp_race.py`, `utils/vram_compile_matrix.py`.
+- **`utils/find_lr.py`**: the sweep now composes the model's OWN training recipe, optimizer
+  included (a Ranger-vs-AdamW mismatch had invalidated a whole sweep); the recommendation is
+  shape-gated (steepest is demoted when it sits far below the loss-min/10 bracket and the
+  minimum is interior) and emits a single `TRANSCRIBE` line, so the banner and the greppable
+  line cannot disagree; `BS_CEILING = 512` advises against larger batches under the epoch
+  budget (advisory — it clamps nothing). `test_find_lr_{alignment,transcribe}.py`.
+- **`experiments/ranger.py`**: `zero_grad(set_to_none=...)` accepted — the first
+  recipe-aligned H100 sweep crashed on it.
+- `torch.cuda.amp.autocast` → `torch.amp.autocast("cuda", ...)` at the four live baseline
+  sites (alias-level, numerics identical).
+- **Recipes**: `lr: 1e-3` table-wide on the top hybrids (two finder-transcription incidents
+  retired per-row finder lrs for this campaign; the finder stays the confirmation tool),
+  measured batchsizes shipped, `cosanneal_eta_min: 1e-5` pinned family-wide at the campaign
+  boundary, and the eight `xl_<hybrid>.yaml` recipes added.
+- **`aggregate_table.py`**: a `jets` column (`iters × batchsize`) inserted after `iters` —
+  equal iterations at different batch sizes is not equal data exposure, and the `iters`
+  column alone hides that — plus train time in hours. Render-time only, so per-run `table`
+  log lines are unchanged.
+- **Ablations**: `model.net.use_fusion` (ParticleNet multi-scale concat) documented in
+  `docs/ablations.md`; the GraphGPS PE/SE A/B measured null on Plain-GPS, so
+  `use_rwse: false` stands campaign-wide and the controlled A/B is reported as the ablation.
