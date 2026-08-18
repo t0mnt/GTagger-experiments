@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**NEXT STEP: FLASH RE-RACE — round-trip #5 (#4 read GREEN: step 2 + unsafe KEPT, GPS 2453→1927 ms/step, both models now compute-bound at 91/96% CUDA-busy — mm is 67-68% of CUDA on both, exactly what the flash kernel replaces). One bperf race + the CGENN_FC_PADDED=0 A/B rider decide adopt-or-close vs the >10% bar** ← state marker,
+**PROGRAM COMPLETE (2026-08-18): the FLASH-3 re-race CLOSED — sparse-compiled 349 jets/s vs flash own-best 308 (flash now −12%; the sync/hoist work sped up the incumbent past the challenger). The CGENN rows launch on sparse with the full stack (blockdiag + SortedGather + hoist + padded sums + unsafe). Remaining levers are operator decisions: DDP for the jc rows, subsampled-val checkpoint selection** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3529,11 +3529,16 @@ success target ≥1.5x, else record why and close.
   its TODO; same absences. So: we match their GP scope (generated,
   kingdon-checked, same basis as theirs); their signature act→GP→norm fusion is
   measured-unnecessary HERE because inductor already fuses those chains around
-  the sparse spelling (compiled-sparse ≈ compiled-flash ±5%, races #5 and #7 —
-  their fusion pays off against EAGER baselines, which we are not); and our two
-  dominant costs (edge-gather mm's, scatter backward) do not exist in their
-  workloads at all. Their repos are silent on TF32 because their kernels have
-  no GEMMs for it to touch.
+  the sparse spelling (compiled-sparse ≈ compiled-flash ±5%, races #5 and #7);
+  and our two dominant costs (edge-gather mm's, scatter backward) do not exist
+  in their workloads at all. Their repos are silent on TF32 because their
+  kernels have no GEMMs for it to touch. [CORRECTED 2026-08-18, credit: the
+  operator's Opus audit — an earlier revision of this note also claimed their
+  fusion "pays off against EAGER baselines, which we are not"; flash-kingdon's
+  README states its speedups are measured against a torch-COMPILED
+  implementation, so that premise was wrong and is withdrawn. The conclusion
+  stands untouched: it rests on the direct in-repo races (#5, #7, and the #5
+  re-race below), which never relied on that premise.]
 
   **THE FULL-PRECISION PATH — step 1: GATHER-COMMUTE HOISTING (from the
   autotune shape log + fcgp.py read).** `FullyConnectedSteerableGeometricProductLayer`
@@ -3731,6 +3736,38 @@ success target ≥1.5x, else record why and close.
   `logging.handlers` without importing the submodule (import-order-dependent
   latent ImportError), and the three `\psi` docstrings now raw strings (the
   SyntaxWarning in every GPU log).
+
+  *ROUND-TRIP #5 (2026-08-18, H100, uncontended): FLASH RE-RACE **CLOSED,
+  FINAL** — and the A/B is a TIE that corrects #4's attribution.* bperf,
+  own-best per arm: **sparse-compiled 349 jets/s (bs128) vs flash-eager 308
+  jets/s (bs256)** — the challenger is now 12% BEHIND, where the two CLOSE
+  verdicts had it +5% ahead. Mechanism: the FLASH-3 sync/hoist/padded work
+  landed almost entirely on the sparse arm's side of the ledger (313→349
+  jets/s, +11.5% since race #7) while flash-eager gained ~3% (297→308);
+  flash-COMPILED collapsed outright to 168 jets/s (0.547x) — the opaque
+  custom-op boundary in a now-faster surrounding graph is pure fusion tax.
+  With a −12% gap against a >10% adopt bar, no further landscape change can
+  rescue the arm: **sparse is the campaign arm, flash stays in-tree solely as
+  the recorded memory escape hatch (0.146 vs 0.537 GB/jet), and Tier-B fused
+  norms — conditional on flash adopting — are DEAD.** The
+  `CGENN_FC_PADDED=0` rider read 366 ms/step vs 365 padded, syncs 32/step
+  identical, CUDA totals identical (1.668 vs 1.663 s/5) → **TIE; the padded
+  default stays** (and the switch stays for free). ATTRIBUTION CORRECTION to
+  #4's audit note: the 13.3-13.5 ms `triton_per_fused_index_index_put_*`
+  kernels persist at 3/step with padding OFF (plus segment_reduce visibly
+  back at 200 calls/17 ms), so that family is dominated by the COMPILED
+  sparse-GP/aggregation backward reductions — deterministic, fused,
+  bandwidth-bound — not by FC padding inflation. Consequence for the one
+  residual idea (respelling the sparse-GP backward's indexed reads, e.g. as
+  one-hot GEMMs): CLOSED WITHOUT A ROUND-TRIP — the kernel is already an
+  atomic-free fused reduction reading tensors any spelling must read, and
+  un-fusing it into cuBLAS calls is the same fusion-tax mechanism just
+  measured sinking flash-compiled twice. What remains on both models is mm at
+  67-68% of a 91-96% CUDA-busy step at pinned-`highest` fp32 — the fairness
+  floor, not an engineering gap. FLASH-3 and the CGENN performance program
+  END HERE; cumulative tag_cgenn: 4.42x compile speedup, 313→349 jets/s
+  (+11.5%) across FLASH-3, syncs 112→32/step; GPS 2453→1927 ms/step (1.27x),
+  245→45 syncs/step.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs
