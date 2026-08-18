@@ -549,7 +549,9 @@ class CGENNBackbone(nn.Module):
         # FLASH-3 step 2: per-edge in-segment rank + static degree bound (see the
         # package twin) -- kNN graphs bound receiver degree by k structurally, so the
         # model passes min(k, P-1) with no host read. None keeps segment_reduce.
-        if knn_k is not None:
+        # COMPILED-ONLY (round-trip #5 audit, see package twin): eager materializes
+        # the (N, K, C) padded buffer; compiled fuses it. is_compiling() constant-folds.
+        if knn_k is not None and torch.compiler.is_compiling():
             counts_long = edge_counts.view(-1).long()
             offsets = torch.cumsum(counts_long, 0) - counts_long
             agg_slot = (torch.arange(i_recv.size(0), device=i_recv.device)

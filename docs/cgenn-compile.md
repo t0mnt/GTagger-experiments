@@ -3665,10 +3665,17 @@ success target ≥1.5x, else record why and close.
   (n_nodes−1)/avg-degree — if round-trip #3 shows tag_cgenn regressing, that
   one wrapper line passes None). Routed: both twins' mean-aggregation core,
   the x_i/h_i gathers, and the hoist's rA/lA gathers; sender-side (x_j, h_j,
-  rB, lB) keeps segment_reduce in v1 (unbounded degree). CPU BONUS, proven
-  by the pins: the padded sum adds each segment left-to-right exactly like
-  segment_reduce, so it is BIT-equal ON CPU — the hybrid BIT pins passed
-  UNCHANGED, zero fixture churn; CUDA reduction order is TOL. Gates: padded
+  rB, lB) keeps segment_reduce in v1 (unbounded degree). [CORRECTED by the
+  round-trip #5 audit, below: the original text here claimed the padded sum
+  is "BIT-equal ON CPU ... zero fixture churn". That was TRUE for the hybrid
+  BIT pins (kNN graphs have CONSTANT degree k, so the padded buffer has no
+  ragged padding and the sums agree bitwise) but FALSE for the FC net: torch's
+  CPU `sum(dim=1)` reduces with vectorized (non-sequential) association, so on
+  ragged FC segments padded differs from segment_reduce at reassociation level
+  (6e-7 fp32 / 3e-15 fp64 model-level), and this step's commit in fact
+  re-recorded the battery's fp32.pt/fp64.pt fixtures — churn the record
+  under-reported. The audit made the padded route COMPILED-ONLY, which
+  restored eager bit-exactly to the pre-step-2 recordings (verified).] Gates: padded
   parity 1.4e-16 + looser-K identity, slot/uniqueness executable contract,
   slot-route backward 1.2e-16, gradcheck+gradgradcheck, compile 0 breaks;
   internal+experiments 281 passed; battery 25/25 (explain artifact
@@ -3768,6 +3775,38 @@ success target ≥1.5x, else record why and close.
   END HERE; cumulative tag_cgenn: 4.42x compile speedup, 313→349 jets/s
   (+11.5%) across FLASH-3, syncs 112→32/step; GPS 2453→1927 ms/step (1.27x),
   245→45 syncs/step.*
+
+  *ROUND-TRIP #5 ADVERSARIAL AUDIT (2026-08-18): one real flaw found and
+  fixed — the padded segment sums ran in the EAGER posture too, where
+  inductor is not there to fuse them: eager `padded_segment_sum`
+  MATERIALIZES the (N, K, C) buffer — multiple GB per call on the FC graph
+  at K=n_nodes−1 — a time AND memory tax on every eager run. This
+  CONTAMINATED THE RE-RACE: flash's own-best posture is eager (its compiled
+  posture pays the fusion tax), so the challenger raced carrying a handicap
+  the incumbent's compiled posture never felt — visible in the data as
+  flash-eager DROPPING 329→308 jets/s from race #7 and losing its bs-512
+  ceiling to 256 (the padded buffers inflated its memory). FIX: the padded
+  route is now COMPILED-ONLY (`torch.compiler.is_compiling()` gate at all
+  three slot-producer sites — the same compile-twin pattern as
+  sparse_gp.py; constant-folded at trace time, zero breaks). Eager keeps
+  segment_reduce(unsafe=True) everywhere. PROOF the restoration is exact:
+  re-recorded BIT fixtures are tensor-bit-IDENTICAL to the pre-step-2
+  (step-1) recordings — which also proves unsafe=True is BIT at model level
+  on this net (the old recordings predate it). Battery 25/25 green.
+  VERDICT IMPACT, stated honestly: the −12% margin OVERSTATES flash's
+  deficit; un-handicapped flash-eager is likely near its historical ~330
+  jets/s ≈ −5% vs sparse's 349. The CLOSE verdict STANDS regardless —
+  adoption needs >384 jets/s (+10% over sparse), +17% above flash's
+  best-ever — but the margin in the verdict record is corrected to ~−5%
+  (estimated) pending an optional one-row hygiene rerun:
+  `python utils/bperf.py --models tag_cgenn/flash --find-batchsize`.
+  Also checked and CLEAN: twin files code-identical (AST-compare, comments
+  aside — the drift is deliberate rationale-thinning); eval runs the same
+  in-place-compiled net as training (no eager-eval exposure in campaign
+  configs); K is a shape-derived SymInt (no per-batch recompile);
+  `test_bit_eager_vs_fixtures` did its job — it caught the eager change the
+  moment the compile-twin split landed, which is what exposed the
+  under-reported step-2 fixture churn corrected above.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs

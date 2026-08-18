@@ -335,7 +335,10 @@ class CGENNLGATrGraphGPS(nn.Module):
         # in the package twin, cgenn.py). Routes every receiver-side segment sum
         # through the padded scatter-write, retiring segment_reduce's per-call
         # host-read (the profiled 245-syncs/step wall on this model).
-        if self.k is not None:
+        # COMPILED-ONLY (round-trip #5 audit, see package twin): eager materializes
+        # the (N, K, C) padded buffer (mild here, K=k, but the split is uniform);
+        # eager keeps segment_reduce(unsafe=True). is_compiling() constant-folds.
+        if self.k is not None and torch.compiler.is_compiling():
             counts_long = edge_counts.view(-1).long()
             offsets = torch.cumsum(counts_long, 0) - counts_long
             agg_slot = (torch.arange(i_recv.size(0), device=i_recv.device)

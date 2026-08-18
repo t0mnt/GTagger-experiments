@@ -515,7 +515,13 @@ class CGENN(nn.Module):
         # every receiver-side segment sum runs as the padded scatter-write instead of
         # torch.segment_reduce, whose CUDA path host-reads lengths per call -- the
         # attributed source of the profiled sync wall. knn_k=None keeps segment_reduce.
-        if knn_k is not None:
+        # COMPILED-ONLY (round-trip #5 audit): inductor fuses the (N, K, C) padded
+        # buffer into a reduction kernel, but EAGER materializes it -- multiple GB on
+        # the FC graph -- which taxed the eager postures (flash-eager dropped 329->308
+        # jets/s and lost its bs-512 ceiling in the re-race). Same compile-twin split
+        # as sparse_gp.py: is_compiling() is constant-folded at trace time (no break),
+        # eager keeps segment_reduce(unsafe=True), BIT-equal on CPU (pins unchanged).
+        if knn_k is not None and torch.compiler.is_compiling():
             counts_long = edge_counts.view(-1).long()
             offsets = torch.cumsum(counts_long, 0) - counts_long
             agg_slot = (torch.arange(i_recv.size(0), device=i_recv.device)
