@@ -30,6 +30,32 @@ from experiments.tagging.embedding import get_tagging_features
 # side) for a one-line A/B without a code edit. Read ONCE at import, shield style.
 _FC_PADDED = os.environ.get("CGENN_FC_PADDED", "1") != "0"
 
+# Regional-compilation switch (flash round-trip #6 experiment): CGENN_REGIONAL=1
+# makes CGENNWrapper's compile=True compile SUBMODULES instead of the whole net --
+# see the comment at the wrapper's compile site. Read at CONSTRUCTION (not import):
+# it gates a one-time build decision, never the hot path, and construction-time
+# reads keep it monkeypatchable in the gates.
+_REGIONAL_LEAVES = (nn.Linear, nn.BatchNorm1d, nn.ReLU, nn.SiLU, nn.Sigmoid,
+                    nn.Dropout, nn.Identity)
+
+
+def _compile_regional(net):
+    """Compile every nn.Sequential made purely of plain-nn leaves, in place.
+
+    The structural predicate selects exactly the CGL scalar MLPs (phi_h, theta_h,
+    psi_x, chi_x: Linear/BatchNorm1d/ReLU stacks) and any plain output head, and
+    excludes everything geometric-algebra shaped (phi_x/theta_x hold FCGP/MVLayerNorm
+    modules, which fail the leaf test), so the flash custom op and the equivariant ops
+    stay in eager orchestration. Each unit compiles with dynamic=True: its batch dim
+    is E or N, both varying per step. Returns the number of compiled units."""
+    n = 0
+    for mod in net.modules():
+        if isinstance(mod, nn.Sequential) and len(mod) > 0 and all(
+                isinstance(c, _REGIONAL_LEAVES) for c in mod.children()):
+            mod.compile(dynamic=True)
+            n += 1
+    return n
+
 # every to_dense_batch below is deliberate: this repo uses zero padding over sparse jet
 # representations, as the MPNN portion of the GNNs is currently not shaped for the latter
 
@@ -910,10 +936,22 @@ class CGENNWrapper(nn.Module):
         super().__init__()
         self.net = net(n_outputs=out_channels)
         if compile:
-            # net only -- the wrapper stays eager: pair.nonzero, the spurion rescale and
-            # to_dense_batch are data-dependent by design (docs/cgenn-compile.md section 2).
-            # dynamic=True: N = B*P and the fully-connected E vary per batch.
-            self.net.compile(dynamic=True)
+            if os.environ.get("CGENN_REGIONAL", "0") == "1":
+                # REGIONAL compilation (docs, flash round-trip #6 experiment): compile the
+                # plain-nn Sequential submodules (phi_h/theta_h/psi_x/chi_x MLPs) as
+                # individual units and keep the orchestration -- and with it the flash
+                # custom op -- in eager Python. No joint AOT graph ever contains the
+                # opaque op, so none of flash-compiled's partition seams exist, while the
+                # scalar MLPs still get their fused kernels. Opt-in per-process
+                # (CGENN_REGIONAL=1); whole-net compile stays the shipping default.
+                n = _compile_regional(self.net)
+                LOGGER.info(f"CGENN regional compile: {n} Sequential submodules compiled")
+            else:
+                # net only -- the wrapper stays eager: pair.nonzero, the spurion rescale
+                # and to_dense_batch are data-dependent by design (docs/cgenn-compile.md
+                # section 2). dynamic=True: N = B*P and the fully-connected E vary per
+                # batch.
+                self.net.compile(dynamic=True)
         self.budget = _activation_memory_budget(activation_memory_budget)
         self.framesnet = framesnet
         assert isinstance(framesnet, IdentityFrames)

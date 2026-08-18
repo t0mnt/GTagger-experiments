@@ -466,3 +466,49 @@ def test_degree_zero_node_compiled_vs_eager():
     assert torch.isfinite(y_c).all() and torch.isfinite(g_c).all(), "DEG0: non-finite"
     assert fd < 1e-12, f"DEG0 fwd: {fd:.3e} >= 1e-12"
     assert gd < 1e-8, f"DEG0 grads: {gd:.3e} >= 1e-8"
+
+
+@pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile smoke gates: set CGENN_COMPILE_GATES=1")
+def test_regional_compile_vs_eager(monkeypatch):
+    """REGIONAL (flash round-trip #6): submodule-wise compile vs eager, flash impl.
+
+    CGENN_REGIONAL=1 + compile=true compiles the plain-nn Sequential MLPs as units
+    and keeps orchestration (and the flash custom op) eager -- the experiment's
+    premise is that no joint graph contains the opaque op. This gate pins the
+    mechanism on CPU: some units actually compile, forward matches eager at fp64
+    TOL, gradients exist, are finite, and match eager."""
+    monkeypatch.setenv("CGENN_REGIONAL", "1")
+    exp = _build(float64=True,
+                 extra_overrides=["model.net.gp_impl=flash", "model.compile=true"])
+    monkeypatch.delenv("CGENN_REGIONAL")
+    exp_e = _build(float64=True,
+                   extra_overrides=["model.net.gp_impl=flash", "model.compile=false"])
+    exp_e.model.load_state_dict(exp.model.state_dict(), strict=True)
+    data = _fixed_batch(exp)
+
+    from torch._dynamo.eval_frame import OptimizedModule
+    n_units = sum(isinstance(m, OptimizedModule) for m in exp.model.net.modules())
+    # nn.Module.compile() wraps in place (no OptimizedModule node); detect via the
+    # _compiled_call_impl it installs instead, on any torch that uses it.
+    n_units = max(n_units, sum(getattr(m, "_compiled_call_impl", None) is not None
+                               for m in exp.model.net.modules()))
+    assert n_units >= 4, f"REGIONAL: only {n_units} compiled units found (want >= 4 MLPs)"
+
+    def fwd_bwd(e):
+        e.model.train()
+        e.model.zero_grad(set_to_none=True)
+        y = e._get_ypred_and_label(data.clone())[0]
+        w = torch.linspace(-1, 1, y.numel(), dtype=y.dtype).reshape(y.shape)
+        (y * w).sum().backward()
+        g = torch.cat([p.grad.flatten() for p in e.model.parameters()
+                       if p.grad is not None])
+        return y.detach().clone(), g.clone()
+
+    y_r, g_r = fwd_bwd(exp)
+    y_e, g_e = fwd_bwd(exp_e)
+    fd = (y_r - y_e).abs().max().item()
+    gd = (g_r - g_e).abs().max().item()
+    print(f"GATE-REGIONAL units={n_units} fwd max|diff|={fd:.3e} grad max|diff|={gd:.3e}")
+    assert torch.isfinite(y_r).all() and torch.isfinite(g_r).all(), "REGIONAL: non-finite"
+    assert fd < 1e-12, f"REGIONAL fwd: {fd:.3e} >= 1e-12"
+    assert gd < 1e-8, f"REGIONAL grads: {gd:.3e} >= 1e-8"

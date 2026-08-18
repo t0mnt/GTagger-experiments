@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**PROGRAM COMPLETE (2026-08-18): the FLASH-3 re-race CLOSED — sparse-compiled 349 jets/s vs flash own-best 308 (flash now −12%; the sync/hoist work sped up the incumbent past the challenger). The CGENN rows launch on sparse with the full stack (blockdiag + SortedGather + hoist + padded sums + unsafe). Remaining levers are operator decisions: DDP for the jc rows, subsampled-val checkpoint selection** ← state marker,
+**SPARSE ARM FINAL — CGENN rows launch on sparse with the full stack; ONE flash experiment reopened by operator: REGIONAL COMPILATION (round-trip #6, wired + CPU-gated, command below in its record). The re-race margin was corrected to ~−5% after the eager-materialization audit; regional compile is the one cheap idea whose upside reaches the +10% bar. Standing operator items: DDP for the jc rows, subsampled-val checkpoint selection** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3836,6 +3836,35 @@ success target ≥1.5x, else record why and close.
   CGL.__init__ assigns `self.aggregation` a function then overwrites it
   with the string (upstream artifact; the string drives reduce(), the
   early raise still validates — dead but harmless).*
+
+  *REGIONAL COMPILATION WIRED (2026-08-18, operator-approved): flash
+  round-trip #6.* The one cheap experiment whose upside reaches the +10%
+  bar. Mechanism: flash-compiled loses because the joint AOT graph must
+  partition around the opaque custom op (measured 0.547x); flash-eager
+  loses because the scalar MLPs forfeit inductor's fusion. REGIONAL takes
+  the third corner: `CGENN_REGIONAL=1` + `compile=true` makes CGENNWrapper
+  compile each plain-nn Sequential (phi_h/theta_h/psi_x/chi_x + head; the
+  structural predicate `_compile_regional` in wrappers.py excludes anything
+  GA-shaped) as its OWN unit with dynamic=True, while the orchestration —
+  and the flash op inside it — stays eager Python. No joint graph ever
+  contains the op → no partition seams; the MLPs still fuse. Python
+  dispatch is priced: full flash-eager already runs thousands of eager ops
+  at 308 jets/s, and regional strictly reduces that count. The open cost is
+  LOST CROSS-UNIT FUSION, which the race prices. Gate:
+  `test_regional_compile_vs_eager` (battery) — 5 units compiled, forward
+  AND grads bit-identical to eager on CPU (0.0 diff). ROUND-TRIP #6
+  COMMAND (one allocation, ~30 min; head as always fetch+reset, set -e):
+
+      python utils/bperf.py --models tag_cgenn/sparse tag_cgenn/flash --find-batchsize
+      CGENN_REGIONAL=1 python utils/bperf.py --models tag_cgenn/flash --find-batchsize
+
+  Read: command 1 = sparse control (compiled column, ~349) + FAIR
+  flash-eager (eager column; the materialization bug is fixed, bs512
+  should return). Command 2's COMPILED column = regional (ignore its eager
+  column, a duplicate). DECISION RULE, pre-registered: regional >= 384
+  jets/s (+10% over sparse's 349) reopens flash adoption; anything less
+  closes the flash arm finally, with the mega fused kernel remaining a
+  separate discretionary call.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs
