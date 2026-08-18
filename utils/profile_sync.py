@@ -75,6 +75,10 @@ STALL_KEYS = ("cudaStreamSynchronize", "cudaDeviceSynchronize", "cudaMemcpy", "M
 
 @hydra.main(config_path="../config", config_name="toptagging", version_base=None)
 def main(cfg):
+    # dynamo re-warns for EVERY traced lru_cache call -- hundreds per compile, drowning
+    # the tables this tool exists to print (same "once" treatment as utils/find_lr.py)
+    import warnings
+    warnings.filterwarnings("once", message=".*lru_cache.*")
     cfg.train = False
     cfg.evaluate = False
     cfg.plot = False

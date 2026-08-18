@@ -1,15 +1,23 @@
 # from https://github.com/DavidRuhe/clifford-group-equivariant-neural-networks
 import math
+import os
 
 import torch
 from torch import nn
 
 from experiments.baselines.cgenn.cliffordalgebra import sparse_gp_tables
-from experiments.baselines.cgenn.linear import MVLinear
+from experiments.baselines.cgenn.linear import MVLinear, mv_apply_weight
 from experiments.baselines.cgenn.normalization import NormalizationLayer
+from experiments.baselines.cgenn.sorted_gather import sorted_gather, sorted_gather_perm
 from experiments.baselines.cgenn.sparse_gp import sparse_geometric_product
 from experiments.baselines.cgenn.flash_kernels_p1m3 import fcgp as fcgp_flash
+from experiments.baselines.cgenn.utils import unsqueeze_like
 from .autocast import minimum_autocast_precision
+
+# FLASH-3 step 1 kill switch: CGENN_HOIST=0 reverts the CGL message path to the
+# original edge-level linears (the shield pattern -- one env var, no code change).
+# Read ONCE at import, like CGENN_SORTED_GATHER.
+_HOIST = os.environ.get("CGENN_HOIST", "1") != "0"
 
 
 class FullyConnectedSteerableGeometricProductLayer(nn.Module):
@@ -73,8 +81,55 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
         return self.algebra.cayley * weight_repeated
 
     @minimum_autocast_precision(torch.float32, output="high")
-    def forward(self, input):
-        input_right = self.linear_right(input)
+    def message_right_left(self, x, i, j, edge_attr, edge_counts, send_perm, send_counts):
+        """Gather-commute hoisting (FLASH-3 step 1): the linear_right / linear_left
+        halves of the CGL message, computed at NODE level and gathered, instead of at
+        EDGE level after the concat.
+
+        The message input is cat[x_i, x_j, x_i - x_j, e] (both CGL twins build exactly
+        this), and the two linears are linear in it, so with the weight sliced along
+        the input channels as [W_A | W_B | W_C | W_E]:
+
+            W @ cat[x_i, x_j, x_i - x_j, e]
+              = (W_A + W_C) @ x |gathered at i  +  (W_B - W_C) @ x |gathered at j
+                + W_E @ e
+
+        The first two matmuls run over N node rows instead of E ~ k*N edge rows --
+        the profiled 74-78% mm block's largest members -- and the gathers reuse the
+        deterministic SortedGather/SortedGatherPermuted machinery the CGL already
+        threads. Weight-slice pre-addition and the gather reorder are reassociation
+        only: TOL class (fp64 <= 1e-13 gates in tests/internal/test_hoist_message.py);
+        the hybrid BIT pins are re-recorded with this change stated. linear_left's
+        bias is added exactly ONCE here, at the edge-level recombination.
+
+        Returns (input_right_pre_norm, left) as (E, ...) tensors; forward() consumes
+        them via its input_right= / left= keywords.
+        """
+        alg = self.algebra
+        c = x.shape[1]
+        e_ch = self.in_features - 3 * c
+        w_r, w_l = self.linear_right.weight, self.linear_left.weight
+        rA = mv_apply_weight(w_r[:, :c] + w_r[:, 2 * c:3 * c], x, alg)
+        rB = mv_apply_weight(w_r[:, c:2 * c] - w_r[:, 2 * c:3 * c], x, alg)
+        lA = mv_apply_weight(w_l[:, :c] + w_l[:, 2 * c:3 * c], x, alg)
+        lB = mv_apply_weight(w_l[:, c:2 * c] - w_l[:, 2 * c:3 * c], x, alg)
+
+        right = (sorted_gather(rA, i, edge_counts)
+                 + sorted_gather_perm(rB, j, send_perm, send_counts))
+        left = (sorted_gather(lA, i, edge_counts)
+                + sorted_gather_perm(lB, j, send_perm, send_counts))
+        if e_ch:
+            right = right + mv_apply_weight(w_r[:, 3 * c:], edge_attr, alg)
+            left = left + mv_apply_weight(w_l[:, 3 * c:], edge_attr, alg)
+        if self.linear_left.bias is not None:
+            bias = alg.embed(self.linear_left.bias, self.linear_left.b_dims)
+            left = left + unsqueeze_like(bias, left, dim=2)
+        return right, left
+
+    @minimum_autocast_precision(torch.float32, output="high")
+    def forward(self, input, input_right=None, left=None):
+        if input_right is None:
+            input_right = self.linear_right(input)
         input_right = self.normalization(input_right)
 
         if self.gp_impl == "sparse":
@@ -108,6 +163,8 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
             product = torch.einsum("bnki,mnijk->bmj", outer, weight)
 
         if self.include_first_order:
-            return (self.linear_left(input) + product) / math.sqrt(2)
+            if left is None:
+                left = self.linear_left(input)
+            return (left + product) / math.sqrt(2)
         else:
             return product

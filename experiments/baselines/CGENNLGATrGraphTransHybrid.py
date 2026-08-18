@@ -24,6 +24,7 @@ from experiments.baselines.cgenn.mvsilu import MVSiLU
 from experiments.baselines.cgenn.mvlayernorm import MVLayerNorm
 from experiments.baselines.cgenn.gp import SteerableGeometricProductLayer
 from experiments.baselines.cgenn.sorted_gather import sorted_gather, sorted_gather_perm
+from experiments.baselines.cgenn import fcgp as fcgp_mod
 from experiments.baselines.cgenn.fcgp import FullyConnectedSteerableGeometricProductLayer
 from experiments.baselines.cgenn.utils import unsqueeze_like
 
@@ -345,6 +346,23 @@ class CGLayer(nn.Module):
         input = torch.cat(input, dim=1)
         return self.phi_x(input)
 
+    def _message_x_hoisted(self, x, x_i, x_j, i, j, edge_attr_x,
+                           edge_counts, send_perm, send_counts):
+        # gather-commute hoisting (FLASH-3 step 1): phi_x = [FCGP, MVLayerNorm], and
+        # the FCGP's linear_right/linear_left halves of the message are LINEAR in the
+        # gathered concat, so they run at NODE level and get gathered afterward
+        # (fcgp.message_right_left holds the identity and the TOL class statement).
+        # The quadratic GP keeps the plain edge-level concat, built exactly as
+        # message_x builds it. CGENN_HOIST=0 restores the original path.
+        input = [x_i, x_j, x_i - x_j]
+        if edge_attr_x is not None:
+            input.append(edge_attr_x)
+        input = torch.cat(input, dim=1)
+        fcgp, norm = self.phi_x[0], self.phi_x[1]
+        right, left = fcgp.message_right_left(
+            x, i, j, edge_attr_x, edge_counts, send_perm, send_counts)
+        return norm(fcgp(input, input_right=right, left=left))
+
     def message_h(self, h_i, h_j, invariants_ij, edge_attr_h=None):
         input = [invariants_ij, h_i, h_j, h_i - h_j]
         if edge_attr_h is not None:
@@ -382,8 +400,13 @@ class CGLayer(nn.Module):
         # the stable-sort permutation (sorted_gather_perm, FLASH-2) -- deterministic
         # segment sum instead of atomic scatter-add. Falls back to plain autograd when
         # the extras are None.
+        x_i = sorted_gather(x, i, edge_counts)
         x_j = sorted_gather_perm(x, j, send_perm, send_counts)
-        m_x = self.message_x(sorted_gather(x, i, edge_counts), x_j, edge_attr_x)
+        if fcgp_mod._HOIST and self.layer_type == "fc":
+            m_x = self._message_x_hoisted(x, x_i, x_j, i, j, edge_attr_x,
+                                          edge_counts, send_perm, send_counts)
+        else:
+            m_x = self.message_x(x_i, x_j, edge_attr_x)
         m_invariants = get_invariants(self.algebra, m_x).flatten(1)
         if h is not None:
             h_j = sorted_gather_perm(h, j, send_perm, send_counts)

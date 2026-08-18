@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**NEXT STEP: 1 — GATHER-COMMUTE HOISTING (the full-precision mm cut; precision race measured and recorded, `highest` STAYS by operator fairness call; then 2: scatter-free backward respelling, 3: sync fixes from the attribution run)** ← state marker,
+**NEXT STEP: 1 GPU-VERIFY — hoisting is CODE-COMPLETE and CPU-green (record below); run the step-1 round-trip (batteries + soak + before/after profiles), then step 2 (k-bounded padded segment sum, design frozen below)** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3559,6 +3559,54 @@ success target ≥1.5x, else record why and close.
   hoisting removes the mm's it would have fused and step 2 removes its other
   half. Sequenced, gated, and precision-independent — every step stands
   whatever the table's precision policy.
+
+  *STEP 1 IMPLEMENTED (2026-08-18, CPU-verified): gather-commute hoisting is live.*
+  `FCGP.message_right_left` (fcgp.py) computes the linear_right/linear_left halves
+  of the CGL message at NODE level: with the weight sliced along the concat as
+  [W_A|W_B|W_C|W_E], `W·cat[x_i, x_j, x_i−x_j, e] = (W_A+W_C)x|_i + (W_B−W_C)x|_j
+  + W_E·e` — the slice combos feed `mv_apply_weight` (linear.py, the blockdiag
+  fast path as a function of an explicit weight), the gathers are the
+  deterministic SortedGather/SortedGatherPermuted the CGLs already thread, and
+  linear_left's bias is added exactly once at the recombination. Both CGL twins
+  gained `_message_x_hoisted` (fc layer type only; gpmlp untouched); the
+  quadratic GP keeps the plain edge concat. KILL SWITCH: CGENN_HOIST=0 (read at
+  import, fcgp.py). CLASS: TOL — reassociation only; gates
+  (tests/internal/test_hoist_message.py, 5/5): forward parity 1e-15, all grads
+  (x, e, both linear weights, bias, GP weight) 1e-13..1e-16 vs the taxonomy's
+  1e-8 grad bar, full hybrid-CGLayer forward parity 5e-16, kill-switch identity,
+  compile 0 breaks. CONSEQUENCES, all handled: hybrid BIT pins re-recorded
+  (3 files; GPS fp32 pin unchanged — the same benign fp32-rounding coincidence
+  as the blockdiag era), cgenn_compile BIT fixtures + content-hash manifest
+  re-recorded, and the fp32 impl-TOL bar re-set 1e-5→1e-4 with the measurement
+  in its comment (the einsum-vs-blockdiag reassociation seed is unchanged but
+  its 4-layer amplification moved with the activations: 4e-6-class → 3.3e-5;
+  CGENN_HOIST=0 reverts it; the fp64 arbiter stays ~1e-13 under its unchanged
+  1e-10 bar). Full battery 25/25, internal+experiments CPU suites 297 passed.
+  INTERACTION, stated: the hoist adds 4 deterministic gathers per layer, whose
+  backwards are segment_reduce calls — MORE of the syncs step 2 removes; on the
+  87%-CUDA-busy tag_cgenn they overlap, and step 2 retires the whole class.
+
+  *SYNC ATTRIBUTION (from the operator's STEP-1c run, 2026-08-18): the syncs are
+  `torch.segment_reduce`'s.* The NGC build captures no profiler stacks (STEP 1c
+  printed its fallback), but the nesting column is decisive: aten::segment_reduce
+  self-CPU 8 ms yet CPU-TOTAL 5.55 s = 27.6% — the 825 cudaStreamSynchronize and
+  the expensive aten::item calls sit INSIDE it. 300 calls/5 steps = 60/step
+  matches the 2.2b aggregations + SortedGather(+Permuted) backwards exactly.
+  Mechanism: segment_reduce has no inductor lowering (falls back inside the
+  compiled region) and its CUDA path host-reads the lengths per call. STEP 2
+  DESIGN (frozen): receiver-side segments are k-BOUNDED BY CONSTRUCTION (each
+  receiver has ≤ knn_k neighbors), so the deterministic segment sum respells as
+  a STATIC-shape padded scatter-write — slot = arange(E) − offsets[i] (offsets =
+  exclusive-cumsum of edge_counts, tensor-only), out = zeros(N, k, C)
+  .index_put_((i, slot), data).sum(1) — unique slots ⇒ no atomics, no host
+  reads, plain ops ⇒ inductor fuses it, and it retires BOTH the fallback syncs
+  and the scatter class for: the 2.2b forward aggregations, SortedGather
+  backward, and the hoist gathers' backwards. Sender-side segments are NOT
+  k-bounded (a popular sender is unbounded) — sender backwards keep
+  segment_reduce in v1; if their residual syncs still bind after 2a, options
+  recorded: CPU-side lengths (if ATen accepts them, the .max() is free) or a
+  two-level chunked reduction. TOL again → one more pin re-record, folded into
+  the step-2 commit.
 - **Step 1 (sandbox, CPU):** design freeze + generated math. Re-read the fc CGL
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream

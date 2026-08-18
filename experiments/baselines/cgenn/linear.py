@@ -87,6 +87,26 @@ class MVLinear(nn.Module):
         return result
 
 
+def mv_apply_weight(weight, input, algebra):
+    """`MVLinear._forward_subspaces` as a FUNCTION of an explicit (out, in, n_subspaces)
+    weight -- the blockdiag fast path for rank-3 input, the general einsum otherwise.
+
+    Exists for gather-commute hoisting (FLASH-3 step 1): the hoisted message path
+    applies SLICES and per-forward COMBINATIONS of a module's weight (W_A + W_C,
+    W_B - W_C, W_E), which the bound method cannot express. Autograd flows through the
+    slice/add into the owning module's parameter as usual. No bias here -- callers add
+    the module bias exactly once at the recombination site."""
+    w = weight.index_select(-1, algebra.blade_subspace_idx)
+    if input.ndim == 3:
+        nb = algebra.n_blades
+        out_f, in_f = weight.shape[0], weight.shape[1]
+        wbd = (torch.diag_embed(w.permute(1, 0, 2))
+               .permute(0, 2, 1, 3)
+               .reshape(in_f * nb, out_f * nb))
+        return (input.reshape(-1, in_f * nb) @ wbd).view(-1, out_f, nb)
+    return torch.einsum("bm...i, nmi->bn...i", input, w)
+
+
 # EPS = 1e-6
 
 # def unsqueeze_like(tensor: torch.Tensor, like: torch.Tensor, dim=0):
