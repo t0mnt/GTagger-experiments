@@ -435,7 +435,8 @@ def test_degree_zero_node_compiled_vs_eager():
     RECOMP sweep above pushes a 1-constituent jet through the compiled FORWARD only;
     this gate compares eager-vs-compiled forward AND parameter gradients at fp64.
     Low-multiplicity jets are data-reachable, so this is a correctness gate, not an
-    exotic: fwd <= 1e-12, grads <= 1e-8 (the taxonomy's TOL bars)."""
+    exotic: fwd <= 1e-10 (the battery's model-level fp64 bar -- GPU reassociation
+    is larger than CPU's), grads <= 1e-8 (the taxonomy bar)."""
     exp = _build(float64=True)
     data = _fixed_batch(exp)
     ptr = data["ptr"]
@@ -450,7 +451,7 @@ def test_degree_zero_node_compiled_vs_eager():
     def fwd_bwd(d):
         exp.model.zero_grad(set_to_none=True)
         y = exp._get_ypred_and_label(d.clone())[0]
-        w = torch.linspace(-1, 1, y.numel(), dtype=y.dtype).reshape(y.shape)
+        w = torch.linspace(-1, 1, y.numel(), dtype=y.dtype, device=y.device).reshape(y.shape)
         (y * w).sum().backward()
         g = torch.cat([p.grad.flatten() for p in exp.model.parameters()
                        if p.grad is not None])
@@ -464,7 +465,7 @@ def test_degree_zero_node_compiled_vs_eager():
     gd = (g_e - g_c).abs().max().item()
     print(f"GATE-DEG0 fwd max|diff|={fd:.3e} grad max|diff|={gd:.3e}")
     assert torch.isfinite(y_c).all() and torch.isfinite(g_c).all(), "DEG0: non-finite"
-    assert fd < 1e-12, f"DEG0 fwd: {fd:.3e} >= 1e-12"
+    assert fd < 1e-10, f"DEG0 fwd: {fd:.3e} >= 1e-10"
     assert gd < 1e-8, f"DEG0 grads: {gd:.3e} >= 1e-8"
 
 
@@ -492,13 +493,15 @@ def test_regional_compile_vs_eager(monkeypatch):
     # _compiled_call_impl it installs instead, on any torch that uses it.
     n_units = max(n_units, sum(getattr(m, "_compiled_call_impl", None) is not None
                                for m in exp.model.net.modules()))
+    # 5 on the quick tree (n_layers=1: phi_h/theta_h/psi_x/chi_x + head); the
+    # production net has 4 CGLs (~17 units) -- the bound is a floor, not the count.
     assert n_units >= 4, f"REGIONAL: only {n_units} compiled units found (want >= 4 MLPs)"
 
     def fwd_bwd(e):
         e.model.train()
         e.model.zero_grad(set_to_none=True)
         y = e._get_ypred_and_label(data.clone())[0]
-        w = torch.linspace(-1, 1, y.numel(), dtype=y.dtype).reshape(y.shape)
+        w = torch.linspace(-1, 1, y.numel(), dtype=y.dtype, device=y.device).reshape(y.shape)
         (y * w).sum().backward()
         g = torch.cat([p.grad.flatten() for p in e.model.parameters()
                        if p.grad is not None])
@@ -510,5 +513,5 @@ def test_regional_compile_vs_eager(monkeypatch):
     gd = (g_r - g_e).abs().max().item()
     print(f"GATE-REGIONAL units={n_units} fwd max|diff|={fd:.3e} grad max|diff|={gd:.3e}")
     assert torch.isfinite(y_r).all() and torch.isfinite(g_r).all(), "REGIONAL: non-finite"
-    assert fd < 1e-12, f"REGIONAL fwd: {fd:.3e} >= 1e-12"
+    assert fd < 1e-10, f"REGIONAL fwd: {fd:.3e} >= 1e-10"
     assert gd < 1e-8, f"REGIONAL grads: {gd:.3e} >= 1e-8"

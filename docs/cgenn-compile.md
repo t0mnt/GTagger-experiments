@@ -3861,10 +3861,32 @@ success target ≥1.5x, else record why and close.
   Read: command 1 = sparse control (compiled column, ~349) + FAIR
   flash-eager (eager column; the materialization bug is fixed, bs512
   should return). Command 2's COMPILED column = regional (ignore its eager
-  column, a duplicate). DECISION RULE, pre-registered: regional >= 384
-  jets/s (+10% over sparse's 349) reopens flash adoption; anything less
-  closes the flash arm finally, with the mega fused kernel remaining a
-  separate discretionary call.*
+  column, a duplicate). NEVER `--apply` from the regional invocation: its
+  recommended one-liner would set `compile: true` in the yaml, which
+  WITHOUT the env var means whole-net compile — a different arm than the
+  one measured. DECISION RULE, pre-registered: regional >= 384 jets/s
+  (+10% over sparse's 349) reopens flash adoption; anything less closes
+  the flash arm finally, with the mega fused kernel remaining a separate
+  discretionary call.*
+
+  *ADVERSARIAL AUDIT ROUND 3 (2026-08-18, on the freshest code): one real
+  crash-class find — BOTH new gates (DEG0, REGIONAL) created their probe
+  weights as `torch.linspace(..., dtype=y.dtype)` with NO device argument,
+  the exact cross-device bug the original `_grads` helper already carries
+  the fix for (its round-trip lesson: "probe weights created without a
+  device — first CUDA run of that gate ever"). On the next GPU battery, y
+  is CUDA, w is CPU, and both gates raise RuntimeError — a wasted
+  round-trip. Fixed (`device=y.device`), and both gates' forward bars
+  relaxed 1e-12 → 1e-10 to match the battery's established model-level
+  fp64 compiled-vs-eager bar (GPU reassociation exceeds CPU's; 1e-12 was
+  a spurious-red risk). Unit-count expectation documented in-test (5 =
+  quick tree n_layers=1; production ~17 — the assert is a floor).
+  CHECKED CLEAN: regional state_dict compatibility (nn.Module.compile
+  wraps in place, keys unchanged — why strict=True load works), the
+  gate's BN-stats comparison ordering (both models forward from identical
+  loaded state), monkeypatch env ordering, the two-invocation isolation
+  of the runbook (env applies per bperf process), and the LOGGER import
+  at the wrapper's regional branch.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs
