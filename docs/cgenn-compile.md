@@ -3820,7 +3820,8 @@ success target ≥1.5x, else record why and close.
   RECOMP ban) — comment now states the design instead of contradicting it.
   (3) PROCESS GAP: after the compile-twin split landed, only the tag_cgenn
   battery was re-run — the hybrid/GPS COMPILED posture was not; the
-  compiled training smoke for all three CGENN nets was re-run to close it.
+  compiled training smoke for all three CGENN nets was re-run to close it
+  (3/3 passed, CPU inductor, 41 min).
   (4) NEW GATE `test_degree_zero_node_compiled_vs_eager` (battery,
   CGENN_COMPILE_GATES=1): a crafted SINGLE-CONSTITUENT jet — real node,
   zero FC edges, degree-0 receiver AND sender — through forward + parameter
