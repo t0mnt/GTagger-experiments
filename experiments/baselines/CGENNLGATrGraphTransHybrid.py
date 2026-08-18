@@ -130,7 +130,10 @@ def unsorted_segment_mean(data, segment_ids, num_segments, counts=None, slot=Non
             result = padded_segment_sum(data, segment_ids, slot, num_segments, K)
         else:
             lengths = counts.view(-1).to(torch.int64)
-            result = torch.segment_reduce(data, "sum", lengths=lengths, axis=0)
+            # unsafe=True: skip the per-call host-read validation of a
+            # contract-pinned invariant (package twin holds the rationale). BIT.
+            result = torch.segment_reduce(data, "sum", lengths=lengths, axis=0,
+                                          unsafe=True)
         return result / counts.clamp(min=1)
     result = data.new_zeros((num_segments, data.size(1)))
     result.index_add_(0, segment_ids, data)

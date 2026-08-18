@@ -69,7 +69,12 @@ def unsorted_segment_mean(data, segment_ids, num_segments, counts=None, slot=Non
             result = padded_segment_sum(data, segment_ids, slot, num_segments, K)
         else:
             lengths = counts.view(-1).to(torch.int64)
-            result = torch.segment_reduce(data, "sum", lengths=lengths, axis=0)
+            # unsafe=True (Opus finding, adopted): the default validates lengths with
+            # per-call HOST READS -- syncs re-checking an invariant true by
+            # construction and pinned by the executable contracts
+            # (tests/experiments/test_sorted_gather.py). Same kernel, BIT-identical.
+            result = torch.segment_reduce(data, "sum", lengths=lengths, axis=0,
+                                          unsafe=True)
         return result / counts.clamp(min=1)
     result = data.new_zeros((num_segments, data.size(1)))
     result.index_add_(0, segment_ids, data)

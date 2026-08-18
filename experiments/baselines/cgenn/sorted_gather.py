@@ -89,8 +89,13 @@ class SortedGather(torch.autograd.Function):
             # sum over each receiver's contiguous run of edges = the scatter-add autograd
             # would do, deterministically; zero-degree nodes get exact-zero gradient rows
             # (segment_reduce's sum identity -- pinned for empties by the 2.2b gates).
+            # unsafe=True (Opus finding, adopted): the default validates lengths with
+            # HOST READS per call -- device syncs to re-check an invariant that is true
+            # by construction (counts = bincount(idx), asserted STRONGER than the
+            # min>=0/sum==E checks by the executable contracts in
+            # tests/experiments/test_sorted_gather.py). Same kernel, BIT-identical.
             gx = torch.segment_reduce(grad_out.contiguous(), "sum", lengths=lengths,
-                                      axis=0)
+                                      axis=0, unsafe=True)
         return (gx,) + (None,) * (ctx.n_inputs - 1)
 
 
@@ -132,7 +137,9 @@ class SortedGatherPermuted(torch.autograd.Function):
         perm, counts = ctx.saved_tensors
         lengths = counts.view(-1).to(torch.int64)
         g = grad_out.index_select(0, perm).contiguous()
-        gx = torch.segment_reduce(g, "sum", lengths=lengths, axis=0)
+        # unsafe=True: skip the per-call host-read validation of an invariant the
+        # contract tests pin (counts = bincount(idx)); same kernel, BIT-identical.
+        gx = torch.segment_reduce(g, "sum", lengths=lengths, axis=0, unsafe=True)
         return gx, None, None, None
 
 

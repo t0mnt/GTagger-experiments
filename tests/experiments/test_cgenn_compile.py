@@ -387,7 +387,13 @@ def test_breaks_and_recomp(impl):
     # which churned every run until this was widened (same signal-burying class as
     # the globals-dict id below).
     report = re.sub(r"^([\w.]+)(?:, \d+\.\d+)+$", r"\1, ...", report, flags=re.M)
-    if impl == "einsum":
+    if impl == "einsum" and not torch.cuda.is_available():
+        # CPU-tier artifact, like the BIT fixtures: the committed report records the CPU
+        # reference graph. Writing it on a GPU node records the (different) CUDA graph
+        # AND dirties the cluster checkout -- which silently ABORTED the git pull at the
+        # head of round-trip #3, so that whole round-trip ran the previous tree (caught
+        # because its numbers replicated round-trip #2 to ~1%). The runbook now also
+        # hard-resets the cluster checkout, belt and braces.
         (FIX / "dynamo_explain.txt").write_text(report)
     print(f"GATE-BREAKS[{impl}] graph_break_count =", explanation.graph_break_count)
     assert explanation.graph_break_count == 0, f"graph breaks:\n{report[:2000]}"

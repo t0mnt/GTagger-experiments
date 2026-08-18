@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**NEXT STEP: 2 GPU-VERIFY (round-trip #3, same commands as #2) — step 1 MEASURED (tag 1.10x; GPS null, sync-bound), step 2 IMPLEMENTED + CPU-green (padded segment sums replace segment_reduce receiver-side); after #3: sender-side syncs if still binding, and re-race flash under the corrected mm attribution** ← state marker,
+**NEXT STEP: 2+unsafe GPU-VERIFY — round-trip #4 (#3 was VOID: the pull aborted and it ran the old tree, see record; the runbook now hard-resets the cluster checkout). Measures padded sums + segment_reduce unsafe=True together; then the flash re-race** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3671,6 +3671,33 @@ success target ≥1.5x, else record why and close.
   112→~30/step, GPS 245→~75 (senders remain), attacking GPS's measured
   700 ms/step wall-CUDA gap. Round-trip #3 = round-trip #2's commands
   verbatim.
+
+  *ROUND-TRIP #3 VOID + TWO FIXES + ONE ADOPTED FINDING (2026-08-18).* #3's
+  `git pull` ABORTED ("local changes to dynamo_explain.txt would be
+  overwritten") and, with set -e not yet active on that line, every command ran
+  the PREVIOUS tree — its numbers replicate round-trip #2 to ~1% (tag 378
+  ms/step, 560 syncs vs 381/560; GPS 2445/1225 vs 2453/1225): a NULL for step 2
+  but a clean run-to-run stability reading. Cause: the battery's explain-artifact
+  write ran on EVERY gate run, including cluster GPU runs, dirtying the checkout.
+  FIXES: (1) the artifact write is now CPU-tier (GPU nodes never write it —
+  matching the BIT fixtures' tier); (2) the runbook pull is now
+  `git fetch origin main && git reset --hard origin/main` — the cluster checkout
+  is a consumer, never a source of changes.
+  ADOPTED (credit: the operator's Opus audit): `torch.segment_reduce`'s DEFAULT
+  `unsafe=False` validates its lengths with per-call HOST READS — device syncs
+  re-deriving an invariant that is true by construction and pinned STRONGER than
+  the min>=0/sum==E checks by the executable bincount contracts
+  (tests/experiments/test_sorted_gather.py). `unsafe=True` now set at all four
+  remaining segment_reduce sites: both Function backwards — including the
+  SENDER side, which step 2's k-bounded padding could not cover — and both
+  twins' aggregation fallback branches. Same kernel, BIT-identical (verified:
+  sorted_gather + hoist + pins + full battery all green with ZERO fixture
+  re-records). COMPOSITION, stated: unsafe=True removes the validation syncs
+  wherever segment_reduce still runs; the padded respelling additionally removes
+  the aten fallback itself (its fusion partitions and kernel launches)
+  receiver-side. Round-trip #4 measures both at once; the switches
+  (CGENN_HOIST, the wrapper's knn_k line) isolate contributions only if the
+  combined read demands it.
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs
