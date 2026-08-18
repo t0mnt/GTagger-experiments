@@ -81,7 +81,8 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
         return self.algebra.cayley * weight_repeated
 
     @minimum_autocast_precision(torch.float32, output="high")
-    def message_right_left(self, x, i, j, edge_attr, edge_counts, send_perm, send_counts):
+    def message_right_left(self, x, i, j, edge_attr, edge_counts, send_perm, send_counts,
+                           agg_slot=None, agg_k=None):
         """Gather-commute hoisting (FLASH-3 step 1): the linear_right / linear_left
         halves of the CGL message, computed at NODE level and gathered, instead of at
         EDGE level after the concat.
@@ -111,7 +112,7 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
         w_r = self.linear_right.weight
         rA = mv_apply_weight(w_r[:, :c] + w_r[:, 2 * c:3 * c], x, alg)
         rB = mv_apply_weight(w_r[:, c:2 * c] - w_r[:, 2 * c:3 * c], x, alg)
-        right = (sorted_gather(rA, i, edge_counts)
+        right = (sorted_gather(rA, i, edge_counts, agg_slot, agg_k)
                  + sorted_gather_perm(rB, j, send_perm, send_counts))
         if e_ch:
             right = right + mv_apply_weight(w_r[:, 3 * c:], edge_attr, alg)
@@ -121,7 +122,7 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
         w_l = self.linear_left.weight
         lA = mv_apply_weight(w_l[:, :c] + w_l[:, 2 * c:3 * c], x, alg)
         lB = mv_apply_weight(w_l[:, c:2 * c] - w_l[:, 2 * c:3 * c], x, alg)
-        left = (sorted_gather(lA, i, edge_counts)
+        left = (sorted_gather(lA, i, edge_counts, agg_slot, agg_k)
                 + sorted_gather_perm(lB, j, send_perm, send_counts))
         if e_ch:
             left = left + mv_apply_weight(w_l[:, 3 * c:], edge_attr, alg)

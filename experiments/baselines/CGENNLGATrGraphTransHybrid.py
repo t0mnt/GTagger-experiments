@@ -23,7 +23,11 @@ from experiments.baselines.cgenn.normalization import NormalizationLayer
 from experiments.baselines.cgenn.mvsilu import MVSiLU
 from experiments.baselines.cgenn.mvlayernorm import MVLayerNorm
 from experiments.baselines.cgenn.gp import SteerableGeometricProductLayer
-from experiments.baselines.cgenn.sorted_gather import sorted_gather, sorted_gather_perm
+from experiments.baselines.cgenn.sorted_gather import (
+    padded_segment_sum,
+    sorted_gather,
+    sorted_gather_perm,
+)
 from experiments.baselines.cgenn import fcgp as fcgp_mod
 from experiments.baselines.cgenn.fcgp import FullyConnectedSteerableGeometricProductLayer
 from experiments.baselines.cgenn.utils import unsqueeze_like
@@ -106,7 +110,7 @@ def unsorted_segment_sum(data, segment_ids, num_segments):
     result.index_add_(0, segment_ids, data)
     return result
 
-def unsorted_segment_mean(data, segment_ids, num_segments, counts=None):
+def unsorted_segment_mean(data, segment_ids, num_segments, counts=None, slot=None, K=None):
     r"""Custom PyTorch op to replicate TensorFlow's `unsorted_segment_mean`.
     Adapted from https://github.com/vgsatorras/egnn.
 
@@ -120,8 +124,13 @@ def unsorted_segment_mean(data, segment_ids, num_segments, counts=None):
         # (experiments/baselines/cgenn/cgenn.py). Sorted receivers (machine-checked by
         # tests/experiments/test_edge_builders.py) make this bit-equal on CPU and
         # deterministic on CUDA; adopted on the H100 profile's 25-27% scatter share.
-        lengths = counts.view(-1).to(torch.int64)
-        result = torch.segment_reduce(data, "sum", lengths=lengths, axis=0)
+        # FLASH-3 step 2: with slot/K threaded, the sum runs as the padded
+        # scatter-write instead (package twin holds the rationale). TOL.
+        if slot is not None:
+            result = padded_segment_sum(data, segment_ids, slot, num_segments, K)
+        else:
+            lengths = counts.view(-1).to(torch.int64)
+            result = torch.segment_reduce(data, "sum", lengths=lengths, axis=0)
         return result / counts.clamp(min=1)
     result = data.new_zeros((num_segments, data.size(1)))
     result.index_add_(0, segment_ids, data)
@@ -328,10 +337,10 @@ class CGLayer(nn.Module):
         )
         self.aggregation = aggregation
 
-    def reduce(self, input, segment_ids, num_segments, counts=None):
+    def reduce(self, input, segment_ids, num_segments, counts=None, slot=None, K=None):
         if self.aggregation == "mean":
             red = unsorted_segment_mean(input, segment_ids, num_segments=num_segments,
-                                        counts=counts)
+                                        counts=counts, slot=slot, K=K)
         elif self.aggregation == "sum":
             red = unsorted_segment_sum(input, segment_ids, num_segments=num_segments)
         else:
@@ -347,7 +356,8 @@ class CGLayer(nn.Module):
         return self.phi_x(input)
 
     def _message_x_hoisted(self, x, x_i, x_j, i, j, edge_attr_x,
-                           edge_counts, send_perm, send_counts):
+                           edge_counts, send_perm, send_counts,
+                           agg_slot=None, agg_k=None):
         # gather-commute hoisting (FLASH-3 step 1): phi_x = [FCGP, MVLayerNorm], and
         # the FCGP's linear_right/linear_left halves of the message are LINEAR in the
         # gathered concat, so they run at NODE level and get gathered afterward
@@ -360,7 +370,8 @@ class CGLayer(nn.Module):
         input = torch.cat(input, dim=1)
         fcgp, norm = self.phi_x[0], self.phi_x[1]
         right, left = fcgp.message_right_left(
-            x, i, j, edge_attr_x, edge_counts, send_perm, send_counts)
+            x, i, j, edge_attr_x, edge_counts, send_perm, send_counts,
+            agg_slot, agg_k)
         return norm(fcgp(input, input_right=right, left=left))
 
     def message_h(self, h_i, h_j, invariants_ij, edge_attr_h=None):
@@ -392,25 +403,29 @@ class CGLayer(nn.Module):
         return self.theta_h(input)
 
     def forward(self, h, x, edges, node_attr_h, node_attr_x, edge_attr_h, edge_attr_x,
-                edge_counts=None, send_perm=None, send_counts=None):
+                edge_counts=None, send_perm=None, send_counts=None,
+                agg_slot=None, agg_k=None):
         i, j = edges
         # receiver gathers: BIT-identical forward, deterministic segment-sum backward
         # (sorted_gather; i is sorted and edge_counts is its degree vector -- 2.2a/2.2b's
         # own invariant). Sender gathers x[j]/h[j]: same forward, backward routed through
         # the stable-sort permutation (sorted_gather_perm, FLASH-2) -- deterministic
         # segment sum instead of atomic scatter-add. Falls back to plain autograd when
-        # the extras are None.
-        x_i = sorted_gather(x, i, edge_counts)
+        # the extras are None. agg_slot/agg_k (FLASH-3 step 2) route every receiver-side
+        # segment sum through the padded scatter-write instead of segment_reduce.
+        x_i = sorted_gather(x, i, edge_counts, agg_slot, agg_k)
         x_j = sorted_gather_perm(x, j, send_perm, send_counts)
         if fcgp_mod._HOIST and self.layer_type == "fc":
             m_x = self._message_x_hoisted(x, x_i, x_j, i, j, edge_attr_x,
-                                          edge_counts, send_perm, send_counts)
+                                          edge_counts, send_perm, send_counts,
+                                          agg_slot, agg_k)
         else:
             m_x = self.message_x(x_i, x_j, edge_attr_x)
         m_invariants = get_invariants(self.algebra, m_x).flatten(1)
         if h is not None:
             h_j = sorted_gather_perm(h, j, send_perm, send_counts)
-            m_h = self.message_h(sorted_gather(h, i, edge_counts), h_j, m_invariants, edge_attr_h)
+            m_h = self.message_h(sorted_gather(h, i, edge_counts, agg_slot, agg_k),
+                                 h_j, m_invariants, edge_attr_h)
         else:
             m_h = None
         if self.use_invariants_to_update:
@@ -512,6 +527,7 @@ class CGENNBackbone(nn.Module):
         node_attr_x=None,
         edge_attr_h=None,
         edge_attr_x=None,
+        knn_k=None,
     ):
         h = self.embedding_h(h)
         x = self.embedding_x(x)
@@ -527,6 +543,17 @@ class CGENNBackbone(nn.Module):
         send_perm = torch.argsort(j_send, stable=True)
         send_counts = x.new_zeros(x.size(0), 1).index_add_(
             0, j_send, x.new_ones(j_send.size(0), 1))
+        # FLASH-3 step 2: per-edge in-segment rank + static degree bound (see the
+        # package twin) -- kNN graphs bound receiver degree by k structurally, so the
+        # model passes min(k, P-1) with no host read. None keeps segment_reduce.
+        if knn_k is not None:
+            counts_long = edge_counts.view(-1).long()
+            offsets = torch.cumsum(counts_long, 0) - counts_long
+            agg_slot = (torch.arange(i_recv.size(0), device=i_recv.device)
+                        - offsets.index_select(0, i_recv))
+            agg_k = knn_k  # int (or SymInt under dynamic compile) -- never int()-cast
+        else:
+            agg_slot, agg_k = None, None
         for i in range(self.n_layers):
             h, x = self.CGLs[i](
                 h,
@@ -539,6 +566,8 @@ class CGENNBackbone(nn.Module):
                 edge_counts=edge_counts,
                 send_perm=send_perm,
                 send_counts=send_counts,
+                agg_slot=agg_slot,
+                agg_k=agg_k,
             )
         return h, x
 
@@ -745,6 +774,12 @@ class CGENNLGATrGraphTrans(nn.Module):
             node_attr_x=node_attr_x,
             edge_attr_h=None,
             edge_attr_x=edge_attr_x,
+            # FLASH-3 step 2: the kNN builder bounds receiver degree by k -- a static
+            # python int (no min() with the symbolic P: that would plant a shape guard
+            # under compile(dynamic=True), and k alone is already a valid bound).
+            # Fully-connected mode (k=None) keeps segment_reduce: its P-1 bound is
+            # symbolic and int()-ing it would re-specialize per padded length.
+            knn_k=self.k,
         )
 
         # Reshape back

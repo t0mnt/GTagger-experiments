@@ -33,6 +33,25 @@ import torch
 _ENABLED = os.environ.get("CGENN_SORTED_GATHER", "1") != "0"
 
 
+def padded_segment_sum(data, idx, slot, num_segments, K):
+    """Deterministic segment sum as a STATIC-shape padded scatter-write (FLASH-3 step 2).
+
+    REQUIRES: idx sorted ascending, slot[e] = rank of edge e within its segment
+    (exclusive-cumsum arithmetic at the edge_counts site -- tensor-only), and
+    K >= max segment length. The degree bound is structural: knn builders give
+    degree <= k, the fully-connected builder degree <= max multiplicity - 1 (the
+    caller passes whichever bound its builder guarantees). Unique (idx, slot)
+    targets make this a plain scatter WRITE -- no atomics (deterministic), no aten
+    fallback: index_put + sum lower through inductor, which retires
+    torch.segment_reduce's per-call HOST-READ of lengths, the attributed source of
+    the profiled cudaStreamSynchronize wall (60-245 syncs/step; docs, step 2).
+    Violating REQUIRES corrupts silently on CPU / device-asserts on CUDA, which is
+    why the slot/K extras are only ever produced next to the counts they bound."""
+    out = data.new_zeros((num_segments, K) + data.shape[1:])
+    out = torch.index_put(out, (idx, slot), data)
+    return out.sum(dim=1)
+
+
 class SortedGather(torch.autograd.Function):
     """y = x.index_select(0, idx) with a segment-sum backward.
 
@@ -45,32 +64,44 @@ class SortedGather(torch.autograd.Function):
     generate_vmap_rule = True
 
     @staticmethod
-    def forward(x, idx, counts):
+    def forward(x, idx, counts, slot=None, K=None):
         return x.index_select(0, idx)
 
     @staticmethod
     def setup_context(ctx, inputs, output):
-        x, idx, counts = inputs
-        ctx.save_for_backward(counts)
+        # inputs is exactly what apply() received -- accept the legacy 3-arg form too
+        x, idx, counts = inputs[:3]
+        slot = inputs[3] if len(inputs) > 3 else None
+        ctx.save_for_backward(idx, counts, slot)
+        ctx.K = inputs[4] if len(inputs) > 4 else None
+        ctx.N = x.shape[0]
+        ctx.n_inputs = len(inputs)
 
     @staticmethod
     def backward(ctx, grad_out):
-        (counts,) = ctx.saved_tensors
-        lengths = counts.view(-1).to(torch.int64)
-        # sum over each receiver's contiguous run of edges = the scatter-add autograd
-        # would do, deterministically; zero-degree nodes get exact-zero gradient rows
-        # (segment_reduce's sum identity -- pinned for empties by the 2.2b gates).
-        gx = torch.segment_reduce(grad_out.contiguous(), "sum", lengths=lengths, axis=0)
-        return gx, None, None
+        idx, counts, slot = ctx.saved_tensors
+        if slot is not None:
+            # FLASH-3 step 2: same segment sum, spelled as the padded scatter-write
+            # (no segment_reduce fallback, no host read; see padded_segment_sum).
+            gx = padded_segment_sum(grad_out, idx, slot, ctx.N, ctx.K)
+        else:
+            lengths = counts.view(-1).to(torch.int64)
+            # sum over each receiver's contiguous run of edges = the scatter-add autograd
+            # would do, deterministically; zero-degree nodes get exact-zero gradient rows
+            # (segment_reduce's sum identity -- pinned for empties by the 2.2b gates).
+            gx = torch.segment_reduce(grad_out.contiguous(), "sum", lengths=lengths,
+                                      axis=0)
+        return (gx,) + (None,) * (ctx.n_inputs - 1)
 
 
-def sorted_gather(x, idx, counts):
+def sorted_gather(x, idx, counts, slot=None, K=None):
     """`x[idx]` for a SORTED idx, deterministic backward. Falls back to plain
     autograd when counts is None (call sites without the hoisted degrees) or the
-    kill switch is set."""
+    kill switch is set. With slot/K (FLASH-3 step 2) the backward uses the padded
+    scatter-write instead of segment_reduce."""
     if counts is None or not _ENABLED:
         return x[idx]
-    return SortedGather.apply(x, idx, counts)
+    return SortedGather.apply(x, idx, counts, slot, K)
 
 
 class SortedGatherPermuted(torch.autograd.Function):

@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**NEXT STEP: 1 GPU-VERIFY — hoisting is CODE-COMPLETE and CPU-green (record below); run the step-1 round-trip (batteries + soak + before/after profiles), then step 2 (k-bounded padded segment sum, design frozen below)** ← state marker,
+**NEXT STEP: 2 GPU-VERIFY (round-trip #3, same commands as #2) — step 1 MEASURED (tag 1.10x; GPS null, sync-bound), step 2 IMPLEMENTED + CPU-green (padded segment sums replace segment_reduce receiver-side); after #3: sender-side syncs if still binding, and re-race flash under the corrected mm attribution** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3624,6 +3624,53 @@ success target ≥1.5x, else record why and close.
   swept every other fixture-vs-live torch.equal in the experiments tier — none
   remain (DET gates compare same-process runs). Round-trip #2 = the same command
   MINUS the pin file (already 8/8 in the sandbox, where it is authoritative).
+
+  *STEP 1 MEASURED (round-trip #2, 2026-08-18): tag_cgenn 418→381 ms/step
+  (1.10x); GPS wall NULL — and the attribution stands corrected.* All gates
+  green first (sorted_gather 16/16; battery 23 passed + the 2 CPU-tier BIT
+  skips, as designed; soak 3/3, losses matching the pre-hoist trajectories).
+  The A/B: tag CUDA 362→319 ms/step, mm share 74.5→66.8%; GPS CUDA 1892→1751
+  (−7%) but wall 2443→2453 — UNCHANGED, because GPS is sync-bound and the
+  hoist's four extra gathers/layer ADDED segment_reduce backward syncs
+  (165→245/step), spending the mm win on more stalls. ATTRIBUTION CORRECTION,
+  the round-trip's real lesson: the three GIANT mm kernels (17.5 + 14.8 +
+  7.1×2 ms per layer ≈ 58% of tag CUDA) did NOT move — they are the sparse GP
+  contraction's OWN forward+backward GEMMs, edge-level and quadratic, not
+  hoistable by linearity. The hoisted linears were the mid-size family (~20%
+  of the mm block), which did vanish into node-level calls. Step-0's
+  shape-log inference over-attributed the giants; ON/OFF kernel deltas are
+  the arbiter. VERDICT: step 1 KEPT (real 1.10x on the compute-bound net;
+  its GPS share unlocks when the syncs die). New in the ON-profile: fused
+  index_put-bearing backward kernels (18.9 ms×1/step tag, 25 ms×10/step GPS)
+  — attribute via trace if they survive step 2. Consequence for the plan:
+  the flash arm's kernel replaces exactly those giant contraction GEMMs, so
+  a flash re-race is queued AFTER step 2 lands — the fusion-tax landscape
+  that produced the two CLOSE verdicts has changed twice since.
+
+  *STEP 2 IMPLEMENTED (2026-08-18, CPU-green): padded scatter-write segment
+  sums are live receiver-side.* `padded_segment_sum` (sorted_gather.py) +
+  slot/K threading through both CGL twins: the net forwards compute the
+  per-edge in-segment rank (exclusive-cumsum arithmetic, tensor-only) and
+  pass the STATIC degree bound — hybrids/GPS pass knn k itself (the
+  structural bound; deliberately NOT min()'d with the symbolic P and never
+  int()-cast, either of which would plant shape guards / re-specialize under
+  compile(dynamic=True); k=None fully-connected mode keeps segment_reduce),
+  pure CGENN's wrapper passes n_nodes−1 (an eager python int, no host read;
+  MEASURED TRADE flagged in-code: the FC graph's padded buffer inflates by
+  (n_nodes−1)/avg-degree — if round-trip #3 shows tag_cgenn regressing, that
+  one wrapper line passes None). Routed: both twins' mean-aggregation core,
+  the x_i/h_i gathers, and the hoist's rA/lA gathers; sender-side (x_j, h_j,
+  rB, lB) keeps segment_reduce in v1 (unbounded degree). CPU BONUS, proven
+  by the pins: the padded sum adds each segment left-to-right exactly like
+  segment_reduce, so it is BIT-equal ON CPU — the hybrid BIT pins passed
+  UNCHANGED, zero fixture churn; CUDA reduction order is TOL. Gates: padded
+  parity 1.4e-16 + looser-K identity, slot/uniqueness executable contract,
+  slot-route backward 1.2e-16, gradcheck+gradgradcheck, compile 0 breaks;
+  internal+experiments 281 passed; battery 25/25 (explain artifact
+  re-recorded: the slot arithmetic's ops). Expected on GPU: tag syncs
+  112→~30/step, GPS 245→~75 (senders remain), attacking GPS's measured
+  700 ms/step wall-CUDA gap. Round-trip #3 = round-trip #2's commands
+  verbatim.
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs

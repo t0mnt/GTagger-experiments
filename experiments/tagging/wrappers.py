@@ -974,6 +974,14 @@ class CGENNWrapper(nn.Module):
                 node_attr_h=node_attr_h,
                 edges=edge_index,
                 node_mask=node_mask,
+                # FLASH-3 step 2: this builder is fully connected over the DENSE
+                # padded layout, so receiver degree <= n_nodes - 1 -- a python int
+                # already in hand (no host read). The net turns it into the padded
+                # segment-sum bound. NOTE (measured trade, docs step 2): on the FC
+                # graph the padded buffer is (n_nodes-1)/avg_degree larger than the
+                # edge tensor; if round-trip #3 shows tag_cgenn regressing, pass
+                # None here to keep segment_reduce on this one net.
+                knn_k=n_nodes - 1,
             )
 
         return out, {}, None

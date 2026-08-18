@@ -125,7 +125,7 @@ class CGENNLGATrGPSLayer(nn.Module):
 
     def forward(self, mv, s, edges, attn_mask, edge_attr_x=None,
                 node_attr_x=None, node_attr_h=None, edge_counts=None,
-                send_perm=None, send_counts=None):
+                send_perm=None, send_counts=None, agg_slot=None, agg_k=None):
         # mv: (B, P, C_mv, 16); s: (B, P, C_s); edge_attr_x: (num_edges, E, 16) static
         # relative-momentum edge multivectors; node_attr_x/node_attr_h: the static raw mv /
         # scalar inputs re-injected per node (or None when explicit edge features are off);
@@ -144,6 +144,7 @@ class CGENNLGATrGPSLayer(nn.Module):
             node_attr_h=node_attr_h, node_attr_x=node_attr_x,
             edge_attr_h=None, edge_attr_x=edge_attr_x, edge_counts=edge_counts,
             send_perm=send_perm, send_counts=send_counts,
+            agg_slot=agg_slot, agg_k=agg_k,
         )
         mv_loc = mv_loc.view(B, P, -1, 16)
         s_loc = s_loc.view(B, P, -1)
@@ -329,11 +330,25 @@ class CGENNLGATrGraphGPS(nn.Module):
         send_perm = torch.argsort(j_send, stable=True)
         send_counts = s.new_zeros(s.shape[0] * s.shape[1], 1).index_add_(
             0, j_send, s.new_ones(j_send.size(0), 1))
+        # FLASH-3 step 2: per-edge in-segment rank + the static k bound (kNN degree
+        # <= k structurally; k=None fully-connected keeps segment_reduce -- rationale
+        # in the package twin, cgenn.py). Routes every receiver-side segment sum
+        # through the padded scatter-write, retiring segment_reduce's per-call
+        # host-read (the profiled 245-syncs/step wall on this model).
+        if self.k is not None:
+            counts_long = edge_counts.view(-1).long()
+            offsets = torch.cumsum(counts_long, 0) - counts_long
+            agg_slot = (torch.arange(i_recv.size(0), device=i_recv.device)
+                        - offsets.index_select(0, i_recv))
+            agg_k = self.k
+        else:
+            agg_slot, agg_k = None, None
         for layer in self.layers:
             mv, s = layer(mv, s, edges, attn_mask, edge_attr_x=edge_attr_x,
                           node_attr_x=node_attr_x, node_attr_h=node_attr_h,
                           edge_counts=edge_counts,
-                          send_perm=send_perm, send_counts=send_counts)
+                          send_perm=send_perm, send_counts=send_counts,
+                          agg_slot=agg_slot, agg_k=agg_k)
 
         # Stage 5: final norm + per-node invariants + masked mean pool + head.
         # get_invariants is applied PER NODE then mean-pooled (extract-then-pool), as in pure

@@ -218,6 +218,87 @@ def test_perm_compiled_no_breaks_tol_grads():
     assert seen[-1] <= 2, f"re-specializes per shape: {seen}"
 
 
+# ---------------------------------------------------------------------------
+# padded_segment_sum + the slot/K backward route (FLASH-3 step 2): the segment sum
+# as a static-shape padded scatter-write -- no atomics, no segment_reduce fallback,
+# no per-call host read. Same gate set: parity incl. empties, gradcheck, compile.
+# ---------------------------------------------------------------------------
+
+
+def _slot_of(idx, counts):
+    counts_long = counts.view(-1).long()
+    offsets = torch.cumsum(counts_long, 0) - counts_long
+    return torch.arange(idx.numel()) - offsets.index_select(0, idx)
+
+
+@pytest.mark.parametrize("dtype,bar", [(torch.float64, 1e-13), (torch.float32, 1e-5)])
+def test_padded_segment_sum_matches_segment_reduce(dtype, bar):
+    x, idx, counts = _case(dtype=dtype)
+    data = torch.randn(idx.numel(), 4, dtype=dtype)
+    slot = _slot_of(idx, counts)
+    K = int(counts.max())
+    want = torch.segment_reduce(data, "sum", lengths=counts.view(-1).long(), axis=0)
+    got = sg_mod.padded_segment_sum(data, idx, slot, x.shape[0], K)
+    rel = ((got - want).abs().max() / (1 + want.abs().max())).item()
+    print(f"GATE-PADSUM rel={rel:.3e}")
+    assert rel < bar
+    assert (got[0] == 0).all() and (got[-1] == 0).all(), "empty segments must be exact zero"
+    # a LOOSER bound K must give the identical result (the callers pass k, not max degree)
+    got_loose = sg_mod.padded_segment_sum(data, idx, slot, x.shape[0], K + 3)
+    assert torch.equal(got, got_loose)
+
+
+def test_padded_slot_contract():
+    """Executable REQUIRES: slot = in-segment rank, (idx, slot) unique, K >= max count."""
+    x, idx, counts = _case()
+    slot = _slot_of(idx, counts)
+    assert (slot >= 0).all() and (slot < counts.view(-1).long().index_select(0, idx)).all()
+    pairs = idx * (int(counts.max()) + 1) + slot
+    assert pairs.unique().numel() == pairs.numel(), "(idx, slot) pairs must be unique"
+
+
+@pytest.mark.parametrize("dtype,bar", [(torch.float64, 1e-13), (torch.float32, 1e-5)])
+def test_slot_backward_matches_autograd(dtype, bar):
+    x, idx, counts = _case(dtype=dtype)
+    slot = _slot_of(idx, counts)
+    K = int(counts.max())
+    g = torch.randn(idx.numel(), x.shape[1], dtype=dtype)
+    a = x.clone().requires_grad_(True)
+    a[idx].backward(g)
+    b = x.clone().requires_grad_(True)
+    sorted_gather(b, idx, counts, slot, K).backward(g)
+    rel = ((b.grad - a.grad).abs().max() / (1 + a.grad.abs().max())).item()
+    print(f"GATE-SLOT-BWD rel={rel:.3e}")
+    assert rel < bar
+    assert (b.grad[0] == 0).all() and (b.grad[-1] == 0).all()
+
+
+def test_slot_gradcheck():
+    x, idx, counts = _case(N=6, E=11, F=3)
+    slot = _slot_of(idx, counts)
+    K = int(counts.max())
+    x.requires_grad_(True)
+    assert torch.autograd.gradcheck(lambda t: sorted_gather(t, idx, counts, slot, K), (x,))
+    assert torch.autograd.gradgradcheck(lambda t: sorted_gather(t, idx, counts, slot, K), (x,))
+
+
+def test_slot_compiled_no_breaks():
+    import torch._dynamo as dynamo
+
+    x, idx, counts = _case(dtype=torch.float32)
+    slot = _slot_of(idx, counts)
+    K = int(counts.max())
+
+    def step(t):
+        y = sorted_gather(t, idx, counts, slot, K)
+        agg = sg_mod.padded_segment_sum(y, idx, slot, t.shape[0], K)
+        return (agg * agg).sum()
+
+    explanation = dynamo.explain(step)(x.clone().requires_grad_(True))
+    dynamo.reset()
+    assert explanation.graph_break_count == 0, str(explanation)[:1500]
+
+
 def test_perm_extras_contract():
     """The Function's REQUIRES line, executable: perm must be the stable argsort of
     idx and counts its degree vector -- exactly what the net forwards compute. A
