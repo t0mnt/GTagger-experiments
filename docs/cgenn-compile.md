@@ -3857,6 +3857,10 @@ success target ≥1.5x, else record why and close.
 
       python utils/bperf.py --models tag_cgenn/sparse tag_cgenn/flash --find-batchsize
       CGENN_REGIONAL=1 python utils/bperf.py --models tag_cgenn/flash --find-batchsize
+      # campaign prep rider (independent of the race; jc batch sizes for the
+      # non-CGENN GPS rows -- NOTE the flag is --task, find_bs has no -cn):
+      python utils/find_bs.py --task jctagging \
+          --models PlainGraphGPS ParticleNetParTGraphGPS LorentzNetLGATrSlimGraphGPS
 
   Read: command 1 = sparse control (compiled column, ~349) + FAIR
   flash-eager (eager column; the materialization bug is fixed, bs512
