@@ -182,5 +182,5 @@ def dotsq4(p, q):
 
 
 def psi(p):
-    """`\psi(p) = Sgn(p) \cdot \log(|p| + 1)`"""
+    r"""`\psi(p) = Sgn(p) \cdot \log(|p| + 1)`"""
     return torch.sign(p) * torch.log(torch.abs(p) + 1)

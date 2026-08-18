@@ -99,7 +99,7 @@ def get_invariants(algebra, input):
     return torch.cat([input[..., :1], *norms], dim=-1)
 
 def psi(p):
-    """`\psi(p) = Sgn(p) \cdot \log(|p| + 1)`"""
+    r"""`\psi(p) = Sgn(p) \cdot \log(|p| + 1)`"""
     return torch.sign(p) * torch.log(torch.abs(p) + 1)
 
 def unsorted_segment_sum(data, segment_ids, num_segments):

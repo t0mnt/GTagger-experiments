@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**NEXT STEP: 2+unsafe GPU-VERIFY — round-trip #4 (#3 was VOID: the pull aborted and it ran the old tree, see record; the runbook now hard-resets the cluster checkout). Measures padded sums + segment_reduce unsafe=True together; then the flash re-race** ← state marker,
+**NEXT STEP: FLASH RE-RACE — round-trip #5 (#4 read GREEN: step 2 + unsafe KEPT, GPS 2453→1927 ms/step, both models now compute-bound at 91/96% CUDA-busy — mm is 67-68% of CUDA on both, exactly what the flash kernel replaces). One bperf race + the CGENN_FC_PADDED=0 A/B rider decide adopt-or-close vs the >10% bar** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3698,6 +3698,39 @@ success target ≥1.5x, else record why and close.
   receiver-side. Round-trip #4 measures both at once; the switches
   (CGENN_HOIST, the wrapper's knn_k line) isolate contributions only if the
   combined read demands it.
+
+  *ROUND-TRIP #4 MEASURED (2026-08-18, H100, uncontended): STEP 2 + unsafe
+  KEPT — the sync war is won; both models are now COMPUTE-BOUND.* Gates:
+  sorted_gather 23/23, battery 23 passed + 2 skipped (the CPU-tier BIT gates
+  skipping on CUDA, by design), soak 3/3 with loss trajectories matching the
+  pre-step-2 rounds (0.690→0.574 / 0.718→0.512 / 0.693→0.584). Numbers:
+  **CGENN-GPS bs256: 2453→1927 ms/step (1.27x)**, syncs 245→45/step
+  (prediction was ~75), and the wall-vs-CUDA gap collapsed 600→70 ms/step
+  (CUDA-busy 1856 = 96% of wall) — the launch/sync-bound regime the whole
+  FLASH-3 sync track targeted is OVER. **tag_cgenn bs128: 381→365 ms/step
+  (1.04x; 1.15x cumulative vs the 418 pre-hoist baseline)**, syncs
+  112→32/step (prediction ~30), CUDA-busy 333 = 91% of wall. Consequences,
+  in order: (1) mm is 67-68% of self-CUDA on BOTH models — the giant sparse-GP
+  contraction GEMMs unchanged (tag 18.8/15.1/7.5 ms; GPS 20.3/18.1/4.8 ms) —
+  so the flash re-race is now the only first-order lever; (2) sender-side
+  segment_reduce (60 calls/step on GPS) is sync-free under unsafe=True and
+  only 0.34% of CUDA → **step 2b (sender-side padded sums) is DEPRIORITIZED
+  to dead** — its target no longer exists; (3) the residual syncs (32/45 per
+  step) overlap a saturated GPU and include ~10/step from on-GPU
+  aten::nonzero (tag; DtoH of the count) — recorded, not actioned, same
+  reason; (4) AUDIT CATCH on the padding trade: the fused padded-aggregation
+  kernel (`triton_per_fused_index_index_put_mul_new_zeros_sum`, 4/step ×
+  13.3 ms) is 16% of tag CUDA — the FC graph is the one place K=n_nodes−1 is
+  loose, and unsafe=True has made the segment_reduce alternative sync-free
+  too, so the trade deserves its counterfactual: **CGENN_FC_PADDED=0**
+  (wrappers.py, read-once shield style; both positions smoke-verified on
+  CPU) rides along in round-trip #5 as a one-env A/B. GPS backward shows
+  launch pressure (Command Buffer Full 791 ms/5 steps, cuLaunchKernel 44 us
+  avg) — absorbed while compute-bound, becomes relevant only if flash
+  shrinks the GEMMs. Audit sweep also fixed: `experiments/logger.py` used
+  `logging.handlers` without importing the submodule (import-order-dependent
+  latent ImportError), and the three `\psi` docstrings now raw strings (the
+  SyntaxWarning in every GPU log).
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs

@@ -22,6 +22,14 @@ from experiments.logger import LOGGER
 from experiments.misc import get_attention_mask
 from experiments.tagging.embedding import get_tagging_features
 
+# FLASH-3 step 2 A/B switch (round-trip #4 audit): the FC graph is the one place
+# where the padded segment sum's K bound (n_nodes-1) is NOT small relative to the
+# true degrees, and #4's profile shows the padded/fused aggregation kernel at 16%
+# of tag_cgenn CUDA -- while unsafe=True has made the segment_reduce alternative
+# sync-free too. CGENN_FC_PADDED=0 passes knn_k=None (segment_reduce receiver
+# side) for a one-line A/B without a code edit. Read ONCE at import, shield style.
+_FC_PADDED = os.environ.get("CGENN_FC_PADDED", "1") != "0"
+
 # every to_dense_batch below is deliberate: this repo uses zero padding over sparse jet
 # representations, as the MPNN portion of the GNNs is currently not shaped for the latter
 
@@ -979,9 +987,9 @@ class CGENNWrapper(nn.Module):
                 # already in hand (no host read). The net turns it into the padded
                 # segment-sum bound. NOTE (measured trade, docs step 2): on the FC
                 # graph the padded buffer is (n_nodes-1)/avg_degree larger than the
-                # edge tensor; if round-trip #3 shows tag_cgenn regressing, pass
-                # None here to keep segment_reduce on this one net.
-                knn_k=n_nodes - 1,
+                # edge tensor; CGENN_FC_PADDED=0 keeps segment_reduce (unsafe=True,
+                # sync-free) on this one net for the A/B.
+                knn_k=(n_nodes - 1) if _FC_PADDED else None,
             )
 
         return out, {}, None

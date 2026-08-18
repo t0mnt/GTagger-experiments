@@ -24,7 +24,7 @@ def get_invariants(algebra, input):
 
 
 def psi(p):
-    """`\psi(p) = Sgn(p) \cdot \log(|p| + 1)`"""
+    r"""`\psi(p) = Sgn(p) \cdot \log(|p| + 1)`"""
     return torch.sign(p) * torch.log(torch.abs(p) + 1)
 
 
