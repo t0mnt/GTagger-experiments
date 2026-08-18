@@ -108,18 +108,22 @@ class FullyConnectedSteerableGeometricProductLayer(nn.Module):
         alg = self.algebra
         c = x.shape[1]
         e_ch = self.in_features - 3 * c
-        w_r, w_l = self.linear_right.weight, self.linear_left.weight
+        w_r = self.linear_right.weight
         rA = mv_apply_weight(w_r[:, :c] + w_r[:, 2 * c:3 * c], x, alg)
         rB = mv_apply_weight(w_r[:, c:2 * c] - w_r[:, 2 * c:3 * c], x, alg)
-        lA = mv_apply_weight(w_l[:, :c] + w_l[:, 2 * c:3 * c], x, alg)
-        lB = mv_apply_weight(w_l[:, c:2 * c] - w_l[:, 2 * c:3 * c], x, alg)
-
         right = (sorted_gather(rA, i, edge_counts)
                  + sorted_gather_perm(rB, j, send_perm, send_counts))
+        if e_ch:
+            right = right + mv_apply_weight(w_r[:, 3 * c:], edge_attr, alg)
+
+        if not self.include_first_order:  # no linear_left exists on this layer
+            return right, None
+        w_l = self.linear_left.weight
+        lA = mv_apply_weight(w_l[:, :c] + w_l[:, 2 * c:3 * c], x, alg)
+        lB = mv_apply_weight(w_l[:, c:2 * c] - w_l[:, 2 * c:3 * c], x, alg)
         left = (sorted_gather(lA, i, edge_counts)
                 + sorted_gather_perm(lB, j, send_perm, send_counts))
         if e_ch:
-            right = right + mv_apply_weight(w_r[:, 3 * c:], edge_attr, alg)
             left = left + mv_apply_weight(w_l[:, 3 * c:], edge_attr, alg)
         if self.linear_left.bias is not None:
             bias = alg.embed(self.linear_left.bias, self.linear_left.b_dims)

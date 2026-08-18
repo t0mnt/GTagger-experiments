@@ -3607,7 +3607,23 @@ success target ≥1.5x, else record why and close.
   recorded: CPU-side lengths (if ATen accepts them, the .max() is free) or a
   two-level chunked reduction. TOL again → one more pin re-record, folded into
   the step-2 commit.
-- **Step 1 (sandbox, CPU):** design freeze + generated math. Re-read the fc CGL
+
+  *Step-1 GPU round-trip #1 (2026-08-18): crashed on MY command bug — a CPU-tier
+  gate on the GPU node; nothing about the hoist failed.* The command led with
+  test_hybrid_bit_pin.py, whose pins are CPU recordings: on the H100 the forward
+  is cuda:0, the pin loads as cpu, torch.equal refuses cross-device, and set -e
+  killed the battery/soak/profiles unrun (the 16 device-generic sorted_gather
+  gates that did run passed). The gate had only ever executed in CPU sessions,
+  where it belongs: BIT-identity is a SAME-DEVICE statement — CUDA and CPU
+  kernels are not bitwise comparable — so the fix declares the tier in the test:
+  test_bit_eager_vs_pin and the battery's test_bit_eager_vs_fixtures (identical
+  latent crash, caught in the audit before it fired) now SKIP on CUDA with the
+  reason printed, record-path included (a GPU re-record would silently flip the
+  fixture's device). Audit also hardened FCGP.message_right_left for
+  include_first_order=False (no linear_left exists there; returns left=None) and
+  swept every other fixture-vs-live torch.equal in the experiments tier — none
+  remain (DET gates compare same-process runs). Round-trip #2 = the same command
+  MINUS the pin file (already 8/8 in the sandbox, where it is authoritative).
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs
@@ -3648,6 +3664,24 @@ concentration (Triton iteration without a local GPU — mitigated by step 2 maki
 the math pre-verified and by a torch-reference twin for every kernel so GPU parity
 failures localize); expect 2-3 operator GPU round-trips across steps 3-4. The CGENN
 rows launch a few days late; the operator has accepted that trade explicitly.
+
+### LGATr-family recipe question DECIDED (2026-08-18): uniform recipe stays; authors' numbers quoted as external
+
+Operator measured: LGATr-slim reaches 0.9420 under its authors' recipe but 0.9406
+under the table's uniform recipe (a real +0.14pp = ~3.5σ recipe effect), while the
+LNSlim-GraphTrans hybrid reads 0.9412 under the uniform recipe. DECISION, same logic
+as the precision-fairness call: the table's internal comparison keeps ONE training
+protocol for every row — per-model author recipes would make architecture
+unattributable and invite a recipe-tuning contest (each family's authors' settings
+would then be owed to every other family too). The WITHIN-protocol comparison is the
+valid one, and there the hybrid is fine: 0.9412 vs 0.9406 (+0.06pp, ~1.5σ). The
+0.9412-vs-0.9420 reading that looks like underperformance is CROSS-protocol — two
+variables, no conclusion. Paper treatment: uniform-recipe numbers form the table;
+authors'-recipe numbers are quoted as external references (same pattern as the
+scheduler note below). RECOMMENDED cheap decisive: ONE run of the hybrid under the
+lgatr recipe — if the +0.14pp recipe effect transfers (→ ~0.942+), the
+hybrid-vs-parent ordering is recipe-invariant and the claim holds under both
+protocols; either outcome is one honest footnote, not a protocol fork.
 
 ### Scheduler bake-off MEASURED (PNPT, 6 arms, n=1 each, 2026-08-16): STICK with CosineAnnealingWarmup
 

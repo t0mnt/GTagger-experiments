@@ -113,7 +113,15 @@ REF_IMPL = ["model.net.gp_impl=einsum"]  # the BIT-reference path; the yaml defa
 
 @pytest.mark.parametrize("prec", ["fp32", "fp64"])
 def test_bit_eager_vs_fixtures(prec):
-    """BIT: eager outputs bit-identical to the pre-rewrite recording. torch.equal, no tolerance."""
+    """BIT: eager outputs bit-identical to the pre-rewrite recording. torch.equal, no tolerance.
+
+    CPU-TIER by contract, same as the hybrid BIT pins: the fixtures' y is a CPU
+    recording and BIT-identity is a same-device statement, so on a GPU node this gate
+    (and its RECORD path -- a GPU re-record would silently flip the fixture's device)
+    skips. Every other gate in this battery is device-generic and runs everywhere."""
+    if torch.cuda.is_available():
+        pytest.skip("cgenn_compile BIT fixtures are CPU recordings; BIT is same-device "
+                    "-- run this gate in a CPU session")
     path = FIX / f"{prec}.pt"
     exp = _build(float64=(prec == "fp64"), extra_overrides=REF_IMPL)
     if RECORD:

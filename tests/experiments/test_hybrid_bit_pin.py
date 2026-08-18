@@ -75,7 +75,15 @@ def _sd_hash(model):
 @pytest.mark.parametrize("prec", ["fp32", "fp64"])
 def test_bit_eager_vs_pin(model, prec):
     """torch.equal against the recording, no tolerance -- plus the state_dict hash, so a
-    reordered init RNG draw fails as loudly as changed arithmetic."""
+    reordered init RNG draw fails as loudly as changed arithmetic.
+
+    CPU-TIER by contract: the pins are CPU recordings, and BIT-identity is a
+    SAME-DEVICE statement -- CUDA kernels are not bitwise comparable to CPU ones, so on
+    a GPU node this gate skips instead of comparing apples to oranges (learned the hard
+    way: FLASH-3 step-1 round-trip crashed here with a cross-device torch.equal)."""
+    if torch.cuda.is_available():
+        pytest.skip("hybrid BIT pins are CPU recordings; BIT is same-device -- run "
+                    "this gate in a CPU session (it is part of the sandbox suite)")
     path = FIX / f"{model}_{prec}.pt"
     exp = _build(model, float64=(prec == "fp64"))
     torch.manual_seed(1)
