@@ -387,6 +387,46 @@ def _worst_case_batch(exp, bs, lengths, sigmas=PROBE_SIGMAS):
         return None
 
 
+def _saturated_stream_batch(batch):
+    """The EXACT worst-case batch for weaver-style dense layouts, synthesized in place
+    of a statistical one (2026-08-19, jc campaign prep: the operator's mid-run-OOM
+    concern for the CGENN rows on JetClass).
+
+    Streaming datasets defeat `_worst_case_indices` -- you cannot ask the iterator for
+    heavy jets -- but the weaver layout makes something STRONGER constructible from any
+    single drawn batch: tensors are dense `(B, C, P)` with P FIXED by the data config,
+    and `dense_to_sparse_jet` decides "real" by `abs(fourmomenta) > EPS` per slot. So
+    the maximal batch any run can ever see is "every slot of every jet real", and that
+    is manufactured by copying each jet's LEADING constituent (slot 0 -- weaver orders
+    by pt, so it is always real) into the jet's empty slots. This saturates sum(n),
+    sum(n^2) and P_max simultaneously at their absolute ceilings -- strictly above the
+    +5sd construction the map-style path uses, with physical-scale values (no inf/nan
+    risk in the embedding, unlike filling with a constant).
+
+    Applies only to the recognized weaver tuple `(inputs_dict, labels_dict, ...)` with
+    a `pf_vectors` key; returns None for anything else so the caller's drawn-batch
+    fallback stands. The labels dict is reused as-is (worst case is about geometry,
+    not targets)."""
+    try:
+        inputs = batch[0]
+        vec = inputs["pf_vectors"]
+    except (TypeError, KeyError, IndexError):
+        return None
+    from experiments.tagging.embedding import EPS
+    slot_real = (vec.abs() > EPS).any(dim=1)  # (B, P)
+    fill = ~slot_real
+    if not bool(fill.any()):
+        return batch  # already maximal
+    sat_inputs = {}
+    for key, t in inputs.items():
+        if torch.is_tensor(t) and t.dim() == 3 and t.shape[-1] == vec.shape[-1]:
+            lead = t[:, :, :1].expand_as(t)  # each jet's leading constituent, broadcast
+            sat_inputs[key] = torch.where(fill[:, None, :].expand_as(t), lead, t)
+        else:
+            sat_inputs[key] = t
+    return (sat_inputs, *batch[1:])
+
+
 def _heaviest_drawn_batch(exp, draws):
     """Heaviest of `draws` batches from the loader -- the only probe an ITERABLE dataset allows.
 
@@ -517,7 +557,19 @@ def find_max_batch_size(
                 """
                 batch = None if lengths is None else _worst_case_batch(exp, bs, lengths, sigmas)
                 if batch is None:
-                    batch = _heaviest_drawn_batch(exp, draws)
+                    drawn = _heaviest_drawn_batch(exp, draws)
+                    if drawn is None:
+                        drawn = next(iter(exp.train_loader))
+                    saturated = _saturated_stream_batch(drawn)
+                    if saturated is not None:
+                        if not state.get("sat_logged"):
+                            LOGGER.info(
+                                "  probe batch: SATURATED to the padded maximum (every "
+                                "slot of every jet real) -- the exact worst case for "
+                                "this dense streaming layout, not a drawn sample.")
+                            state["sat_logged"] = True
+                        return saturated
+                    batch = drawn
                 if batch is None:
                     if lengths is not None and not state["warned"]:
                         LOGGER.warning(

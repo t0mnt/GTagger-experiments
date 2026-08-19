@@ -639,3 +639,43 @@ def test_draws_is_ignored_where_construction_works(monkeypatch):
     plain = find_max_batch_size(_FakeExp(LENGTHS, 1.5e6), 16, 8192, 1.0)
     with_draws = find_max_batch_size(_FakeExp(LENGTHS, 1.5e6), 16, 8192, 1.0, draws=8)
     assert plain == with_draws
+
+
+def test_saturated_stream_batch_is_the_exact_worst_case():
+    """Streaming (weaver) probe hardening, 2026-08-19: the operator's mid-JC-run OOM
+    concern for the CGENN rows. P is FIXED by the weaver config and "real" means any
+    nonzero fourmomentum component, so filling every empty slot with the jet's leading
+    constituent manufactures the maximal batch any run can see -- strictly above the
+    map-style path's +5sd construction. This pins the mechanism: all slots real after
+    saturation, leading values used as fill, labels and non-(B,C,P) tensors untouched,
+    unrecognized batches refused (None), already-full batches passed through."""
+    import torch
+    from experiments.tagging.dataset import EPS
+    from utils.find_lr import _saturated_stream_batch
+
+    B, P = 3, 6
+    vec = torch.zeros(B, 4, P)
+    feat = torch.zeros(B, 2, P)
+    for b, n in enumerate((2, 5, 1)):          # ragged real prefixes
+        vec[b, :, :n] = torch.randn(4, n) + 3.0  # comfortably above EPS
+        feat[b, :, :n] = torch.randn(2, n)
+    labels = {"_label_": torch.tensor([0, 1, 0])}
+    aux = torch.arange(B)                       # non-(B,C,P): must pass through
+    out = _saturated_stream_batch(({"pf_vectors": vec, "pf_features": feat,
+                                    "aux": aux}, labels))
+    assert out is not None
+    sat_vec = out[0]["pf_vectors"]
+    assert bool((sat_vec.abs() > EPS).any(dim=1).all()), "not every slot became real"
+    # fill is the LEADING constituent of the same jet, for every saturated key
+    for key, src in (("pf_vectors", vec), ("pf_features", feat)):
+        got = out[0][key]
+        assert torch.equal(got[2, :, 1:], src[2, :, :1].expand(-1, P - 1)), key
+        assert torch.equal(got[0, :, :2], src[0, :, :2]), f"{key}: real slots changed"
+    assert out[0]["aux"] is aux
+    assert out[1] is labels
+
+    assert _saturated_stream_batch(("not", "weaver")) is None
+    assert _saturated_stream_batch(None) is None
+
+    full = ({"pf_vectors": torch.ones(2, 4, 3)}, labels)
+    assert _saturated_stream_batch(full) is full
