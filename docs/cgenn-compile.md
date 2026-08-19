@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**SPARSE ARM FINAL — CGENN rows launch on sparse with the full stack; ONE flash experiment reopened by operator: REGIONAL COMPILATION (round-trip #6, wired + CPU-gated, command below in its record). The re-race margin was corrected to ~−5% after the eager-materialization audit; regional compile is the one cheap idea whose upside reaches the +10% bar. Standing operator items: DDP for the jc rows, subsampled-val checkpoint selection** ← state marker,
+**FLASH ARM CLOSED (round-trip #6 measured, 2026-08-18): regional compile NULL (0.999x vs eager); the surprise was flash-COMPILED at bs512 = 382 jets/s = +7.3% over sparse's 356 — flash's best posture flipped to compiled once the eager-sizing handicap was removed, but +7.3% < the +10% bar: THIRD AND FINAL CLOSE. Sparse ships. Reopening path: the fused message kernel (+ kingdon v3 collaboration), operator-discretionary. jc GPS batchsizes transcribed (512 ×3). Standing: jc find_lr sweeps, DDP scoping, subsampled-val** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3891,6 +3891,51 @@ success target ≥1.5x, else record why and close.
   loaded state), monkeypatch env ordering, the two-invocation isolation
   of the runbook (env applies per bperf process), and the LOGGER import
   at the wrapper's regional branch.*
+
+  *ROUND-TRIP #6 MEASURED (2026-08-18, H100, uncontended): **REGIONAL
+  NULL; FLASH ARM CLOSED, third and final CLOSE — and one more
+  attribution corrected.** Numbers, own-best per arm: sparse-compiled
+  **356** jets/s @128 (4.413x compile, replicating 349 to +2%);
+  flash-eager **338** @512 — the fair number, landing on the corrected
+  ~−5% estimate (−5.1% measured) and confirming the eager-materialization
+  diagnosis: with the padded sums compiled-only, eager sizing fits bs512
+  again (peak 75.6 GB; 1024 OOM). Flash-REGIONAL (CGENN_REGIONAL=1):
+  **337** @512 = 0.999x vs eager — the regional hypothesis is REJECTED
+  cleanly: compiling the scalar MLPs as units adds nothing measurable, so
+  flash-eager's deficit does NOT live in un-fused MLP time (it lives in
+  the GP-adjacent fusion sparse gets and flash cannot). The SURPRISE:
+  whole-net flash-COMPILED at bs512 = **382** jets/s (1.132x over its
+  eager) — flash's best posture flipped to COMPILED for the first time.
+  ATTRIBUTION CORRECTION to the #5 audit: the re-race's flash-compiled
+  0.547x collapse (168 @256) was NOT partition-tax growth — bperf sizes
+  ONCE, EAGER, for both postures ("sized once eager" in its log), so the
+  eager materialization bug capped BOTH flash columns at bs256; at the
+  restored bs512 the compiled posture amortizes its launch/partition
+  overhead and comes out ahead. The #5 record's "compiled row was on
+  essentially fair footing" claim is withdrawn. VERDICT under the
+  pre-registered rule: 382 vs 356 = **+7.3% < the +10% bar (392)** —
+  CLOSE, the third at own-best (+5.4%, +5.1%, +7.3%), and per the
+  round-trip #6 pre-registration the arm CLOSES. Sparse ships the CGENN
+  rows. The one reopening path remains the fused message kernel
+  (kingdon-v3 collaboration relevant), operator-discretionary. RIDER
+  RESULTS: jc GPS batchsizes measured and transcribed — PlainGraphGPS /
+  PNPT-GPS / Slim-GPS all bs512 (peaks 17.8/46.9/47.2 GB, 1024 OOM);
+  their jc lr values remain ??? pending the jc find_lr sweeps. TWO
+  FINDINGS FROM THE RIDER LOGS: (1) plaingraphgps.py:191
+  `out[mask_bool] = self.norm(h[mask_bool])` (masked BatchNorm) hits an
+  inductor BACKEND EXCEPTION on this container (`aten.nonzero.default`
+  → "Adding a graph break") on PlainGraphGPS and PNPT-GPS jc runs —
+  tolerated (falls back, training proceeds; the top rows trained fine
+  with the same code), PRE-EXISTING, not from this program; recorded as
+  a candidate for the same upstream-issue filing as ledger item 8, with
+  an optional respelling (hoist the nonzero outside the compiled region
+  and index_select) if a jc profile shows the breaks cost real time.
+  Slim-GPS is clean (different norm spelling). (2) The "UNSWEPT family
+  fallback" warning in the bperf logs is BENIGN in that context — bperf
+  deliberately composes without training recipes; top_cgenn.yaml is
+  filled (bs 128, lr 5.57e-4) and the earlier audit's "tag_cgenn lr
+  re-derivation open" flag was WRONG — the yaml's own comment records
+  the aligned-finder derivation at bs 128. That ledger item is DONE.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs

@@ -13,5 +13,7 @@ defaults:
   - jc_gts_and_friends_default
 
 # found using utils/find_lr.py (batch size capped at <=512)
-batchsize: ???
+# batchsize 512 <- utils/find_bs.py --task jctagging (H100, 2026-08-18: all three
+# GPS rows fit 512, peaks 17.8/46.9/47.2 GB; 1024 OOM)
+batchsize: 512
 lr: ???
