@@ -184,6 +184,20 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
 - **`deta` uses an unconditional sign flip** (`-(eta_i - eta_jet)`), not weaver's
   hemisphere-dependent flip -- internally consistent, but the input pipeline is not
   weaver-verbatim on this one feature.
+- **Data layout: this fork does not contain sparse jets like
+  [heidelberg-hepml/tagging-guide](https://github.com/heidelberg-hepml/tagging-guide), nor
+  does it commit to fully static shapes and CUDA graphs; either choice is available for
+  forks to try.** Jets are dense-batched via `to_dense_batch`, which pads to the LARGEST jet
+  in each batch -- so the padded width `P` varies batch to batch and every compiled model
+  runs `dynamic=True`. That sits between the two committed positions, and the two are
+  mutually exclusive: a ragged/flat `(nnz, ...)` layout removes the ~70% padding (mean ~49
+  constituents against a 160 dataset max) and would let the hybrids' attention run
+  block-diagonal over real tokens only -- `lgatr[xformers-attention]` already provides the
+  mask type -- but its data-dependent `nnz` makes CUDA graphs uncapturable; pinning
+  `max_num_nodes` to the dataset max instead gives static shapes, full inductor
+  specialization, a single autotune key and a capturable graph, at the cost of paying for
+  worst-case padding on every batch (cheap at batchsize 512, where the batch max is already
+  near the dataset max; expensive at small batch). Neither was measured here.
 
 ## lgatr 2.0 migration + the compile program (2026-08-07/08, dev)
 - **lgatr 1.4.4 → 2.0 (Posture B / v2-native)**: pins relaxed to `lgatr[xformers-attention]>=2.0.0` (uncapped, upstream practice);
