@@ -16,4 +16,7 @@ defaults:
 # batchsize 512 <- utils/find_bs.py --task jctagging (H100, 2026-08-18: all three
 # GPS rows fit 512, peaks 17.8/46.9/47.2 GB; 1024 OOM)
 batchsize: 512
-lr: ???
+# lr: carried from the 2026-08-16 top-tagging table-wide decision (1e-3 AdamW,
+# validated on PNPT 0.9414 vs weaver 0.9417) -- same convention as the filled jc
+# hybrid recipes; measured jc bs512 matches the top operating point exactly.
+lr: 1e-3
