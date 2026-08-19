@@ -145,19 +145,20 @@ def check_window(window, iters):
 NO_APPLY = set()
 
 
-def find_batchsize(row_overrides, knob, config_path, bs_start, bs_max, safety):
+def find_batchsize(row_overrides, knob, config_path, bs_start, bs_max, safety,
+                   state="false"):
     """Largest power-of-two batchsize that survives a full training step, for THIS row.
 
     Reuses ``utils.find_lr.find_max_batch_size`` rather than reimplementing the doubling
     search, so the two tools cannot drift apart -- it runs a real fwd + bwd + optimizer
     step at each candidate, so the measured memory is what training actually uses.
 
-    Sized ONCE per row and then applied to BOTH states, which is what keeps the
-    eager-vs-compiled comparison paired. Sizing per state would compare two different
-    batch sizes and measure the wrong thing. The search returns a power of two, and
-    inductor's memory delta is nowhere near a factor of two, so the two states land on the
-    same rung in practice. If a compiled row ever OOMs at the eager-sized batch, that is
-    itself the finding and the row reports it.
+    DEFAULT (``state="false"``): sized ONCE per row, eager, and applied to BOTH states,
+    which is what keeps the eager-vs-compiled SPEEDUP paired -- one batch, two postures,
+    so the ratio isolates compilation. The search returns a power of two, and inductor's
+    memory delta is nowhere near a factor of two, so the two states land on the same rung
+    in practice. If a compiled row ever OOMs at the eager-sized batch, that is itself the
+    finding and the row reports it.
 
     That "nowhere near a factor of two" is an ASSUMPTION, and the CGENN work has since put a
     dent in it: eager retention differs by ~6x between gp_impls where compiled retention is
@@ -168,7 +169,28 @@ def find_batchsize(row_overrides, knob, config_path, bs_start, bs_max, safety):
     (compiled) config. Read the ratio, not the absolute, and do not rank gp_impls by it/s
     from this driver.
 
-    ``knob=false`` IS PASSED EXPLICITLY, not left to the yaml. EVERY model config that carries
+    ``state="true"`` (driver flag ``--size-per-state``) sizes under COMPILE instead, for
+    the OTHER question this driver gets asked and was never built to answer: not "does
+    compiling this row help?" but "which ARM is fastest at each one's own ceiling?" --
+    the own-best race discipline the flash program's adopt bar is written in
+    (docs/cgenn-compile.md, round-trip #7). Under the default, an own-best race reads
+    both arms at their EAGER ceilings, which understates each arm by however much its
+    compiled posture could have grown the batch -- unevenly, since the eager/compiled
+    memory gap is per-arm (exactly the ~6x spread above). Round-trip #6 closed the flash
+    arm at +7.3% on such a read; #7 re-measures it honestly.
+
+    COSTS, stated because they are why this is not the default: it spends an inductor
+    build per row INSIDE the driver process (the teardown below is what keeps that from
+    leaking into the next row), and the two states no longer share a batch -- so the
+    driver's speedup column switches to a JETS/S ratio, which is the throughput question
+    and reduces to the it/s ratio exactly when the sizes agree. A per-state size makes
+    the compile-knob verdict a THROUGHPUT verdict, not an isolated compile effect; the
+    yaml one-liners it recommends are still correct (bigger batch is available to the
+    winning state), but ``--apply`` from a per-state run rewrites a knob whose measured
+    justification includes a batch change the yaml does not carry. The driver refuses
+    that combination.
+
+    THE KNOB IS PASSED EXPLICITLY (``knob=false`` by default), not left to the yaml. EVERY model config that carries
     a ``compile`` key ships it TRUE (20 of the 36 in ``config/model``: 18 tag_, 2 amp_; the
     other 16 have no such key, and the only ``compile: false`` in the tree is the framesnet
     sub-configs, eager in every posture), so a bare ``model=tag_ParT``
@@ -197,7 +219,7 @@ def find_batchsize(row_overrides, knob, config_path, bs_start, bs_max, safety):
 
     with hydra.initialize_config_dir(config_dir=str(REPO / config_path), version_base=None):
         cfg = hydra.compose(config_name="toptagging",
-                            overrides=[*row_overrides, f"{knob}=false", "save=false"])
+                            overrides=[*row_overrides, f"{knob}={state}", "save=false"])
     exp = build_experiment(cfg)
     try:
         return int(find_max_batch_size(exp, bs_start, bs_max, safety))
@@ -281,6 +303,13 @@ def main():
                     help="size each row with find_lr's OOM doubling search and use that "
                          "batchsize for BOTH states, instead of whatever the yaml carries "
                          "(which is the unswept 512 fallback until you sweep). GPU only.")
+    ap.add_argument("--size-per-state", action="store_true",
+                    help="with --find-batchsize: size EACH state at its own ceiling "
+                         "(one search eager, one compiled) instead of sharing the eager "
+                         "size. Answers 'which arm is fastest at its own best batch' -- "
+                         "the own-best race discipline -- where the default answers 'does "
+                         "compiling this row help at a fixed batch'. Makes the speedup "
+                         "column a jets/s ratio; refuses --apply (see find_batchsize).")
     ap.add_argument("--bs-start", type=int, default=16)
     ap.add_argument("--bs-max", type=int, default=16384)
     ap.add_argument("--bs-safety", type=float, default=1.0)
@@ -291,6 +320,16 @@ def main():
                     help="edit the production yaml compile knobs per the verdicts")
     args = ap.parse_args()
     check_window(tuple(args.window), args.iters)   # before any run, not after all of them
+    if args.size_per_state and not args.find_batchsize:
+        raise SystemExit("--size-per-state requires --find-batchsize (it IS the sizing).")
+    if args.size_per_state and args.apply:
+        # the verdict then includes a batch change the yaml does not carry -- writing the
+        # compile knob alone would ship a recommendation nothing measured (find_batchsize)
+        raise SystemExit(
+            "--size-per-state refuses --apply: its verdict is a throughput comparison at "
+            "two different batch sizes, so the compile knob alone does not reproduce it. "
+            "Transcribe the batchsize into the training recipe first, then re-run without "
+            "--size-per-state to decide the knob at that fixed batch.")
 
     rows = [r for r in MATRIX if not args.models or any(m in r[0] for m in args.models)]
     if not rows:
@@ -308,41 +347,67 @@ def main():
             # time that OOM'd row by row. There is no useful "continue" here: --find-batchsize
             # is an explicit request to SIZE the rows, and a size the driver could not measure
             # is not a size. Wanting the yaml value is spelled by omitting the flag.
-            try:
-                bs = find_batchsize(row_base, knob, args.config_path,
-                                    args.bs_start, args.bs_max, args.bs_safety)
-            except Exception as e:
-                import traceback
-                traceback.print_exc()
-                raise SystemExit(
-                    f"[bperf] {name}: --find-batchsize failed ({type(e).__name__}: {e}).\n"
-                    f"Stopping instead of running the matrix at the config batchsize -- for "
-                    f"an unswept recipe that is {UNSWEPT_FALLBACK_BS}, which OOMs the CGENN "
-                    f"rows on a 93 GB H100. Fix the search, or drop --find-batchsize to "
-                    f"accept the yaml value deliberately.") from e
-            row_base = row_base + [f"training.batchsize={bs}"]
-            print(f"[bperf] {name} batchsize={bs} (sized once eager, used for both "
-                  f"states)", flush=True)
-        row_bs = bs if args.find_batchsize else None
+            # --size-per-state sizes each posture at its OWN ceiling (see find_batchsize):
+            # one search per state instead of one shared eager search.
+            size_states = ("false", "true") if args.size_per_state else ("false",)
+            sized = {}
+            for sz_state in size_states:
+                try:
+                    sized[sz_state] = find_batchsize(row_base, knob, args.config_path,
+                                                     args.bs_start, args.bs_max,
+                                                     args.bs_safety, state=sz_state)
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    raise SystemExit(
+                        f"[bperf] {name}: --find-batchsize failed at {knob}={sz_state} "
+                        f"({type(e).__name__}: {e}).\n"
+                        f"Stopping instead of running the matrix at the config batchsize -- for "
+                        f"an unswept recipe that is {UNSWEPT_FALLBACK_BS}, which OOMs the CGENN "
+                        f"rows on a 93 GB H100. Fix the search, or drop --find-batchsize to "
+                        f"accept the yaml value deliberately.") from e
+            if args.size_per_state:
+                bs_by_state = sized
+                print(f"[bperf] {name} batchsize={sized['false']} eager / "
+                      f"{sized['true']} compiled (sized PER STATE -- speedup column is a "
+                      f"jets/s ratio)", flush=True)
+            else:
+                bs_by_state = {"false": sized["false"], "true": sized["false"]}
+                print(f"[bperf] {name} batchsize={sized['false']} (sized once eager, "
+                      f"used for both states)", flush=True)
+        else:
+            bs_by_state = {"false": None, "true": None}
         pair = {}
         for state in ("false", "true"):
             print(f"[bperf] {name} {knob}={state} ...", flush=True)
-            its, err, tail = run_once(row_base + [f"{knob}={state}"], args.iters,
+            state_base = row_base + ([f"training.batchsize={bs_by_state[state]}"]
+                                     if bs_by_state[state] else [])
+            its, err, tail = run_once(state_base + [f"{knob}={state}"], args.iters,
                                       tuple(args.window), args.config_path, args.timeout,
                                       args.seed)
             pair[state] = its
             if err:
                 print(f"[bperf]   FAILED: {err}\n{tail}", flush=True)
         e, c = pair["false"], pair["true"]
-        speedup = (c / e) if (e and c) else None
+        bs_e, bs_c = bs_by_state["false"], bs_by_state["true"]
+        # THROUGHPUT ratio when the two states were sized separately -- it/s across
+        # different batch sizes is not a comparison. Identical to the it/s ratio whenever
+        # the sizes agree (the default path), so this is one formula, not a mode switch.
+        if e and c and bs_e and bs_c:
+            speedup = (c * bs_c) / (e * bs_e)
+        else:
+            speedup = (c / e) if (e and c) else None
         want_true = speedup is not None and speedup >= 1 + args.margin
         want_false = speedup is not None and speedup <= 1 - args.margin
         verdict = ("compile: true" if want_true else
                    "compile: false" if want_false else
                    "within margin -- keep current" if speedup else "INCOMPLETE")
+        if args.size_per_state and speedup:
+            # the win includes a batch change, so the knob alone does not reproduce it
+            verdict += " (throughput, incl. batch)"
         if name in NO_APPLY and want_true:
             verdict += " -- NOT APPLIED (semantics/backward, see cgenn-compile.md)"
-        results.append((name, e, c, speedup, verdict, row_bs))
+        results.append((name, e, c, speedup, verdict, bs_e, bs_c))
         if speedup and (want_true or want_false) and not (name in NO_APPLY and want_true):
             recs.append((yaml_path, knob, "true" if want_true else "false"))
         print(f"[bperf] {name}: eager={e and f'{e:.2f}'} it/s, "
@@ -357,11 +422,18 @@ def main():
         "", "| row | bs | eager it/s | compiled it/s | eager jets/s | compiled jets/s | speedup | verdict |",
         "|---|---|---|---|---|---|---|---|",
     ]
-    for name, e, c, s, v, rbs in results:
-        ej = f"{e * rbs:.0f}" if (e and rbs) else "-"
-        cj = f"{c * rbs:.0f}" if (c and rbs) else "-"
-        lines.append(f"| {name} | {rbs or '-'} | {e and f'{e:.2f}' or '-'} | {c and f'{c:.2f}' or '-'} "
+    for name, e, c, s, v, bse, bsc in results:
+        ej = f"{e * bse:.0f}" if (e and bse) else "-"
+        cj = f"{c * bsc:.0f}" if (c and bsc) else "-"
+        # one number when both states shared a batch, "eager/compiled" when sized per state
+        bs_cell = (f"{bse}" if bse == bsc else f"{bse or '-'}/{bsc or '-'}") if (bse or bsc) else "-"
+        lines.append(f"| {name} | {bs_cell} | {e and f'{e:.2f}' or '-'} | {c and f'{c:.2f}' or '-'} "
                      f"| {ej} | {cj} | {s and f'{s:.3f}x' or '-'} | {v} |")
+    if args.size_per_state:
+        lines += ["", "NOTE: --size-per-state -- each state ran at its OWN measured batch "
+                      "(bs column reads eager/compiled), so the speedup is a JETS/S ratio "
+                      "and the one-liners below are NOT self-contained: transcribe the "
+                      "batchsize into the training recipe first. --apply is refused here."]
     lines += ["", "Recommended one-liners (production tree):"]
     lines += [f"- `{y}`: set `{k.split('.')[-1]}: {v}`" for y, k, v in recs] or ["- none"]
     report = "\n".join(lines)

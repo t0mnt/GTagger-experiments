@@ -137,6 +137,92 @@ def test_the_matrix_still_runs_when_sizing_is_not_requested(monkeypatch):
     assert written, "no report was produced"
 
 
+def test_per_state_sizing_measures_each_state_at_its_own_batch(monkeypatch):
+    """--size-per-state: one search per state, each timing run at ITS OWN batch, and the
+    speedup column becomes a jets/s ratio.
+
+    WHY (docs/cgenn-compile.md, round-trip #7): the default sizes once EAGER and shares
+    that batch, which is right for "does compiling this row help" but wrong for the
+    own-best race the flash adopt bar is written in -- there each arm must run at its own
+    ceiling. Round-trip #6 closed the flash arm on an eager-sized read; this path is what
+    re-measures it. The it/s ratio is meaningless across different batch sizes, so the
+    driver must switch to throughput.
+    """
+    sizes = {"false": 128, "true": 512}
+    monkeypatch.setattr(bperf, "find_batchsize",
+                        lambda *a, state="false", **kw: sizes[state])
+    seen = []
+
+    def fake_run(overrides, *a, **kw):
+        seen.append(list(overrides))
+        # same it/s in both states -> any speedup != 1 comes purely from the batch sizes
+        return (1.0, None, None)
+
+    monkeypatch.setattr(bperf, "run_once", fake_run)
+    monkeypatch.setattr("sys.argv", ["bperf.py", "--models", "tag_cgenn/einsum",
+                                     "--find-batchsize", "--size-per-state"])
+    written = []
+    monkeypatch.setattr(bperf, "REPO", REPO)
+    monkeypatch.setattr(Path, "open", lambda self, *a, **kw: _Sink(written))
+    bperf.main()
+
+    assert any("training.batchsize=128" in o and "model.compile=false" in o for o in seen), \
+        "the eager state did not run at its own (eager) batchsize"
+    assert any("training.batchsize=512" in o and "model.compile=true" in o for o in seen), \
+        "the compiled state did not run at its own (compiled) batchsize"
+    report = "".join(written)
+    assert "| 128/512 |" in report, f"batch cell must show both sizes; got:\n{report}"
+    # equal it/s at 128 vs 512 IS a 4x throughput win -- an it/s ratio would have said 1.000x
+    assert "4.000x" in report, f"speedup must be the jets/s ratio; got:\n{report}"
+
+
+def test_shared_sizing_keeps_the_it_per_s_ratio_and_one_batch_cell(monkeypatch):
+    """The default path is unchanged by the per-state work: one search, one batch, and the
+    speedup is the it/s ratio (which the jets/s formula reproduces exactly when the sizes
+    agree -- the formula is shared, so this pins that it did not drift)."""
+    calls = []
+
+    def sized(*a, state="false", **kw):
+        calls.append(state)
+        return 256
+
+    monkeypatch.setattr(bperf, "find_batchsize", sized)
+    monkeypatch.setattr(bperf, "run_once",
+                        lambda o, *a, **kw: (2.0 if "model.compile=true" in o else 1.0,
+                                             None, None))
+    monkeypatch.setattr("sys.argv", ["bperf.py", "--models", "tag_cgenn/einsum",
+                                     "--find-batchsize"])
+    written = []
+    monkeypatch.setattr(bperf, "REPO", REPO)
+    monkeypatch.setattr(Path, "open", lambda self, *a, **kw: _Sink(written))
+    bperf.main()
+
+    assert calls == ["false"], f"default must size ONCE, eager; searched {calls}"
+    report = "".join(written)
+    assert "| 256 |" in report, f"batch cell must be a single number; got:\n{report}"
+    assert "2.000x" in report, f"speedup must be the it/s ratio; got:\n{report}"
+
+
+def test_per_state_sizing_refuses_apply_and_requires_sizing(monkeypatch):
+    """--apply would write a compile knob whose measured justification includes a batch
+    change the yaml does not carry; and --size-per-state without --find-batchsize sizes
+    nothing at all. Both are refused before any run."""
+    monkeypatch.setattr(bperf, "run_once", lambda *a, **kw: pytest.fail("started a run"))
+    monkeypatch.setattr(bperf, "find_batchsize", lambda *a, **kw: pytest.fail("sized"))
+
+    monkeypatch.setattr("sys.argv", ["bperf.py", "--models", "tag_cgenn/einsum",
+                                     "--find-batchsize", "--size-per-state", "--apply"])
+    with pytest.raises(SystemExit) as apply_exit:
+        bperf.main()
+    assert "--apply" in str(apply_exit.value)
+
+    monkeypatch.setattr("sys.argv", ["bperf.py", "--models", "tag_cgenn/einsum",
+                                     "--size-per-state"])
+    with pytest.raises(SystemExit) as sizing_exit:
+        bperf.main()
+    assert "--find-batchsize" in str(sizing_exit.value)
+
+
 class _Sink:
     def __init__(self, log):
         self.log = log

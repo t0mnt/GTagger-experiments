@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**FLASH ARM CLOSED (round-trip #6 measured, 2026-08-18): regional compile NULL (0.999x vs eager); the surprise was flash-COMPILED at bs512 = 382 jets/s = +7.3% over sparse's 356 — flash's best posture flipped to compiled once the eager-sizing handicap was removed, but +7.3% < the +10% bar: THIRD AND FINAL CLOSE. Sparse ships. Reopening path: the fused message kernel (+ kingdon v3 collaboration), operator-discretionary. jc GPS batchsizes transcribed (512 ×3). Standing: jc find_lr sweeps, DDP scoping, subsampled-val** ← state marker,
+**ROUND-TRIP #7 PENDING — the #6 close (+7.3%) rests on a sizing bias the driver's own docstring warns against ("do not rank gp_impls by it/s from this driver"): BOTH arms were sized EAGER, so neither raced at its compiled ceiling, and the eager/compiled memory gap is per-arm. `--size-per-state` is now implemented + gated; #7 re-measures honestly. Command in its record below. Sparse ships meanwhile; jc GPS recipes complete (bs 512, lr 1e-3 ×3) and those rows are launchable NOW** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3936,6 +3936,56 @@ success target ≥1.5x, else record why and close.
   filled (bs 128, lr 5.57e-4) and the earlier audit's "tag_cgenn lr
   re-derivation open" flag was WRONG — the yaml's own comment records
   the aligned-finder derivation at bs 128. That ledger item is DONE.*
+
+  *ROUND-TRIP #7 WIRED (2026-08-18): `--size-per-state` — the #6 verdict's
+  sizing bias, fixed.* THE FINDING that motivates it came from reading
+  bperf's own `find_batchsize` docstring after #6: it sizes each row ONCE,
+  in EAGER mode, applies that batch to both postures, and says outright
+  "these it/s are measured at a batch nobody trains at ... do not rank
+  gp_impls by it/s from this driver." Every flash race ranked exactly that
+  way. Consequence: sparse-compiled has never been raced above bs128 and
+  flash-compiled never above 512, because those are EAGER ceilings — and
+  the eager/compiled memory gap is PER-ARM (the same ~6x retention spread
+  the docstring already flags), so the understatement is uneven and the
+  +7.3% close rests on it. IMPLEMENTED: `find_batchsize(..., state=)` +
+  driver flag `--size-per-state` (one search per posture, each timing run
+  at its own batch). Three consequences handled in code, not prose:
+  (1) the speedup column becomes a JETS/S ratio — an it/s ratio across
+  different batches is not a comparison — via one formula that reduces
+  exactly to the it/s ratio when the sizes agree (so the default path is
+  untouched, pinned by a test); (2) `--apply` is REFUSED with
+  `--size-per-state` (the verdict includes a batch change the yaml does
+  not carry, so the knob alone would not reproduce it) and the report
+  carries the same warning; (3) the verdict string is tagged
+  "(throughput, incl. batch)". Gates: 3 new tests in
+  tests/internal/test_bperf_driver.py (per-state runs each state at its
+  own batch + jets/s ratio + "128/512" cell; default path still sizes ONCE
+  eager with the it/s ratio; both refusals fire before any run) — 14/14.
+  **SCIENTIFIC CAVEAT, pre-registered before the numbers arrive:** if #7's
+  winner wins AT A DIFFERENT BATCH SIZE than the incumbent's, adoption is
+  NOT a drop-in — batch size and lr are coupled, so a flash arm adopted at
+  a larger batch needs its lr re-derived (the finder, at that batch) and
+  its accuracy revalidated, exactly as the table-wide lr decision was.
+  That cost belongs in the adopt decision alongside the >10% bar; a win
+  that is purely "bigger batch fits" is a REAL wall-clock win but a recipe
+  change, and must be recorded as one. ROUND-TRIP #7 (one allocation,
+  ~2.5h — compiled sizing spends an inductor build per row inside the
+  driver):
+
+      python utils/bperf.py --models tag_cgenn/sparse tag_cgenn/flash \
+          --find-batchsize --size-per-state
+      # then, at whatever batch the flash-compiled column reports:
+      python utils/profile_sync.py -cn toptagging model=tag_cgenn \
+          model.net.gp_impl=flash save=false training.batchsize=<that bs> \
+          +prof.warm=8 +prof.active=5
+
+  Read: the bs cell now reads eager/compiled per row; compare the
+  COMPILED jets/s columns (that is the own-best race) against the >10%
+  bar. From the profile, record the flash KERNEL's share of CUDA time —
+  that is the ceiling for the two cheap unpriced tricks (Triton autotune
+  of the generated kernels, ~10-30% of kernel time; kingdon v3's 2-3x
+  interior-op reduction) and the input the fused-message-kernel decision
+  needs. NEVER `--apply` from this run (the driver refuses).*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs
