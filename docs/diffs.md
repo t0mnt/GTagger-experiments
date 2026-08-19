@@ -197,7 +197,7 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   `max_num_nodes` to the dataset max instead gives static shapes, full inductor
   specialization, a single autotune key and a capturable graph, at the cost of paying for
   worst-case padding on every batch (cheap at batchsize 512, where the batch max is already
-  near the dataset max; expensive at small batch). Neither was measured here.
+  near the dataset max; expensive at small batch). Neither was measured here, though sparse jet representations appear more promising if we were to recommend a path.
 
 ## lgatr 2.0 migration + the compile program (2026-08-07/08, dev)
 - **lgatr 1.4.4 → 2.0 (Posture B / v2-native)**: pins relaxed to `lgatr[xformers-attention]>=2.0.0` (uncapped, upstream practice);
