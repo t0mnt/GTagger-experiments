@@ -223,6 +223,30 @@ def test_per_state_sizing_refuses_apply_and_requires_sizing(monkeypatch):
     assert "--find-batchsize" in str(sizing_exit.value)
 
 
+def test_overrides_reach_every_state_and_are_stamped_in_the_report(monkeypatch):
+    """--overrides: applied to both states of every selected row, stamped in the report
+    header (a probed knob must never be mistakable for the shipping config), and refused
+    with --apply for the same reason --size-per-state is."""
+    seen = []
+    monkeypatch.setattr(bperf, "run_once",
+                        lambda o, *a, **kw: (seen.append(list(o)) or (1.0, None, None)))
+    monkeypatch.setattr("sys.argv", ["bperf.py", "--models", "tag_cgenn/einsum",
+                                     "--overrides", "model.activation_memory_budget=0.7"])
+    written = []
+    monkeypatch.setattr(bperf, "REPO", REPO)
+    monkeypatch.setattr(Path, "open", lambda self, *a, **kw: _Sink(written))
+    bperf.main()
+    assert all("model.activation_memory_budget=0.7" in o for o in seen), seen
+    assert "model.activation_memory_budget=0.7" in "".join(written), \
+        "override missing from the report header"
+
+    monkeypatch.setattr("sys.argv", ["bperf.py", "--models", "tag_cgenn/einsum",
+                                     "--overrides", "x=1", "--apply"])
+    with pytest.raises(SystemExit) as exc:
+        bperf.main()
+    assert "--apply" in str(exc.value)
+
+
 class _Sink:
     def __init__(self, log):
         self.log = log

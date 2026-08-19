@@ -318,6 +318,13 @@ def main():
                          "shuffle differently and the comparison is unpaired")
     ap.add_argument("--apply", action="store_true",
                     help="edit the production yaml compile knobs per the verdicts")
+    ap.add_argument("--overrides", nargs="*", default=[],
+                    help="extra hydra overrides applied to EVERY selected row and both "
+                         "of its states (e.g. model.activation_memory_budget=0.7). "
+                         "Recorded in the report header so a probed knob can never be "
+                         "mistaken for the shipping config; refuses --apply for the same "
+                         "reason --size-per-state does: the verdict would include a knob "
+                         "the yaml one-liner does not carry.")
     args = ap.parse_args()
     check_window(tuple(args.window), args.iters)   # before any run, not after all of them
     if args.size_per_state and not args.find_batchsize:
@@ -330,6 +337,11 @@ def main():
             "two different batch sizes, so the compile knob alone does not reproduce it. "
             "Transcribe the batchsize into the training recipe first, then re-run without "
             "--size-per-state to decide the knob at that fixed batch.")
+    if args.overrides and args.apply:
+        raise SystemExit(
+            "--overrides refuses --apply: the measured verdict includes overrides the "
+            "yaml one-liner does not carry. Put the override in the yaml first if it is "
+            "meant to ship, then re-run without --overrides.")
 
     rows = [r for r in MATRIX if not args.models or any(m in r[0] for m in args.models)]
     if not rows:
@@ -338,7 +350,7 @@ def main():
             f"{[r[0] for r in MATRIX]}")
     results, recs = [], []
     for name, base, knob, yaml_path in rows:
-        row_base = list(base)
+        row_base = list(base) + list(args.overrides)
         if args.find_batchsize:
             # FATAL, not a fallback. This used to print a warning and continue at the yaml
             # value -- which is the unswept 512 -- and that has now cost two runs:
@@ -415,8 +427,9 @@ def main():
 
     lines = [
         f"\n## beta-PERF {datetime.datetime.now():%Y-%m-%d %H:%M} "
-        f"(tree={args.config_path}, iters={args.iters}, window={tuple(args.window)}, "
-        f"cuda={'yes' if _cuda() else 'NO -- not decision-grade'})",
+        + (f"[overrides: {' '.join(args.overrides)}] " if args.overrides else "")
+        + f"(tree={args.config_path}, iters={args.iters}, window={tuple(args.window)}, "
+          f"cuda={'yes' if _cuda() else 'NO -- not decision-grade'})",
         # jets/s = it/s x batchsize: rows are sized PER IMPL, so it/s is not comparable
         # across rows -- jets/s is (the flash-vs-sparse race read wrong without it, 2026-08-17)
         "", "| row | bs | eager it/s | compiled it/s | eager jets/s | compiled jets/s | speedup | verdict |",

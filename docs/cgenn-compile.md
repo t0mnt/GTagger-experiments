@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**ROUND-TRIP #7 PENDING — the #6 close (+7.3%) rests on a sizing bias the driver's own docstring warns against ("do not rank gp_impls by it/s from this driver"): BOTH arms were sized EAGER, so neither raced at its compiled ceiling, and the eager/compiled memory gap is per-arm. `--size-per-state` is now implemented + gated; #7 re-measures honestly. Command in its record below. Sparse ships meanwhile; jc GPS recipes complete (bs 512, lr 1e-3 ×3) and those rows are launchable NOW** ← state marker,
+**ROUND-TRIP #8 PENDING — #7 read: flash-compiled 383 @512 vs sparse-compiled 345 @64 (the compiled sizing found sparse's WORST-CASE ceiling is 64, not the shipped 128) = +11.0%, the FIRST reading above the +10% bar. THREE HOLDS before adoption: the fresh-process discriminator for the 64 reading, sparse's unplayed activation_memory_budget card, and a noise repeat — plus the pre-registered recipe-change caveat (bs512 adoption ⇒ lr re-derive + revalidation). INDEPENDENT SHIPPING RISK surfaced: top_cgenn bs128+compile:true was EAGER-sized and may OOM on a tail batch — #8 decides its mitigation regardless of the race. Commands in the #8 record** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -3986,6 +3986,67 @@ success target ≥1.5x, else record why and close.
   of the generated kernels, ~10-30% of kernel time; kingdon v3's 2-3x
   interior-op reduction) and the input the fused-message-kernel decision
   needs. NEVER `--apply` from this run (the driver refuses).*
+
+  *ROUND-TRIP #7 MEASURED (2026-08-18, H100): **flash-compiled 383 @512 vs
+  sparse-compiled 345 @64 = +11.0% — the FIRST reading above the +10% bar
+  — held pending three checks; and an INDEPENDENT SHIPPING RISK surfaced.**
+  The compiled sizing search found sparse's worst-case (+5sd probe)
+  compiled ceiling is **64, not the shipped 128** — the eager/compiled
+  memory asymmetry runs the OPPOSITE way for sparse than the docstring's
+  general rule, because sparse's EAGER path is the memory-optimized one
+  (the hand-written Function saves inputs only) while its COMPILED path
+  retains what the AOT partitioner chooses (~3x more, the round-4 CPU
+  measurement: 252.8 vs 84.8 MB/layer). Round 6's compiled@128 timing runs
+  survived because real batches sit well under the +5sd probe. Flash sized
+  512/512 (its op saves inputs only in BOTH postures — the analytic
+  backward — which is also the answer to "port the sparse eager Function
+  to flash": flash already has the equivalent by construction, nothing to
+  port; the transferable insight runs the other way, sparse-COMPILED needs
+  memory relief, which is the activation_memory_budget knob). CODE REVIEW
+  of the #7 driver change (operator-requested): the flag behaved as
+  designed — per-state cells ("128/64"), jets/s ratio, guards; ONE caveat
+  found: the sizing search runs all candidates in the driver process (no
+  per-candidate dynamo reset), so in-process compile artifacts could
+  pessimize the compiled ceiling — the 64 reading is corroborated by the
+  retention measurement but gets a fresh-process DISCRIMINATOR in #8.
+  KINGDON 2.1.1 AUDIT (operator-requested): nothing unexploited —
+  flash_gen already uses cse+simplify defaults plus its own sympy.cse
+  pass; `graded=True` is documented less-sparse; restricted-key codegen
+  only pays for grade-restricted inputs and CGENN multivectors are
+  full-spectrum after layer 1. The real upgrades (faster codegen, stronger
+  cross-expression CSE, 2-3x op reduction) are exactly kingdon v3 —
+  wait-and-collaborate confirmed. NEW DRIVER KNOB for #8:
+  `bperf --overrides` (applied to every state of every selected row,
+  stamped in the report header, refuses --apply; gated in
+  test_bperf_driver, 15/15). SHIPPING RISK, independent of the race:
+  top_cgenn ships bs128 + compile:true sized under EAGER; if the 64
+  reading survives the discriminator, a long campaign run can OOM on a
+  tail batch. Mitigations to price in #8: activation_memory_budget at
+  bs128, or bs64 (−3%: 345 vs 356). ROUND-TRIP #8 (one allocation, ~3h):
+
+      set -e
+      # 1. DISCRIMINATOR (~5 min): fresh-process worst-case probe, compiled sparse
+      #    at exactly 128 -- OK vs OOM decides genuine-vs-contaminated for the 64
+      python utils/find_bs.py --models cgenn --overrides model.compile=true \
+          --bs-start 128 --bs-max 128
+      # 2. sparse's memory-relief card (~50 min): budgeted compiled sizing + race row
+      python utils/bperf.py --models tag_cgenn/sparse --find-batchsize \
+          --size-per-state --overrides model.activation_memory_budget=0.7
+      # 3. noise repeat of the two leaders (~45 min)
+      python utils/bperf.py --models tag_cgenn/sparse tag_cgenn/flash \
+          --find-batchsize --size-per-state
+      # 4. flash-compiled profile (~10 min): the kernel's CUDA share = the ceiling
+      #    for Triton autotune and kingdon-v3 regeneration
+      python utils/profile_sync.py -cn toptagging model=tag_cgenn \
+          model.net.gp_impl=flash save=false training.batchsize=512 \
+          +prof.warm=8 +prof.active=5
+
+  DECISION AFTER #8, pre-registered: adopt flash only if its compiled
+  own-best beats sparse's best CONFIGURATION (including the budget card)
+  by >10% on the repeat too; adoption at bs512 is a recipe change (lr
+  re-derived at 512, accuracy revalidated) and is costed as such. The
+  shipping-risk mitigation for top_cgenn is decided from steps 1-2 even
+  if flash loses.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs
