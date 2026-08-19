@@ -15,6 +15,27 @@ from experiments.tagging.embedding import embed_tagging_data, get_num_tagging_fe
 from experiments.tagging.plots import plot_mixer
 
 
+def _recipe_still_has_markers():
+    """True when the hydra-composed training recipe FILE still carries `???` values.
+
+    The companion of run.py's `_check_recipe_is_swept` (which refuses the launch): this
+    one only decides whether the UNSWEPT warning may fire, because value-based detection
+    cannot distinguish "unfilled, silently inherited 512/1e-3" from "filled, and the
+    measured/decided values happen to BE 512/1e-3" (top_cgenn since the flash adoption).
+    Returns True -- keep warning -- whenever the file cannot be resolved (bperf and the
+    tests compose without hydra.main), which preserves the old behavior exactly there."""
+    try:
+        from hydra.core.hydra_config import HydraConfig
+
+        hc = HydraConfig.get()
+        choice = hc.runtime.choices.get("training")
+        root = next(s.path for s in hc.runtime.config_sources if s.provider == "main")
+        with open(os.path.join(root, "training", f"{choice}.yaml")) as fh:
+            return any("???" in line.split("#", 1)[0] for line in fh)
+    except Exception:
+        return True
+
+
 class TaggingExperiment(BaseExperiment):
     """
     Base class for jet tagging experiments, focusing on binary classification
@@ -48,7 +69,13 @@ class TaggingExperiment(BaseExperiment):
                 unswept.append("lr=1e-3")
             if int(self.cfg.training.batchsize) == 512:
                 unswept.append("batchsize=512")
-            if unswept:
+            if unswept and _recipe_still_has_markers():
+                # value-based detection alone went spurious the day a FILLED recipe
+                # legitimately chose the fallback values (top_cgenn @ flash adoption:
+                # measured bs 512, operator-rounded lr 1e-3) -- so confirm against the
+                # recipe FILE, the same source run.py's launch refusal reads. When the
+                # file cannot be found (bperf/tests compose without hydra), warn as
+                # before: conservative, and those contexts never train for real.
                 LOGGER.warning(
                     f"{modelname} is training at the UNSWEPT family fallback "
                     f"({', '.join(unswept)}) -- did you forget to fill its recipe "

@@ -47,16 +47,18 @@ defaults:
 # this recipe: 512 here is a measured value that happens to equal the family
 # fallback, not an unfilled one.
 #
-# lr 1.11e-3 = the sqrt-map of the VALIDATED sparse operating point (5.57e-4 @ 128,
-# trained clean) to bs 512 -- the tool-sanctioned smaller-batch anchor. Chosen over
+# lr 1e-3 = the sqrt-map of the VALIDATED sparse operating point (5.57e-4 @ 128,
+# trained clean) to bs 512 -- 1.11e-3 -- rounded to the family point by the operator
+# ("decimal here is dumb", 2026-08-19): the map's own precision does not support a
+# third digit, and 1e-3 @ 512 is the table's validated operating point. Chosen over
 # the direct 512 sweeps because those SPLIT: three sweeps agree the steepest sits at
 # 5.92e-4 (curve-pinned every time) but the bracket rule anchored once at 8.19e-3
 # and refused twice (no interior minimum -- the exact instability its warning
-# predicts), so nothing at 512 is self-anchored. 1.11e-3 sits inside the
-# steepest-to-bracket span, next to the table's validated 1e-3 @ 512 family point.
-# The accuracy REVALIDATION RUN vs the sparse baseline is the arbiter -- if it
-# regresses, the fallback order is 5.92e-4 (the thrice-stable steepest) before
-# anything else.
+# predicts), so nothing at 512 is self-anchored. The accuracy REVALIDATION RUN vs
+# the sparse baseline is the arbiter -- if it regresses, the fallback order is
+# 5.92e-4 (the thrice-stable steepest) before anything else. NOTE these values
+# EQUAL the family fallbacks by measurement/decision -- the UNSWEPT warning now
+# checks this file for ??? markers before firing (experiment.py), so it stays quiet.
 batchsize: 512
 lr: 1e-3
 

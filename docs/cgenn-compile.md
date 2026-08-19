@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**FLASH ADOPTED AND TRANSCRIBED (round-trip #10 measured, 2026-08-19): compiled 682 jets/s @512 vs sparse 345 = 1.98x — the #9 kernel-share estimate (~680) landed within 0.3%; gates green under the tuned configs (battery 6/6, soak 3/3). SHIPPED: tuned launch configs are the in-code defaults; tag_cgenn.yaml gp_impl=flash; top_cgenn.yaml bs512 + lr 1.11e-3 (sqrt-map of the validated 5.57e-4@128 — the 512 sweeps SPLIT, rationale in the yaml and the #10 record). FINAL GATE: the accuracy revalidation run vs the sparse baseline, then the CGENN rows launch. Hybrids' flash A/B queued post-revalidation; jc_cgenn recipe still to be sized. Cumulative: 79 → 682 jets/s = 8.6x on tag_cgenn at full fp32** ← state marker,
+**CAMPAIGN-READY (2026-08-19): flash adopted + transcribed (682 jets/s @512 = 1.98x over sparse; cumulative 8.6x at full fp32); recipes complete for top (512/1e-3, operator-rounded) and jc (jc_cgenn created, carried values); the streaming probe now synthesizes the EXACT worst case for weaver layouts (mid-JC OOM concern answered structurally); PyTorch issue drafts ready to file; upstream 4-PR migration guide published; flash-kingdon contribution deferred to the post-v3 collaboration on its own facts. THE LAST CGENN GATE is the accuracy revalidation run — commands consolidated in the CLOSE-OUT SWEEP record. Hybrids' flash A/B and the LorentzNet-family compile measurement queued there too** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -4268,6 +4268,77 @@ success target ≥1.5x, else record why and close.
   lr ladder above before touching the kernels (speed is TOL-clean; lr is
   the only free variable). CUMULATIVE, tag_cgenn, full fp32: 79 eager →
   682 flash-compiled = **8.6x**; the jc-CGENN weeks shrink accordingly.*
+
+  *CLOSE-OUT SWEEP (2026-08-19, operator's final list).* (1) OPERATOR LR
+  ROUND: another session set top_cgenn lr 1.11e-3 → **1e-3** ("decimal
+  here is dumb") — correct call, the sqrt-map's precision never supported
+  a third digit; the yaml comment and the jc twin are aligned.
+  CONSEQUENCE FIXED: with lr=1e-3 AND bs=512 both now legitimately
+  equalling the family fallbacks, the value-based UNSWEPT warning became
+  permanently spurious for this row — it now confirms against the recipe
+  FILE (any un-commented `???`, the same source run.py's launch refusal
+  reads; conservative True outside hydra so bperf/tests behave as
+  before). Guard suite 31/31. (2) STREAMING-PROBE HARDENING (the
+  operator's mid-JC-run OOM concern): `_saturated_stream_batch` in
+  find_lr.py synthesizes the EXACT worst case for weaver layouts — P is
+  FIXED by the data config and "real" = any nonzero component, so filling
+  each jet's empty slots with its leading constituent (always real;
+  pt-ordered) saturates sum(n), sum(n²) and P_max at their ceilings,
+  STRICTLY above the map-style +5sd construction. Wired into the
+  streaming path with a log line; non-weaver layouts fall back unchanged;
+  probe suite 58/58. jc_cgenn.yaml created (512 / 1e-3 carried per the
+  convention; pre-queue verification command in its comments). (3)
+  LORENTZNET ITEMS (operator-forwarded, rated): item 1 AGREE-DO (the
+  family ships compile:true on gates+policy, never a β-PERF row — command
+  queued below); item 2 AGREE-PARK (the amended identity
+  W·cat=(W_A−W_B)h|ᵢ+W_B·h|ⱼ+W_e·e is right; 12-23h of jc value against
+  a week of Conv2d-layout plumbing); item 3 AGREE-DROP (the withdrawal is
+  correct — normsq4 is already a large cancellation for near-lightlike
+  momenta and the polarization identity stacks a second one, worst
+  exactly for collinear kNN neighbours); item 4 AGREE for the SLIM
+  hybrids but SCOPE-CORRECTED: tag_lorentznet itself uses FLAT edge
+  lists + index_add_ atomics (lorentznet.py unsorted_segment_sum/mean —
+  read, not assumed), so the dense-layout no-op argument does not cover
+  the FC baseline; SortedGather-class work WOULD apply there — still
+  parked on value (3.55h top row). (4) WHY NO @triton.autotune, recorded:
+  runtime autotune re-benchmarks per key — with E varying every batch
+  that is either constant re-tuning (key on E) or a tune-once at whatever
+  shape arrives first (key=[]), inside a training step; its benchmark
+  launches also break the DET pair-run and pollute paired timings. The
+  offline sweep + pinned defaults reach the same optimum reproducibly,
+  at the racing shape, parity-gated. (5) PYTORCH ISSUES: two ready-to-
+  file drafts with minimal reproducers in docs/pytorch-issues.md (the
+  aten.nonzero backend exception; the JITFunction binding-name closure
+  emitter NameError) — ledger item 8 preparation DONE, filing is the
+  operator's click. (6) UPSTREAM CGENN: 4-PR migration guide published
+  (compile support → sparse GP → aggregation-with-precondition →
+  arbitrary-signature kernel generator timed with kingdon v3). (7)
+  FLASH-KINGDON, decided on its OWN facts (per the operator's rule,
+  independent of the CGENN-repo decision): NO PR now — the repo is
+  paused mid-refactor for v3, so kernels built on v2 codegen would be
+  invalidated on landing; the contribution route is the author's own
+  collaboration offer, post-v3, carrying the STA kernels, the
+  fusion-boundary measurements, and the tune findings. FINAL COMMANDS
+  (consolidated; the CGENN gate first, the rest independent):
+
+      # 1. THE LAST CGENN GATE -- accuracy revalidation vs the sparse baseline
+      python run.py -cn toptagging model=tag_cgenn training=top_cgenn \
+          data.dataset=full gpus=1
+      # 2. LorentzNet-family compile measurement (never done; Opus item 1)
+      python utils/bperf.py --models tag_lorentznet tag_LorentzNetLGATrSlimGraphTrans \
+          tag_LorentzNetLGATrSlimGraphGPS --find-batchsize --size-per-state
+      # 3. jc CGENN memory verification under the SATURATED probe (pre-queue)
+      python utils/find_bs.py --task jctagging --models cgenn
+      # 4. AFTER #1 reads clean: the hybrids' flash A/B (one row each)
+      python utils/bperf.py --models CGENNLGATrGraphTrans CGENNLGATrGraphGPS \
+          --find-batchsize --size-per-state --overrides model.net.gp_impl=flash
+
+  AUDIT NOTES from this sweep's own code: the probe fallback's `or` on a
+  batch object was replaced with an explicit None check before commit
+  (PyG Data truthiness is default-True today, but a batch type with
+  tensor `__bool__` would have raised); mask-shaped (B,1,P) tensors
+  saturate to all-ones under the leading-slot fill, which is exactly
+  correct for downstream consumers.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs

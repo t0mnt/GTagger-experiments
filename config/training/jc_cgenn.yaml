@@ -2,12 +2,13 @@
 # at the flash adoption:
 #   python run.py -cn jctagging model=tag_cgenn training=jc_cgenn gpus=1
 #
-# lr/batchsize CARRIED from top_cgenn (512 / 1.11e-3) per the operator's convention
-# call ("jc lr and batch size the same as the other config, that's what the other
-# models do" -- the filled jc hybrid recipes carry their top values the same way).
-# The full lr rationale (split 512 sweeps, sqrt-map of the validated 5.57e-4@128,
-# fallback ladder) lives in top_cgenn.yaml and transfers unchanged: lr depends on
-# optimizer+batch+loss geometry, not on the dataset's width.
+# lr/batchsize CARRIED from top_cgenn (512 / 1e-3, operator-rounded) per the
+# operator's convention call ("jc lr and batch size the same as the other config,
+# that's what the other models do" -- the filled jc hybrid recipes carry their top
+# values the same way). The full lr rationale (split 512 sweeps, sqrt-map 1.11e-3
+# rounded to the family point, fallback ladder) lives in top_cgenn.yaml and
+# transfers unchanged: lr depends on optimizer+batch+loss geometry, not on the
+# dataset's width.
 #
 # MEMORY: the carried 512 was probe-safe on top-tagging (75.6 GB worst case at
 # P_max=160). JetClass pads to a FIXED P per the weaver config and its jets are
@@ -20,4 +21,4 @@ defaults:
   - jc_gts_and_friends_default
 
 batchsize: 512
-lr: 1.11e-3
+lr: 1e-3
