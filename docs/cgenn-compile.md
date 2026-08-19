@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**ROUND-TRIP #8 PENDING — #7 read: flash-compiled 383 @512 vs sparse-compiled 345 @64 (the compiled sizing found sparse's WORST-CASE ceiling is 64, not the shipped 128) = +11.0%, the FIRST reading above the +10% bar. THREE HOLDS before adoption: the fresh-process discriminator for the 64 reading, sparse's unplayed activation_memory_budget card, and a noise repeat — plus the pre-registered recipe-change caveat (bs512 adoption ⇒ lr re-derive + revalidation). INDEPENDENT SHIPPING RISK surfaced: top_cgenn bs128+compile:true was EAGER-sized and may OOM on a tail batch — #8 decides its mitigation regardless of the race. Commands in the #8 record** ← state marker,
+**ADOPTION CRITERION MET (round-trip #8, 2026-08-19): flash-compiled 382-383 @512 beats sparse's best SAFE config (344-345 @64) by +11.0% on BOTH runs; the discriminator proved the shipped sparse bs128 is probe-UNSAFE (OOM on the worst-case batch), so every path forward is a recipe change and the lr-re-derivation cost is symmetric. AWAITING OPERATOR RATIFICATION (one honest residual: a mild 0.85-0.95 budget for sparse@128 is unswept; its ceiling 356 would put flash at +7.3%). The #8 profile: flash's OWN bwd kernel is 61.8% of its step — autotune + kingdon v3 are now first-order, the mega-kernel is deprioritized. Checklist in the #8 record** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -4047,6 +4047,66 @@ success target ≥1.5x, else record why and close.
   re-derived at 512, accuracy revalidated) and is costed as such. The
   shipping-risk mitigation for top_cgenn is decided from steps 1-2 even
   if flash loses.*
+
+  *ROUND-TRIP #8 MEASURED (2026-08-19, H100): **THE PRE-REGISTERED
+  ADOPTION CRITERION IS MET — flash +10.7%/+11.0% over sparse's best SAFE
+  configuration, on both runs — and the profile relocates flash's entire
+  optimization frontier into its own backward kernel.** The four steps:
+  (1) DISCRIMINATOR: fresh-process compiled sparse at bs128 with the +5sd
+  probe → **OOM** ("Even batchsize 128 does not fit"). The 64 reading is
+  GENUINE, not search contamination — and therefore **the shipping
+  top_cgenn config (bs128 + compile:true, eager-sized) is probe-unsafe: a
+  long campaign run can OOM on a tail batch. It must change regardless of
+  the race.** (2) BUDGET CARD: activation_memory_budget=0.7 makes
+  compiled@128 probe-safe (peak 57.8 GB) but costs more than it saves —
+  308 jets/s, WORSE than plain bs64 (345). The recompute tax at 0.7
+  exceeds the batch win. RESIDUAL, flagged honestly: a milder budget
+  (0.85-0.95) was not swept; its ceiling is the unbudgeted 356@128, at
+  which flash's margin would be +7.3% (below bar) — but 356 is only
+  reachable if a mild budget BOTH fits the probe AND pays ~zero recompute,
+  neither demonstrated. One 25-min rider prices it if the operator wants
+  it before ratifying. (3) NOISE REPEAT: sparse 344 @64, flash 382 @512 —
+  0.3% spread against the first run's 345/383. Margin 382/344 = +11.0%,
+  and vs the safe-config set both readings clear the bar: 383/345 =
+  +11.0%, 382/344 = +11.0%. (4) FLASH-COMPILED PROFILE @512 (median 1385
+  ms/step wall, CUDA-busy 1345 = 97%): **_fcgp_bwd_kernel = 61.8% of
+  self-CUDA (832 ms/step, 8 calls × 104 ms); _fcgp_fwd_kernel = 18.0%
+  (242 ms/step); our generated kernels are ~80% of the entire step, and
+  aten::mm is down to 7.3%.** The bwd kernel runs 3.4x its fwd twin per
+  call — hand-written fixed launch configs, 48 accumulators, never tuned.
+  CONSEQUENCES, in order: (a) Triton AUTOTUNE of the bwd kernel is now
+  the highest-value cheap item in the program — a 2x on that kernel alone
+  is ~+45% model-level; (b) kingdon v3's 2-3x interior-op reduction lands
+  on an 80% target — the collaboration is now first-order; (c) the MEGA
+  fused kernel is DEPRIORITIZED: its premise was that the boundary/fusion
+  around the kernels is the cost, and the profile says the cost is INSIDE
+  the kernels we already own; (d) the giant sync wall in the profile
+  (1272 ms/step cudaStreamSynchronize) is the CPU waiting on 100-ms
+  kernels with a drained queue — GPU-busy 97%, not a sync problem. UNITS
+  NOTE: the sizing log's "peak 98.3 GB" at flash-compiled@512 is decimal
+  GB = 91.5 GiB — fits the 94-GiB card; not an over-commit anomaly.
+  RECIPE-CHANGE SYMMETRY, now decisive for the adopt calculus: the
+  discriminator makes EVERY safe path a recipe change — sparse must move
+  to bs64 (its lr 5.57e-4 was derived at 128) or take a budget, flash
+  moves to bs512 — so the lr-re-derivation + revalidation cost the
+  pre-registration charged to flash adoption is now charged to every
+  option equally. ADOPTION CHECKLIST (on operator ratification):
+  top_cgenn.yaml batchsize 512 + gp_impl flash in tag_cgenn.yaml; find_lr
+  at bs512; flash GPU gate day (battery + soak already green historically
+  at this posture); accuracy revalidation vs the sparse baseline; hybrids
+  are a SEPARATE decision (their GP share is smaller; race their own
+  arms only if the tag row's revalidation is clean). KINGDON
+  INPUT-SPARSITY (operator-forwarded suggestion, rated): the mechanism is
+  real and correctly described — declare structurally-zero operand blades,
+  generate only reachable outputs. Applied here it is BOUNDED: layer 0 is
+  the main site (grade-1 momenta + grade-0 scalars; the first GP's path
+  set collapses to the (1,1)→{0,2} paths), later layers are full-spectrum,
+  and the hybrids' per-layer edge_attr injection is grade-1 but small.
+  Ceiling ~10-15% of kernel time — genuine, natural to hand the kingdon-v3
+  collaboration (input-sparsity is the library's native feature), and
+  SECOND-ORDER next to the 62% bwd-kernel target. Priority order:
+  autotune, v3 regeneration (with input-sparsity as part of it),
+  layer-0 specialization only if v3 does not already deliver it.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs
