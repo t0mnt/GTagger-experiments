@@ -58,7 +58,7 @@ defaults:
 # regresses, the fallback order is 5.92e-4 (the thrice-stable steepest) before
 # anything else.
 batchsize: 512
-lr: 1.11e-3
+lr: 1e-3
 
 # weight_decay: 0.01          # inherited from tag_gts_and_friends_default; official CGENN uses 0
 # optimizer: Adam             # inherited AdamW; official CGENN uses Adam (one flat group)
