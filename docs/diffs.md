@@ -161,8 +161,23 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
 ## Disclosures for the methods section (per-reference choices, not bugs)
 - **Head depth is per-reference, not unified.** The four GraphTrans hybrids classify with a
   single Linear from the CLS token (the official GraphTrans head); the four GraphGPS hybrids
-  use a 2-layer SAN-style MLP after mean-pool (the official GraphGPS `SANGraphHead`). Both are
-  faithful to their lineage, so head capacity co-varies with the GT-vs-GPS axis by design.
+  use a 2-layer SAN-shaped MLP after mean-pool. Head capacity therefore co-varies with the
+  GT-vs-GPS axis by design.
+  **The GPS head is exact for two of the four, SAN-shaped for the others** (worth stating
+  precisely, since the faithfulness claim is checkable):
+  * `plaingraphgps.py` and `particlenetpartgraphgps.py` reproduce GraphGPS's
+    `SANGraphHead(dim_in, dim_out, L=2)` term for term — three Linears (`dim → dim/2 → dim/4
+    → num_classes`), activation after the first two only, `Act` resolving from `act: relu`
+    exactly as their `cfg.gnn.act` does, default `bias=True`. Mean-pool over the mask is the
+    dense-batch equivalent of PyG's ragged mean-pool.
+  * `cgennlgatrgraphgps.py` and `lorentznetlgatrslimgraphgps.py` keep the shape but substitute
+    **GELU** for the configured activation and floor the halving at `max(d // 2, num_classes)`.
+    Their pooled INPUT widths also differ deliberately, each documented in place: CGENN-GPS
+    concatenates `hidden_mv_channels * n_mv_inv + hidden_s_channels` because mean-pool cannot
+    route higher grades into grade 0 the way a CLS token can; LNSlim-GPS omits the `|v|^2`
+    self-norms so the head is not richer than the LorentzNet decoder it mirrors. The width
+    choices are reasoned; the activation substitution is incidental and is disclosed here
+    rather than justified.
 - **The four non-equivariant hybrids hardcode `tagging_features="all"`** in `TaggerWrapper`,
   so the `data.tagging_features` ablation moves only the equivariant rows (headline table
   unaffected).
