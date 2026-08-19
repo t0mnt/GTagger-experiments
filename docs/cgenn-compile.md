@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**GATE DAY GREEN + TUNE LANDSLIDE (round-trip #9, 2026-08-19): flash battery 6/6, flash-armed soak 3/3; flash_tune found fwd 2.06x (BLOCK=128,4,3 — parity BIT) and bwd 2.26x (BLOCK=64,2,1 — parity 2.5e-07, the predicted gw TOL) at the racing shape → estimated ~1.78x model-level, TO BE MEASURED in round-trip #10 (re-gate + re-race under the exports). Adoption batch = 512 (timed compiled@256 = 248 jets/s vs 383@512 — the earlier 'plateau' read came from worst-case sizing probes, corrected in the #9 record). lr: the 512 sweep fired the NO-RECIPE rule (steepest 5.92e-4 curve-pinned, no interior minimum) — two agreeing reruns required before transcription. #10 command in the record** ← state marker,
+**FLASH ADOPTED AND TRANSCRIBED (round-trip #10 measured, 2026-08-19): compiled 682 jets/s @512 vs sparse 345 = 1.98x — the #9 kernel-share estimate (~680) landed within 0.3%; gates green under the tuned configs (battery 6/6, soak 3/3). SHIPPED: tuned launch configs are the in-code defaults; tag_cgenn.yaml gp_impl=flash; top_cgenn.yaml bs512 + lr 1.11e-3 (sqrt-map of the validated 5.57e-4@128 — the 512 sweeps SPLIT, rationale in the yaml and the #10 record). FINAL GATE: the accuracy revalidation run vs the sparse baseline, then the CGENN rows launch. Hybrids' flash A/B queued post-revalidation; jc_cgenn recipe still to be sized. Cumulative: 79 → 682 jets/s = 8.6x on tag_cgenn at full fp32** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -4227,6 +4227,47 @@ success target ≥1.5x, else record why and close.
   campaign does not depend on sbatch env plumbing; then the yaml flips
   (gp_impl flash, batchsize 512, the twice-agreed lr) and the accuracy
   revalidation run is the final gate before the CGENN rows launch.*
+
+  *ROUND-TRIP #10 MEASURED + ADOPTION TRANSCRIBED (2026-08-19): **flash
+  compiled 682 jets/s @512 vs sparse 345 @64 = 1.98x** — the #9 estimate
+  (~680) landed within 0.3%, and even flash-EAGER (561) now beats
+  sparse-compiled by 63% (the tuned kernels serve both postures). Gates
+  under the tuned configs: battery 6/6, flash-armed soak 3/3 (hybrid
+  trajectory moved 0.5215→0.5080 — expected: the tuned bwd is gw-TOL, and
+  TOL diverges chaotically over 100 steps; the gate checks convergence,
+  not bitwise). The #9 "plateaued within noise" message fired correctly
+  in production (fix validated). LR: the two 512 sweeps SPLIT — sweep A
+  found an interior minimum and anchored 8.19e-3, sweep B refused again
+  (no interior minimum, bracket would be 2.54e-3) — while the steepest sat
+  at 5.92e-4 in ALL THREE sweeps (curve-pinned, 1.3/1.9/1.6-decade
+  spans). Nothing at 512 is self-anchored, so the transcribed lr is the
+  TOOL-SANCTIONED smaller-batch anchor: sqrt-map of the validated sparse
+  point 5.57e-4@128 → **1.11e-3 @ 512** (inside the steepest-to-bracket
+  span, adjacent to the family's validated 1e-3@512). Fallback order if
+  revalidation regresses: 5.92e-4 (thrice-stable steepest) first. SHIPPED
+  IN-TREE: tuned launch configs are now the in-code defaults (fwd 128/4/3,
+  bwd 64/2/1; the env hook remains the sweep instrument, and the unset
+  path now returns pinned measured defaults — deliberately, so a triton
+  upgrade cannot move a schedule the gates ran under; test pins the module
+  values); tag_cgenn.yaml gp_impl=flash with the adoption record and the
+  kill-switch note (sparse + bs128/lr5.57e-4 restore TOGETHER);
+  top_cgenn.yaml bs 512 + lr 1.11e-3 with the full rationale, including
+  why the UNSWEPT warning on batchsize=512 is now spurious for this
+  recipe. config_quick stays sparse (CPU fixtures pin einsum; quick-tree
+  suites deliberately unaffected — battery 27/27 post-flip). NOT flipped:
+  the hybrids (their CGENN-stage gp_impl stays sparse; one bperf A/B row
+  each AFTER the tag row revalidates) and the jc CGENN row (no jc_cgenn
+  recipe exists yet — its bs/lr sizing under flash is campaign prep).
+  FINAL GATE before the CGENN rows launch — the accuracy revalidation:
+
+      python run.py -cn toptagging model=tag_cgenn training=top_cgenn \
+          data.dataset=full gpus=1
+
+  Compare test accuracy/rejection against the sparse-era baseline row; a
+  clean read launches the CGENN rows, a regression falls back through the
+  lr ladder above before touching the kernels (speed is TOL-clean; lr is
+  the only free variable). CUMULATIVE, tag_cgenn, full fp32: 79 eager →
+  682 flash-compiled = **8.6x**; the jc-CGENN weeks shrink accordingly.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs

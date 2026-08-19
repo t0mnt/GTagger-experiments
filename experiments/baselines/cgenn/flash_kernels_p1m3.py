@@ -58,10 +58,12 @@ def _launch_cfg(env_var, default_block, default_warps, default_stages):
     therefore goes through the same gates as any TOL change before shipping."""
     raw = os.environ.get(env_var)
     if not raw:
-        # UNSET path passes NO warps/stages kwargs at all: triton's defaults are
-        # version-dependent, and pinning "the default" explicitly would silently
-        # change the schedule on a triton upgrade. Unset == exactly the old launch.
-        return default_block, None, None
+        # UNSET returns the passed defaults verbatim. When those are None the launch
+        # omits the kwargs (triton's own version-dependent defaults apply -- the
+        # pre-tune posture); when they are MEASURED winners (the shipped state since
+        # round-trip #9/#10), pinning them explicitly is the point: a triton upgrade
+        # must not silently move a schedule the gates were run under.
+        return default_block, default_warps, default_stages
     try:
         block, warps, stages = (int(v) for v in raw.split(","))
     except ValueError as err:
@@ -84,8 +86,13 @@ def _launch_kwargs(warps, stages):
     return kw
 
 
-_FWD_BLOCK, _FWD_WARPS, _FWD_STAGES = _launch_cfg("CGENN_FLASH_FWD_CFG", 64, None, None)
-_BWD_BLOCK, _BWD_WARPS, _BWD_STAGES = _launch_cfg("CGENN_FLASH_BWD_CFG", 32, None, None)
+# DEFAULTS = the round-trip #9 flash_tune winners, re-gated in #10 (battery 6/6,
+# soak 3/3, race 682 jets/s) -- fwd 572->278 ms (2.06x, parity BIT), bwd 857->378 ms
+# (2.26x, parity 2.5e-07 = the documented gw TOL; the bwd optimum HALVES the warps,
+# relieving register pressure on the ~50 accumulators). The env overrides remain the
+# sweep instrument for future hardware; a changed config re-runs the gate battery.
+_FWD_BLOCK, _FWD_WARPS, _FWD_STAGES = _launch_cfg("CGENN_FLASH_FWD_CFG", 128, 4, 3)
+_BWD_BLOCK, _BWD_WARPS, _BWD_STAGES = _launch_cfg("CGENN_FLASH_BWD_CFG", 64, 2, 1)
 
 if _HAS_TRITON:
     # NAMING IS LOAD-BEARING (GPU round-trip #6): these must be bound under the wrapped

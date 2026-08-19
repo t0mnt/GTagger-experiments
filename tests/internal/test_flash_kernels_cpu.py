@@ -228,6 +228,12 @@ def test_launch_cfg_env_hook(monkeypatch):
     monkeypatch.delenv("CGENN_FLASH_FWD_CFG", raising=False)
     assert fk._launch_cfg("CGENN_FLASH_FWD_CFG", 64, None, None) == (64, None, None)
     assert fk._launch_kwargs(None, None) == {}
+    # unset returns MEASURED defaults verbatim when given (the shipped state since
+    # round-trip #10: the tuned winners are pinned so a triton upgrade cannot move
+    # a schedule the gates ran under)
+    assert fk._launch_cfg("CGENN_FLASH_FWD_CFG", 128, 4, 3) == (128, 4, 3)
+    assert (fk._FWD_BLOCK, fk._FWD_WARPS, fk._FWD_STAGES) == (128, 4, 3)
+    assert (fk._BWD_BLOCK, fk._BWD_WARPS, fk._BWD_STAGES) == (64, 2, 1)
 
     monkeypatch.setenv("CGENN_FLASH_FWD_CFG", "128,8,2")
     assert fk._launch_cfg("CGENN_FLASH_FWD_CFG", 64, None, None) == (128, 8, 2)
