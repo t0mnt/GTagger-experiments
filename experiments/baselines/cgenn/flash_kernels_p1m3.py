@@ -24,6 +24,8 @@ tests/experiments/test_flash_kernels_cuda.py (GPU gate day); CPU wiring gates in
 tests/internal/test_flash_kernels_cpu.py.
 """
 
+import os
+
 import torch
 from torch.library import triton_op, wrap_triton
 
@@ -38,6 +40,52 @@ except Exception:  # pragma: no cover - exercised only on triton-less installs
     _HAS_TRITON = False
 
 NB, NP = 16, 35
+
+
+def _launch_cfg(env_var, default_block, default_warps, default_stages):
+    """Launch config for one kernel, overridable as ENV="BLOCK,num_warps,num_stages".
+
+    WHY (round-trip #8): the profile put _fcgp_bwd_kernel at 61.8% of the whole
+    compiled step (104 ms/call, 3.4x its fwd twin) on launch configs that were
+    hand-picked for correctness and NEVER swept -- with ~50 accumulators per thread,
+    a bad BLOCK/warps choice plausibly spills registers. utils/flash_tune.py sweeps
+    the grid on GPU and prints the winning export lines; this hook applies them
+    without a code edit (shield style, read once at import). The DEFAULTS ARE THE
+    SHIPPED VALUES, so with no env set the kernels are bit-identical to before.
+    NOTE the gw TOL boundary: bwd BLOCK sets how many partial gw buffers the
+    fixed-order stage-2 sum reduces over, so changing bwd BLOCK is TOL-class for
+    dL/dweight (gx/gy stay bit-equal: rows are thread-independent). A tuned config
+    therefore goes through the same gates as any TOL change before shipping."""
+    raw = os.environ.get(env_var)
+    if not raw:
+        # UNSET path passes NO warps/stages kwargs at all: triton's defaults are
+        # version-dependent, and pinning "the default" explicitly would silently
+        # change the schedule on a triton upgrade. Unset == exactly the old launch.
+        return default_block, None, None
+    try:
+        block, warps, stages = (int(v) for v in raw.split(","))
+    except ValueError as err:
+        raise ValueError(
+            f"{env_var}='{raw}' -- expected 'BLOCK,num_warps,num_stages', "
+            f"e.g. '64,4,2'") from err
+    if block <= 0 or block & (block - 1) or warps not in (1, 2, 4, 8, 16) or stages < 1:
+        raise ValueError(
+            f"{env_var}='{raw}' -- BLOCK must be a positive power of two, "
+            f"num_warps one of 1/2/4/8/16, num_stages >= 1")
+    return block, warps, stages
+
+
+def _launch_kwargs(warps, stages):
+    kw = {}
+    if warps is not None:
+        kw["num_warps"] = warps
+    if stages is not None:
+        kw["num_stages"] = stages
+    return kw
+
+
+_FWD_BLOCK, _FWD_WARPS, _FWD_STAGES = _launch_cfg("CGENN_FLASH_FWD_CFG", 64, None, None)
+_BWD_BLOCK, _BWD_WARPS, _BWD_STAGES = _launch_cfg("CGENN_FLASH_BWD_CFG", 32, None, None)
 
 if _HAS_TRITON:
     # NAMING IS LOAD-BEARING (GPU round-trip #6): these must be bound under the wrapped
@@ -453,9 +501,9 @@ def fcgp(x: torch.Tensor, y: torch.Tensor, weight: torch.Tensor) -> torch.Tensor
         return _reference_forward(x, y, weight)
     x, y, weight = x.contiguous(), y.contiguous(), weight.contiguous()
     out = x.new_empty(B, M, NB)
-    BLOCK = 64
-    grid = (triton.cdiv(B, BLOCK), M)
-    wrap_triton(_fcgp_fwd_kernel)[grid](x, y, weight, out, B, N=N, M=M, BLOCK=BLOCK)
+    grid = (triton.cdiv(B, _FWD_BLOCK), M)
+    wrap_triton(_fcgp_fwd_kernel)[grid](x, y, weight, out, B, N=N, M=M, BLOCK=_FWD_BLOCK,
+                                        **_launch_kwargs(_FWD_WARPS, _FWD_STAGES))
     return out
 
 
@@ -477,11 +525,12 @@ def fcgp_bwd(x: torch.Tensor, y: torch.Tensor, weight: torch.Tensor,
     x, y, weight, go = (t.contiguous() for t in (x, y, weight, go))
     gx = torch.empty_like(x)
     gy = torch.empty_like(y)
-    BLOCK = 32
-    nblk = triton.cdiv(B, BLOCK)
+    nblk = triton.cdiv(B, _BWD_BLOCK)
     partial = x.new_empty(nblk, M, N, NP)
     grid = (nblk, N)
-    wrap_triton(_fcgp_bwd_kernel)[grid](x, y, weight, go, gx, gy, partial, B, N=N, M=M, BLOCK=BLOCK)
+    wrap_triton(_fcgp_bwd_kernel)[grid](x, y, weight, go, gx, gy, partial, B, N=N, M=M,
+                                        BLOCK=_BWD_BLOCK,
+                                        **_launch_kwargs(_BWD_WARPS, _BWD_STAGES))
     return [gx, gy, partial.sum(dim=0)]  # fixed-order stage-2: deterministic
 
 

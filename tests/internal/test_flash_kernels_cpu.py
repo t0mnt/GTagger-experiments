@@ -216,3 +216,33 @@ def test_inductor_closure_embedding_resolves_all_calls():
         assert not missing, (
             f"{kernel.fn.__name__}: emitted closure lacks defs for {sorted(missing)}; "
             f"defs present: {sorted(defs)}")
+
+
+def test_launch_cfg_env_hook(monkeypatch):
+    """The round-trip #8 tuning hook: unset env == exactly the old launch (no
+    warps/stages kwargs at all -- pinning triton's version-dependent defaults
+    explicitly would change the schedule on an upgrade); set env parses and
+    validates; garbage refuses loudly instead of silently launching a default."""
+    from experiments.baselines.cgenn import flash_kernels_p1m3 as fk
+
+    monkeypatch.delenv("CGENN_FLASH_FWD_CFG", raising=False)
+    assert fk._launch_cfg("CGENN_FLASH_FWD_CFG", 64, None, None) == (64, None, None)
+    assert fk._launch_kwargs(None, None) == {}
+
+    monkeypatch.setenv("CGENN_FLASH_FWD_CFG", "128,8,2")
+    assert fk._launch_cfg("CGENN_FLASH_FWD_CFG", 64, None, None) == (128, 8, 2)
+    assert fk._launch_kwargs(8, 2) == {"num_warps": 8, "num_stages": 2}
+
+    for bad in ("128", "0,4,2", "96,4,2", "64,3,2", "64,4,0", "a,b,c"):
+        monkeypatch.setenv("CGENN_FLASH_FWD_CFG", bad)
+        with pytest.raises(ValueError):
+            fk._launch_cfg("CGENN_FLASH_FWD_CFG", 64, None, None)
+
+
+def test_flash_tune_grid_and_parse():
+    """flash_tune must at least import and expose a sane sweep grid on CPU (the
+    sweep itself is CUDA-only and exits saying so)."""
+    import utils.flash_tune as ft
+    with pytest.raises(SystemExit) as exc:
+        ft.main([])
+    assert "CUDA" in str(exc.value)

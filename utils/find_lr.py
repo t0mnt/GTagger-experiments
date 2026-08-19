@@ -641,6 +641,16 @@ def find_max_batch_size(
                 f"{rates[best] / here:.2f}x the largest fit's {here:.0f}. "
                 f"The largest batch that FITS is not the fastest one here."
             )
+        elif best != last_ok:
+            # peak at a smaller batch but within the ~10% single-step noise band: say
+            # "plateaued", not "rising" -- the old wording claimed the largest fit was
+            # "the best measured" while the curve line right above it showed otherwise
+            # (caught on flash-compiled: 256:269 vs 512:266, round-trip #8).
+            LOGGER.info(
+                f"  throughput has plateaued within noise: peak {rates[best]:.0f} jets/s "
+                f"at batchsize {best}, largest fit {here:.0f} at {last_ok} -- treat the "
+                f"batch choice above {best} as a memory/schedule decision, not a speed one."
+            )
         else:
             LOGGER.info(
                 f"  throughput is still rising (or flat) at the largest fit -- "

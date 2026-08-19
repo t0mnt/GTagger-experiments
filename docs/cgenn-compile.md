@@ -4107,6 +4107,67 @@ success target ≥1.5x, else record why and close.
   SECOND-ORDER next to the 62% bwd-kernel target. Priority order:
   autotune, v3 regeneration (with input-sparsity as part of it),
   layer-0 specialization only if v3 does not already deliver it.*
+
+  *PRE-RATIFICATION AUDIT + TUNING SURFACE (2026-08-19, operator asked for
+  an audit before ratifying).* THREE QUESTIONS ANSWERED WITH MEASUREMENTS:
+  (1) "Can the CPU sync be sped up?" — NO ACTION: the 1272 ms/step
+  cudaStreamSynchronize in the #8 profile is the CPU waiting on 100-ms
+  kernels with wall == CUDA-busy (97%); there is nothing to overlap
+  (dataloader ~18 ms/step, already hidden). It shrinks exactly as the
+  kernels shrink. (2) "Mega-kernel cons?" — CONCRETE, not just small
+  gains: register pressure (the current bwd's ~50 accumulators at 104
+  ms/call is already a spill-risk profile; fusing MORE work into one
+  kernel worsens occupancy and can be net slower), recompute FLOPs in its
+  backward design, 3-5 round-trips of determinism-hard dev, monolith
+  maintenance — and the measured premise inversion: boundary costs are
+  small now (whole-graph compile is +13% over eager total), interior
+  costs dominate. (3) "Why the flash-compiled recession 256→512?" — it is
+  a PLATEAU, not a recession: the kernels saturate the GPU by bs256
+  (sizing probes 269@256 vs 266@512, within single-step noise); past
+  saturation batch buys memory risk, not speed. CONSEQUENCE FOR ADOPTION:
+  bs256 may be the better adoption batch (equal speed, half the memory,
+  nearer the known lr operating point) — the gate day times ONE
+  decision-grade flash-compiled@256 row to choose. AUDIT FINDINGS, both
+  fixed: (a) find_lr's curve message printed "still rising (or flat) ...
+  the best measured" when the peak sat at a SMALLER batch inside the 10%
+  noise band (flash's own curve triggered it); a three-way message now
+  says "plateaued within noise" with both numbers. (b) The flash launch
+  configs were hardcoded (fwd BLOCK=64, bwd BLOCK=32, triton-default
+  warps/stages); now env-overridable via CGENN_FLASH_FWD_CFG /
+  CGENN_FLASH_BWD_CFG = "BLOCK,warps,stages", parsed+validated at import
+  — UNSET passes NO warps/stages kwargs at all, so the default schedule
+  is untouched even across triton upgrades (a first draft pinned triton's
+  current defaults explicitly; caught in self-review as an
+  upgrade-behavior change). NEW TOOL utils/flash_tune.py: standalone
+  CUDA-event sweep of both kernels over (BLOCK ∈ 16..256, warps ∈ 2/4/8,
+  stages ∈ 1..4) at the racing shape, PARITY-GATED per candidate (fp64 vs
+  the shipped config, reject >1e-4 before timing), prints the winning
+  export lines + speedups. TOL boundary stated in-code: bwd BLOCK changes
+  the partial-gw buffer count → dL/dweight is TOL across configs (gx/gy
+  bit-equal, rows thread-independent) → a tuned config re-runs the gates
+  before shipping. Tests: 12/12 flash CPU suite (env-hook parse/refuse +
+  tune-script CPU exit). GATE DAY (post-ratification, one allocation,
+  ~1.5h):
+
+      set -e
+      # 1. flash arm battery + varying-shape soak at the adoption posture
+      CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_cgenn_compile.py -q -k flash
+      CGENN_SMOKE_OVERRIDES="model.net.gp_impl=flash" \
+      CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 CGENN_SMOKE_STEPS=100 \
+      python -m pytest tests/experiments/test_training_smoke.py -q -s -k "cgenn or CGENNLGATr"
+      # 2. kernel launch-config sweep (prints export lines to transcribe)
+      python utils/flash_tune.py
+      # 3. adoption-batch decision: one timed flash-compiled row at 256 (512 raced 383)
+      python utils/bperf.py --models tag_cgenn/flash --overrides training.batchsize=256
+      # 4. lr for the adopted batch (run at whichever of 256/512 step 3 picks)
+      python utils/find_lr.py -cn toptagging model=tag_cgenn model.net.gp_impl=flash \
+          training.batchsize=512 save=false
+
+  After the paste: transcribe the tuned exports into the sbatch
+  environment (and re-run step 1 under them if they moved), flip
+  tag_cgenn.yaml gp_impl + top_cgenn.yaml batchsize/lr, then the
+  accuracy revalidation run vs the sparse baseline. The 0.85-budget
+  sparse rider stays available if ratification wants it priced first.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs
