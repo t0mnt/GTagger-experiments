@@ -240,6 +240,18 @@ def test_overrides_reach_every_state_and_are_stamped_in_the_report(monkeypatch):
     assert "model.activation_memory_budget=0.7" in "".join(written), \
         "override missing from the report header"
 
+    # an overridden batchsize must feed the jets/s columns without re-adding the
+    # override (hydra rejects duplicates) -- round-trip #9's 256-row printed "-"
+    seen.clear(); written.clear()
+    monkeypatch.setattr("sys.argv", ["bperf.py", "--models", "tag_cgenn/einsum",
+                                     "--overrides", "training.batchsize=256"])
+    bperf.main()
+    assert all(o.count("training.batchsize=256") == 1 for o in seen), seen
+    report = "".join(written)
+    assert "| 256 |" in report and "| 256 |" in report, report
+    assert "| 256 " in report and report.count("256") >= 3, \
+        f"jets/s columns must be populated from the overridden batch; got:\n{report}"
+
     monkeypatch.setattr("sys.argv", ["bperf.py", "--models", "tag_cgenn/einsum",
                                      "--overrides", "x=1", "--apply"])
     with pytest.raises(SystemExit) as exc:

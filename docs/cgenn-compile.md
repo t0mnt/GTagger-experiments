@@ -3398,7 +3398,7 @@ adopts and time remains; the contraction arm alone targets the measured GP share
 
 ### THE FLASH-3 PLAN (2026-08-17) — fused CGL message kernel, parallel to the campaign
 
-**ADOPTION CRITERION MET (round-trip #8, 2026-08-19): flash-compiled 382-383 @512 beats sparse's best SAFE config (344-345 @64) by +11.0% on BOTH runs; the discriminator proved the shipped sparse bs128 is probe-UNSAFE (OOM on the worst-case batch), so every path forward is a recipe change and the lr-re-derivation cost is symmetric. AWAITING OPERATOR RATIFICATION (one honest residual: a mild 0.85-0.95 budget for sparse@128 is unswept; its ceiling 356 would put flash at +7.3%). The #8 profile: flash's OWN bwd kernel is 61.8% of its step — autotune + kingdon v3 are now first-order, the mega-kernel is deprioritized. Checklist in the #8 record** ← state marker,
+**GATE DAY GREEN + TUNE LANDSLIDE (round-trip #9, 2026-08-19): flash battery 6/6, flash-armed soak 3/3; flash_tune found fwd 2.06x (BLOCK=128,4,3 — parity BIT) and bwd 2.26x (BLOCK=64,2,1 — parity 2.5e-07, the predicted gw TOL) at the racing shape → estimated ~1.78x model-level, TO BE MEASURED in round-trip #10 (re-gate + re-race under the exports). Adoption batch = 512 (timed compiled@256 = 248 jets/s vs 383@512 — the earlier 'plateau' read came from worst-case sizing probes, corrected in the #9 record). lr: the 512 sweep fired the NO-RECIPE rule (steepest 5.92e-4 curve-pinned, no interior minimum) — two agreeing reruns required before transcription. #10 command in the record** ← state marker,
 same protocol as FLASH v2: operator drives step-by-step; every step ends
 CPU-verified or with exact pastable GPU commands. The campaign launches its
 non-CGENN rows NOW and is never blocked by this plan; the three CGENN rows go
@@ -4168,6 +4168,65 @@ success target ≥1.5x, else record why and close.
   tag_cgenn.yaml gp_impl + top_cgenn.yaml batchsize/lr, then the
   accuracy revalidation run vs the sparse baseline. The 0.85-budget
   sparse rider stays available if ratification wants it priced first.*
+
+  *ROUND-TRIP #9 MEASURED (2026-08-19, gate day): **all gates green, and
+  the tune is a landslide — fwd 2.06x, bwd 2.26x at the racing shape.**
+  (1) GATES: flash battery 6/6 on H100; flash-armed 100-step
+  varying-shape soak 3/3 with loss trajectories matching the sparse-era
+  recordings (0.6899→0.5758 / 0.7177→0.5215 / 0.6933→0.5837). (2)
+  FLASH_TUNE (B=3.5M edges, N=20, M=27): fwd 572.30 → 277.64 ms
+  (**2.06x**, BLOCK=128/warps=4/stages=3, parity 0.0 — BIT); bwd 856.89 →
+  378.34 ms (**2.26x**, BLOCK=64/warps=2/stages=1, parity 2.5e-07 — the
+  predicted gw TOL, fp32 reassociation scale). The register-pressure
+  hypothesis is CONFIRMED by the winner's shape: the bwd optimum HALVES
+  the warps (2 vs default 4 — more registers per thread for the ~50
+  accumulators) and stages are irrelevant on both kernels
+  (compute-bound, not latency-bound). Model-level estimate from the #8
+  shares: 0.618/2.26 + 0.180/2.06 + 0.202 ≈ 0.563 of the old step ≈
+  **1.78x ≈ 680 jets/s** — an ESTIMATE until #10 races it. (3) ADOPTION
+  BATCH = 512, decisively: the timed compiled@256 row read 0.97 it/s =
+  248 jets/s vs 383 @512. CORRECTION to the #9-prep advice: the
+  "saturation plateau" read (269@256 ≈ 266@512) came from the sizing
+  probes, which are +5sd WORST-CASE batches — the worst-case batch at
+  256 saturates the card, REAL batches at 256 do not (half the edges of
+  real-512). The instruments agree once per-batch content is accounted
+  (probe@256 ≈ 0.95 s/step ≈ the timed 1.03; the probe's @512 read was
+  worst-case-loaded). Decision-grade = timed rows, and 512 wins. Eager
+  is flat 335@256 vs 338@512 (it saturates earlier — different
+  bottleneck). Driver gap FIXED from this paste: a row whose batch came
+  from --overrides printed "-" for jets/s (the 256 row had to be
+  hand-multiplied); the overridden batch now feeds the jets/s columns
+  without re-adding the override (hydra rejects duplicates) — tested,
+  15/15. (4) LR AT 512 (flash): the sweep fired the NO-RECIPE rule —
+  steepest 5.92e-4 is curve-pinned (1.3-decade half-max span) AND there
+  is no interior loss minimum, so nothing on the curve is anchored; per
+  the shape-gated protocol the sweep RERUNS, twice-agreeing, before any
+  transcription. (Noted, not acted on: steepest 5.92e-4@512-flash sits
+  next to the sparse recipe's 5.57e-4@128; sqrt scaling would say
+  ~1.1e-3@512. The reruns decide, not an eyeball.) ROUND-TRIP #10
+  (~1.5h, one allocation) — re-gate and re-race UNDER THE TUNED CONFIGS,
+  then the lr reruns:
+
+      export CGENN_FLASH_FWD_CFG=128,4,3
+      export CGENN_FLASH_BWD_CFG=64,2,1
+      set -e
+      CGENN_COMPILE_GATES=1 python -m pytest tests/experiments/test_cgenn_compile.py -q -k flash
+      CGENN_SMOKE_OVERRIDES="model.net.gp_impl=flash" \
+      CGENN_COMPILE_GATES=1 CGENN_SMOKE_COMPILE=1 CGENN_SMOKE_STEPS=100 \
+      python -m pytest tests/experiments/test_training_smoke.py -q -s -k "cgenn or CGENNLGATr"
+      python utils/bperf.py --models tag_cgenn/sparse tag_cgenn/flash \
+          --find-batchsize --size-per-state
+      python utils/find_lr.py -cn toptagging model=tag_cgenn model.net.gp_impl=flash \
+          training.batchsize=512 save=false
+      python utils/find_lr.py -cn toptagging model=tag_cgenn model.net.gp_impl=flash \
+          training.batchsize=512 save=false
+
+  (The exports are inert for the sparse row — only the flash kernels
+  read them.) AFTER #10: if the race and gates hold, the tuned configs
+  become the IN-CODE defaults (with the measurement comment) so the
+  campaign does not depend on sbatch env plumbing; then the yaml flips
+  (gp_impl flash, batchsize 512, the twice-agreed lr) and the accuracy
+  revalidation run is the final gate before the CGENN rows launch.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs

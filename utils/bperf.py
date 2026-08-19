@@ -388,12 +388,20 @@ def main():
                 print(f"[bperf] {name} batchsize={sized['false']} (sized once eager, "
                       f"used for both states)", flush=True)
         else:
-            bs_by_state = {"false": None, "true": None}
+            # no sizing requested: jets/s can still be reported when the batch came in
+            # via --overrides (round-trip #9: the 256-vs-512 decision row printed "-"
+            # for both jets/s columns and the reader had to multiply by hand). The
+            # override is already IN row_base, so it is only read here, never re-added
+            # -- hydra rejects duplicate overrides.
+            ov_bs = next((int(o.split("=", 1)[1]) for o in row_base
+                          if o.startswith("training.batchsize=")), None)
+            bs_by_state = {"false": ov_bs, "true": ov_bs}
         pair = {}
         for state in ("false", "true"):
             print(f"[bperf] {name} {knob}={state} ...", flush=True)
             state_base = row_base + ([f"training.batchsize={bs_by_state[state]}"]
-                                     if bs_by_state[state] else [])
+                                     if (args.find_batchsize and bs_by_state[state])
+                                     else [])
             its, err, tail = run_once(state_base + [f"{knob}={state}"], args.iters,
                                       tuple(args.window), args.config_path, args.timeout,
                                       args.seed)
