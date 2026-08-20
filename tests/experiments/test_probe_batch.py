@@ -641,41 +641,75 @@ def test_draws_is_ignored_where_construction_works(monkeypatch):
     assert plain == with_draws
 
 
-def test_saturated_stream_batch_is_the_exact_worst_case():
-    """Streaming (weaver) probe hardening, 2026-08-19: the operator's mid-JC-run OOM
-    concern for the CGENN rows. P is FIXED by the weaver config and "real" means any
-    nonzero fourmomentum component, so filling every empty slot with the jet's leading
-    constituent manufactures the maximal batch any run can see -- strictly above the
-    map-style path's +5sd construction. This pins the mechanism: all slots real after
-    saturation, leading values used as fill, labels and non-(B,C,P) tensors untouched,
-    unrecognized batches refused (None), already-full batches passed through."""
+def test_stream_tail_batch_targets_the_realizable_tail():
+    """Streaming probe, reworked after external audit (2026-08-19): the first version
+    saturated EVERY jet to the padded ceiling -- physically unattainable (JetClass jets
+    average ~30-50 constituents against length=128) and it would have refused batch
+    sizes with clean measurements behind them. The rework targets the ORDER STATISTIC:
+    z = sqrt(2 ln N_run_batches) sd above the mean batch total, constructed by
+    saturating smallest-n jets first with a CYCLIC tile of their own constituents
+    (leader-fill degenerates every pairwise distance). This pins: targets met, not
+    grossly exceeded; ascending-n saturation; cyclic fill on empty slots only; at
+    least one saturated jet (the realizable P_max); refusal without stats or on
+    non-weaver batches."""
     import torch
-    from experiments.tagging.dataset import EPS
-    from utils.find_lr import _saturated_stream_batch
+    from utils.find_lr import _stream_jet_counts, _stream_tail_batch
 
-    B, P = 3, 6
+    class _Exp:  # only what _stream_tail_z touches; len() failure -> default z
+        train_loader = None
+        cfg = None
+
+    B, P = 8, 16
+    torch.manual_seed(0)
     vec = torch.zeros(B, 4, P)
+    ns = [3, 5, 5, 7, 9, 11, 12, 14]
+    for b, n in enumerate(ns):
+        vec[b, :, :n] = torch.randn(4, n) + 3.0
     feat = torch.zeros(B, 2, P)
-    for b, n in enumerate((2, 5, 1)):          # ragged real prefixes
-        vec[b, :, :n] = torch.randn(4, n) + 3.0  # comfortably above EPS
-        feat[b, :, :n] = torch.randn(2, n)
-    labels = {"_label_": torch.tensor([0, 1, 0])}
-    aux = torch.arange(B)                       # non-(B,C,P): must pass through
-    out = _saturated_stream_batch(({"pf_vectors": vec, "pf_features": feat,
-                                    "aux": aux}, labels))
+    feat[:] = vec[:, :2, :]
+    labels = {"_label_": torch.zeros(B)}
+    batch = ({"pf_vectors": vec, "pf_features": feat}, labels)
+
+    n = _stream_jet_counts(batch)
+    assert n.tolist() == ns
+
+    stats = {"P": P, "mu1": float(sum(ns)) / B, "sd1": 3.0,
+             "mu2": sum(x * x for x in ns) / B, "sd2": 40.0, "jets": 999}
+    out = _stream_tail_batch(_Exp(), batch, B, stats)
     assert out is not None
-    sat_vec = out[0]["pf_vectors"]
-    assert bool((sat_vec.abs() > EPS).any(dim=1).all()), "not every slot became real"
-    # fill is the LEADING constituent of the same jet, for every saturated key
-    for key, src in (("pf_vectors", vec), ("pf_features", feat)):
-        got = out[0][key]
-        assert torch.equal(got[2, :, 1:], src[2, :, :1].expand(-1, P - 1)), key
-        assert torch.equal(got[0, :, :2], src[0, :, :2]), f"{key}: real slots changed"
-    assert out[0]["aux"] is aux
+    n_out = _stream_jet_counts(out)
+
+    z = 5.25  # _Exp has no usable loader/cfg -> the documented default
+    t1 = B * stats["mu1"] + z * (B ** 0.5) * stats["sd1"]
+    t2 = B * stats["mu2"] + z * (B ** 0.5) * stats["sd2"]
+    s1 = float(n_out.sum())
+    s2 = float((n_out.to(torch.float64) ** 2).sum())
+    assert s1 >= t1 and s2 >= t2, (s1, t1, s2, t2)
+    sat = (n_out == P)
+    assert int(sat.sum()) >= 1
+    assert int(sat.sum()) < B, "reworked probe must NOT saturate every jet"
+    # ascending-n: the saturated set is a prefix of the n-ordering
+    order = sorted(range(B), key=lambda b: ns[b])
+    k = int(sat.sum())
+    assert set(torch.nonzero(sat).flatten().tolist()) == set(order[:k])
+    # overshoot bounded: one more saturated jet at most past the targets
+    prev = n_out.clone()
+    prev_idx = order[k - 1]
+    s1_prev = s1 - (P - ns[prev_idx])
+    s2_prev = s2 - (P * P - ns[prev_idx] ** 2)
+    assert k == 1 or s1_prev < t1 or s2_prev < t2, "saturated more jets than the targets need"
+
+    # cyclic tile on a saturated jet: slot p reads original slot p % n_orig
+    j = order[0]
+    nj = ns[j]
+    got = out[0]["pf_vectors"][j]
+    for pslot in range(nj, P):
+        assert torch.equal(got[:, pslot], vec[j, :, pslot % nj]), (j, pslot)
+    # unsaturated jets and real slots untouched
+    unsat = [b for b in range(B) if b not in order[:k]]
+    for b in unsat:
+        assert torch.equal(out[0]["pf_vectors"][b], vec[b])
     assert out[1] is labels
 
-    assert _saturated_stream_batch(("not", "weaver")) is None
-    assert _saturated_stream_batch(None) is None
-
-    full = ({"pf_vectors": torch.ones(2, 4, 3)}, labels)
-    assert _saturated_stream_batch(full) is full
+    assert _stream_tail_batch(_Exp(), ("not", "weaver"), B, stats) is None
+    assert _stream_tail_batch(_Exp(), batch, B, None) is None

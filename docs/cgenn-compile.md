@@ -4339,6 +4339,54 @@ success target ≥1.5x, else record why and close.
   tensor `__bool__` would have raised); mask-shaped (B,1,P) tensors
   saturate to all-ones under the leading-slot fill, which is exactly
   correct for downstream consumers.*
+
+  *EXTERNAL AUDIT RESPONSE (2026-08-19, five claims on the post-0e82e71
+  diff; verdicts checked against code and physics, not asserted).*
+  **Claim 1 (MAJOR) — ACCEPTED AND FIXED.** The saturated probe filled
+  EVERY jet to the padded length (128, verified in
+  miniweaver/configs_jetclass/default.yaml) — the representable ceiling,
+  which no real batch attains (JetClass jets average ~30-50
+  constituents; a 512-jet batch all at ≥128 has probability ~p^512 ≈ 0).
+  My "exact worst case" conflated representable-max with realizable-max;
+  the overshoot (~3x on Σn, ~8-10x on Σn²) would have cost 1-3
+  power-of-two rungs on every streaming row AND refused the shipped jc
+  GPS 512s that have clean measurements behind them. REWORK
+  (`_stream_tail_batch` + `_stream_jet_stats` + `_stream_tail_z`): the
+  target is the ORDER STATISTIC — z = sqrt(2 ln N_run_batches) sd above
+  the mean batch total (z computed from the run's own planned batch
+  count when derivable, default 5.25 ≈ the 1M-batch JetClass figure,
+  clamped [4,7]); jet-level n statistics sampled once from the loader
+  (~2048 jets, cached); per-rung analytic targets for BOTH Σn and Σn²;
+  constructed by saturating smallest-n jets first until both targets are
+  met (≥1 always — a single full jet IS realizable, truncation puts real
+  jets at 128). **Claim 2 (MODERATE) — ACCEPTED AND FIXED** in the same
+  rework: saturated slots are now TILE-FILLED cyclically with the jet's
+  own real constituents instead of a repeated leader (leader-fill made
+  every pairwise distance zero — degenerate kNN, delta_r2=0, ψ(0)=0);
+  and the jets/s curve now prints a NOT-DECISION-GRADE caveat on every
+  path (the #9 lesson, generalized: probe batches are tail-loaded by
+  design and the curve inverted the 256-vs-512 ranking that timed rows
+  settled at 248-vs-383). **Claim 3 (MINOR) — REJECTED on its premise,
+  with the code**: run.py's `_check_recipe_is_swept` opens
+  `root/training/{choice}.yaml` — the LEAF file, exactly what
+  `_recipe_still_has_markers` reads; "run.py reads the composed config"
+  is factually wrong. The underlying observation (a ??? in a PARENT is
+  invisible) is a SHARED limitation of both functions, benign today
+  (every marker lives in a leaf) and now stated in the helper's
+  docstring. **Claim 4 (MINOR) — ACCEPTED**: the bare except narrowed to
+  (ImportError, ValueError, KeyError, AttributeError, OSError,
+  StopIteration, TypeError) + a LOGGER.debug trace, so hydra moving its
+  semi-private surfaces degrades observably instead of silently.
+  **Claim 5 (MINOR) — RESOLVED BY THE CLAIM-1 REWORK**: bs_draws is live
+  again — the drawn batch is now the construction BASE (draws>1 picks a
+  heavier base), and the calibration sample is separate. Gates: the
+  probe suite's saturation test REPLACED by the realizable-tail test
+  (targets met, not grossly exceeded — at most one jet past the targets;
+  ascending-n saturation; cyclic fill on empty slots only; ≥1 saturated;
+  refusals) — 58/58; recipe guard 31/31. jc_cgenn.yaml's probe wording
+  updated. The audit's "correct, worth recording" list (launch-cfg
+  pinning, ov_bs no-duplicate guard, os import, flash scoped to the
+  baseline, jc_cgenn consistency) is confirmed and stands.*
   message pipeline (message_x = concat[x_i, x_j, edge_attr] → FCGP → gate;
   invariants; message_h scalar MLP) and freeze the fusion boundary — mv stream
   in-kernel, scalar stream in/out per step-0's table; verify edge_attr_x needs

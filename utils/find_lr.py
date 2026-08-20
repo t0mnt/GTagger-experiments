@@ -142,6 +142,7 @@ itself should use -- and verify the printed batchsize with a short real run befo
 long job.
 """
 
+import math
 import os
 import sys
 import time
@@ -387,44 +388,133 @@ def _worst_case_batch(exp, bs, lengths, sigmas=PROBE_SIGMAS):
         return None
 
 
-def _saturated_stream_batch(batch):
-    """The EXACT worst-case batch for weaver-style dense layouts, synthesized in place
-    of a statistical one (2026-08-19, jc campaign prep: the operator's mid-run-OOM
-    concern for the CGENN rows on JetClass).
-
-    Streaming datasets defeat `_worst_case_indices` -- you cannot ask the iterator for
-    heavy jets -- but the weaver layout makes something STRONGER constructible from any
-    single drawn batch: tensors are dense `(B, C, P)` with P FIXED by the data config,
-    and `dense_to_sparse_jet` decides "real" by `abs(fourmomenta) > EPS` per slot. So
-    the maximal batch any run can ever see is "every slot of every jet real", and that
-    is manufactured by copying each jet's LEADING constituent (slot 0 -- weaver orders
-    by pt, so it is always real) into the jet's empty slots. This saturates sum(n),
-    sum(n^2) and P_max simultaneously at their absolute ceilings -- strictly above the
-    +5sd construction the map-style path uses, with physical-scale values (no inf/nan
-    risk in the embedding, unlike filling with a constant).
-
-    Applies only to the recognized weaver tuple `(inputs_dict, labels_dict, ...)` with
-    a `pf_vectors` key; returns None for anything else so the caller's drawn-batch
-    fallback stands. The labels dict is reused as-is (worst case is about geometry,
-    not targets)."""
+def _stream_jet_counts(batch):
+    """Per-jet real-constituent counts from a weaver tuple, or None if not weaver."""
     try:
-        inputs = batch[0]
-        vec = inputs["pf_vectors"]
+        vec = batch[0]["pf_vectors"]
     except (TypeError, KeyError, IndexError):
         return None
     from experiments.tagging.embedding import EPS
-    slot_real = (vec.abs() > EPS).any(dim=1)  # (B, P)
-    fill = ~slot_real
-    if not bool(fill.any()):
-        return batch  # already maximal
-    sat_inputs = {}
+    return (vec.abs() > EPS).any(dim=1).sum(dim=1)  # (B,)
+
+
+def _stream_jet_stats(exp, min_jets=2048):
+    """Jet-level n statistics (mean/std of n and of n^2, plus the padded P), sampled
+    from the streaming loader once and cached on `exp`. Batch-size independent, so one
+    calibration serves every rung of the doubling search. None when not weaver."""
+    cached = getattr(exp, "_stream_jet_stats", None)
+    if cached is not None:
+        return cached
+    counts = []
+    try:
+        it = iter(exp.train_loader)
+        P = None
+        while sum(c.numel() for c in counts) < min_jets:
+            batch = next(it, None)
+            if batch is None:
+                break
+            n = _stream_jet_counts(batch)
+            if n is None:
+                return None
+            P = int(batch[0]["pf_vectors"].shape[-1])
+            counts.append(n.to(torch.float64))
+    except Exception as err:
+        LOGGER.warning(f"  streaming calibration failed ({err}); tail probe unavailable.")
+        return None
+    if not counts or P is None:
+        return None
+    n = torch.cat(counts)
+    stats = {"P": P, "mu1": float(n.mean()), "sd1": float(n.std()),
+             "mu2": float((n**2).mean()), "sd2": float((n**2).std()),
+             "jets": int(n.numel())}
+    try:
+        exp._stream_jet_stats = stats
+    except AttributeError:
+        pass
+    return stats
+
+
+def _stream_tail_batch(exp, batch, bs, stats):
+    """A REALIZABLE-tail probe batch for weaver-style streaming layouts (2026-08-19,
+    reworked same-day after external audit: the first version saturated EVERY jet to
+    the padded P -- the representable ceiling, which no real batch attains; JetClass
+    jets average ~30-50 constituents against length=128, so that probe overshot
+    sum(n) ~3x and sum(n^2) ~8-10x and would have REFUSED batch sizes with clean
+    measurements behind them, e.g. the shipped jc GPS 512s).
+
+    THE TARGET IS THE ORDER STATISTIC, NOT THE CEILING: over N batches, the largest
+    batch total a run expects sits ~z sd above the mean with z = sqrt(2 ln N)
+    (Gaussian tail of a sum of bs i.i.d. jet sizes; ~5.2 for the ~1M-batch JetClass
+    runs). Per-rung targets, from the cached jet-level stats:
+
+        t1 = bs*mu(n)   + z*sqrt(bs)*sd(n)      (sum n:   node features, kNN edges)
+        t2 = bs*mu(n^2) + z*sqrt(bs)*sd(n^2)    (sum n^2: fully-connected edges)
+
+    CONSTRUCTION: take the drawn batch and saturate jets to the padded P -- smallest-n
+    first, since each such jet adds the most to both totals -- until BOTH targets are
+    met (at least one jet always saturates: a single P-constituent jet IS realizable,
+    truncation puts real jets exactly there). Saturated slots are TILE-FILLED with the
+    jet's own real constituents cyclically, not a repeated leader: a leader-fill makes
+    every pairwise distance zero, degenerating the kNN graph, delta_r2 and
+    normsq4(x_diff) into exactly the branch pattern the timing curve should not be
+    measured on. Tiling still duplicates points (memory-exact, timing-approximate),
+    which is one of the two reasons the printed jets/s curve carries a
+    not-decision-grade caveat.
+
+    Returns the (possibly identical) batch; None when the layout is not weaver."""
+    n = _stream_jet_counts(batch)
+    if n is None or stats is None:
+        return None
+    P = stats["P"]
+    z = _stream_tail_z(exp)
+    bs_eff = int(n.numel())  # the drawn batch's own size (last batch may be short)
+    t1 = bs * stats["mu1"] + z * (bs ** 0.5) * stats["sd1"]
+    t2 = bs * stats["mu2"] + z * (bs ** 0.5) * stats["sd2"]
+
+    order = torch.argsort(n)  # ascending n: cheapest jets buy the most total
+    s1, s2 = float(n.sum()), float((n.to(torch.float64) ** 2).sum())
+    saturate = []
+    for j in order.tolist():
+        if not saturate:  # always at least one: pins the realizable P_max
+            pass
+        elif s1 >= t1 and s2 >= t2:
+            break
+        nj = float(n[j])
+        s1 += P - nj
+        s2 += P * P - nj * nj
+        saturate.append(j)
+    if bs_eff and not saturate:
+        saturate = [int(order[0])]
+
+    inputs = batch[0]
+    vec = inputs["pf_vectors"]
+    sat = torch.zeros(bs_eff, dtype=torch.bool)
+    sat[saturate] = True
+    # cyclic tile: slot p of a saturated jet with nj real constituents reads slot p % nj
+    slots = torch.arange(P)
+    src_idx = slots[None, :] % n.clamp(min=1)[:, None]           # (B, P)
+    fill_mask = sat[:, None] & (slots[None, :] >= n[:, None])    # only the empty slots
+    out_inputs = {}
     for key, t in inputs.items():
         if torch.is_tensor(t) and t.dim() == 3 and t.shape[-1] == vec.shape[-1]:
-            lead = t[:, :, :1].expand_as(t)  # each jet's leading constituent, broadcast
-            sat_inputs[key] = torch.where(fill[:, None, :].expand_as(t), lead, t)
+            tiled = torch.gather(t, 2, src_idx[:, None, :].expand_as(t))
+            out_inputs[key] = torch.where(fill_mask[:, None, :].expand_as(t), tiled, t)
         else:
-            sat_inputs[key] = t
-    return (sat_inputs, *batch[1:])
+            out_inputs[key] = t
+    return (out_inputs, *batch[1:])
+
+
+def _stream_tail_z(exp, default=5.25, lo=4.0, hi=7.0):
+    """z = sqrt(2 ln N) for the run this sizing protects: N = batches/epoch at the
+    current loader's batch size times the configured epochs. Falls back to 5.25
+    (the ~1M-batch JetClass figure) when either number is unavailable."""
+    try:
+        n_batches = len(exp.train_loader) * int(exp.cfg.training.epochs)
+        if n_batches <= 1:
+            return default
+        return min(hi, max(lo, float((2.0 * math.log(n_batches)) ** 0.5)))
+    except Exception:
+        return default
 
 
 def _heaviest_drawn_batch(exp, draws):
@@ -560,15 +650,19 @@ def find_max_batch_size(
                     drawn = _heaviest_drawn_batch(exp, draws)
                     if drawn is None:
                         drawn = next(iter(exp.train_loader))
-                    saturated = _saturated_stream_batch(drawn)
-                    if saturated is not None:
-                        if not state.get("sat_logged"):
+                    stream_stats = _stream_jet_stats(exp)
+                    tail = _stream_tail_batch(exp, drawn, bs, stream_stats)
+                    if tail is not None:
+                        if not state.get("tail_logged"):
+                            z = _stream_tail_z(exp)
                             LOGGER.info(
-                                "  probe batch: SATURATED to the padded maximum (every "
-                                "slot of every jet real) -- the exact worst case for "
-                                "this dense streaming layout, not a drawn sample.")
-                            state["sat_logged"] = True
-                        return saturated
+                                f"  probe batch: CONSTRUCTED at the z={z:.2f} realizable "
+                                f"tail of the batch-total distribution (jet stats from "
+                                f"{stream_stats['jets']} sampled jets; z = sqrt(2 ln "
+                                f"N_run_batches)) -- the worst batch the run expects to "
+                                f"see once, NOT the padded ceiling no real batch attains.")
+                            state["tail_logged"] = True
+                        return tail
                     batch = drawn
                 if batch is None:
                     if lengths is not None and not state["warned"]:
@@ -682,6 +776,13 @@ def find_max_batch_size(
     if len(rates) >= 2:
         best = max(rates, key=rates.get)
         LOGGER.info(f"  jets/s by batchsize: " + "  ".join(f"{bs}:{r:.0f}" for bs, r in rates.items()))
+        # every probe batch is deliberately tail-loaded (and the streaming construction
+        # tile-duplicates constituents), so these single-step numbers under-read real
+        # throughput and can even invert the batch ranking -- round-trip #9 measured
+        # 248 vs 383 jets/s where this curve suggested a 256-vs-512 plateau. Decide
+        # batch/compile questions from timed rows (bperf), never from this curve.
+        LOGGER.info("  (tail-loaded single-step probes -- NOT decision-grade throughput; "
+                    "use timed rows for speed comparisons)")
         # `chosen` can be absent from `rates` only if its timing came back non-finite; say
         # so rather than half-guard it, since this runs after an expensive search.
         here = rates.get(last_ok)

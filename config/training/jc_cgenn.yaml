@@ -11,10 +11,11 @@
 # dataset's width.
 #
 # MEMORY: the carried 512 was probe-safe on top-tagging (75.6 GB worst case at
-# P_max=160). JetClass pads to a FIXED P per the weaver config and its jets are
-# wider-featured; before queueing the row, verify once with the SATURATED streaming
-# probe (find_lr's exact-worst-case fill for weaver layouts, added alongside this
-# recipe):
+# P_max=160). JetClass pads to length=128 and its jets are wider-featured; before
+# queueing the row, verify once with the CALIBRATED-TAIL streaming probe (find_lr
+# constructs the z = sqrt(2 ln N_run_batches) tail of the batch-total distribution
+# from sampled jet stats -- the worst batch the run expects to see once, NOT the
+# padded ceiling no real batch attains; reworked 2026-08-19 after external audit):
 #   python utils/find_bs.py --task jctagging --models cgenn
 # and transcribe here if it reports < 512.
 defaults:

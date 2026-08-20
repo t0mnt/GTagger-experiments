@@ -22,6 +22,9 @@ def _recipe_still_has_markers():
     one only decides whether the UNSWEPT warning may fire, because value-based detection
     cannot distinguish "unfilled, silently inherited 512/1e-3" from "filled, and the
     measured/decided values happen to BE 512/1e-3" (top_cgenn since the flash adoption).
+    Reads the LEAF recipe file -- the same file run.py's refusal reads (both resolve
+    `root/training/{choice}.yaml`); a `???` in a PARENT config would be invisible to
+    BOTH, a shared limitation that is benign today because every marker lives in a leaf.
     Returns True -- keep warning -- whenever the file cannot be resolved (bperf and the
     tests compose without hydra.main), which preserves the old behavior exactly there."""
     try:
@@ -32,7 +35,14 @@ def _recipe_still_has_markers():
         root = next(s.path for s in hc.runtime.config_sources if s.provider == "main")
         with open(os.path.join(root, "training", f"{choice}.yaml")) as fh:
             return any("???" in line.split("#", 1)[0] for line in fh)
-    except Exception:
+    except (ImportError, ValueError, KeyError, AttributeError, OSError,
+            StopIteration, TypeError) as err:
+        # narrowed from a bare Exception (external audit): the fallback is
+        # byte-identical to the pre-change behavior, so a silent decay -- hydra
+        # moving its semi-private runtime surfaces -- could never be observed.
+        # The debug line leaves the trace without spamming composed-config runs.
+        LOGGER.debug(f"recipe-marker check unavailable ({type(err).__name__}: {err}); "
+                     "keeping the conservative warning")
         return True
 
 
