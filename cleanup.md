@@ -173,6 +173,10 @@ there is no longer any ordering constraint on the fixture deletion.
 - `tests/fixtures/*/dynamo_explain*.txt` — large committed explain reports; every one is
   rewritten by its BREAKS gate on each gated run, so they are convenience diffs, not
   sources of truth. Go with the gate files below.
+- `docs/pytorch-issues.md` (added 2026-08-19) — two upstream bug drafts formatted for the
+  torch.compile issue template. Delete AFTER both issues are filed on pytorch/pytorch;
+  the filed issue URLs supersede the drafts (drop the URLs into docs/cgenn-compile.md's
+  ledger-item-8 line in the same commit).
 
 ## DELETE: port instruments, after step 1–3 above
 
@@ -313,3 +317,41 @@ check it the same way — both steps — before trusting the wipe.
 - ~~15 known pelican-FLOPs failures~~ RESOLVED 2026-08-09: a misdiagnosed harness gap
   (unforced nested compile knobs), not an environment class. Expected suite state is now
   zero failures.
+
+---
+
+## STATUS ADDENDUM 2026-08-19 (the CGENN performance program postdates this file)
+
+This file was written for the lgatr-2.0/compile branch and is PARTIALLY STALE. What the
+question "can I delete cleanup.md after the CGENN revalidation passes?" actually turns
+on, item by item:
+
+**Deletable at revalidation** (nothing else gates them):
+- `utils/vram_compile_matrix.py` + `docs/oscar-vram.sbatch` (tables long since pasted).
+- `tests/experiments/test_lgatr_v2_inventory.py` (2.0 is the only environment).
+- `docs/pytorch-issues.md` — after BOTH issues are filed (URLs into the ledger line).
+- This file itself — after the two rulings below are made, since they live nowhere else.
+
+**Needs a RULING before this file can go:**
+- `utils/bperf.py`: the "one-shot instrument, delete after step 6" entry is OBSOLETE.
+  bperf has since grown --size-per-state, --overrides, jets/s columns and the refusal
+  guards, and it decided the flash adoption (round-trips #6-#10). RECOMMENDATION:
+  reclassify KEEP (standing instrument); if the operator still wants it gone
+  post-campaign, that is a new decision, not this file's old one.
+- `tests/fixtures/lgatr144/` + the transplant half of test_lgatr_migration_parity.py:
+  conditioned on "Gates G/H closed on the cluster" -- confirm that status explicitly;
+  revalidation says nothing about it.
+
+**NOT unlocked by revalidation, deliberately:**
+- The COMPRESS items (docs/lgatr2-migration.md, docs/cgenn-compile.md): post-CAMPAIGN,
+  after the paper's methods section is drafted -- cgenn-compile.md is still the ACTIVE
+  decision log and the citation target for the shipped yamls.
+- The CURRENT CGENN instruments are NOT in this file's delete lists and revalidation
+  does not make them deletable: tests/experiments/test_sorted_gather.py,
+  tests/internal/test_hoist_message.py, tests/internal/test_flash_kernels_cpu.py and
+  tests/experiments/test_sparse_gp.py all guard SHIPPED hand-written backwards
+  (KEEP-class, same argument as test_sparse_gp above); tests/experiments/
+  test_cgenn_compile.py + its fixtures + the hybrid BIT pins are the re-verification
+  instrument for any CGENN-file change during the campaign -- earliest sane deletion is
+  after the CGENN campaign rows finish, using the same carve-out + wipe-rehearsal
+  procedure this file documents for the first wipe.
