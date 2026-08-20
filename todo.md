@@ -835,6 +835,37 @@ the split is not by importance, it is by whether the change can touch a number.
       inert whenever `gamma_max is None` (`framesnet/equi_frames.py:550-551` returns early),
       and one sentence on the private lgatr import above.
 
+## 4f. Potential — considered, not planned, open to a fork
+
+Items that are understood well enough to scope but are deliberately NOT on the campaign's
+path. Listed so a reader (or a fork) knows they were weighed rather than missed.
+
+- [ ] **Implement sparse jet representations** (ragged/flat `(nnz, ...)` with batch indices,
+      as `heidelberg-hepml/tagging-guide` does) **and remove the data-layout note from
+      `docs/diffs.md`.** Today every model dense-batches through `to_dense_batch`, which pads
+      to the LARGEST jet in each batch -- so the padded width `P` varies batch to batch and
+      every compiled model runs `dynamic=True`. With a mean of ~49 constituents against a 160
+      dataset max, roughly 70% of the dense tensor is padding.
+      Where it would pay: the hybrids' attention half costs `B*P^2` regardless of real
+      content, and block-diagonal attention over real tokens costs `sum n^2` instead --
+      `E[n^2]/P^2 ~= 2800/25600 ~= 11%`. The node-wise terms scale by `E[n]/P = 49/160 ~= 31%`.
+      Rough total for PlainGraphGPS: ~306M FLOPs/jet -> ~100M, i.e. **~3x** (realistically
+      1.5-2x in wall time, since padded attention is a dense GEMM at higher efficiency than a
+      varlen one). `lgatr[xformers-attention]` already ships `BlockDiagonalMask`, so the
+      mechanism exists rather than needing to be built.
+      Why it is not planned: it is a large rewrite touching every model forward and every
+      dense-mask interface the compile program spent months hardening, and its
+      data-dependent `nnz` makes CUDA graphs permanently uncapturable -- the mutually
+      exclusive alternative being a fixed `max_num_nodes` (static shapes, full inductor
+      specialization, one autotune key, capturable graphs, at the cost of worst-case padding
+      every batch -- cheap at batchsize 512, expensive at small batch). NEITHER has been
+      measured here; `docs/diffs.md` discloses that this fork commits to neither, and that
+      note comes out if this lands.
+      Related check worth doing either way: does the table's FLOPs/jet column count the
+      padding? If the counter runs the dense path, the reported figures are ~3x the
+      arithmetic the model actually needs, which changes every efficiency claim in the table
+      independently of whether the ragged path is ever built.
+
 ## 5. Paper release — branding / identity (only the maintainer has these)
 
 Critical (still point at the upstream LLoCa project):
