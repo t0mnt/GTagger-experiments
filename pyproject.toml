@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gtagger-experiments"
-#1.1 once lloca 2.0 comes out, 1.2 once paper drops (all of todo done, deforked, and all the reproduce.md's and readme's and etc changed)
+#1.1 once lloca 2.0 & kingdon 3.0 come out and get implemented, 1.2 once paper drops (all of todo done, deforked, and all the reproduce.md's and readme's and etc changed)
 version = "1.0.0"
 requires-python = ">=3.10"
 
