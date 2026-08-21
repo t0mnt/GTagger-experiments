@@ -53,7 +53,10 @@ net:
 
   # static kNN graph (shared by every layer's local CGENN branch)
   k: 16
-  knn_metric: minkowski         # 'minkowski' (Lorentz-invariant) or 'deltaR' (eta-phi L2)
+  knn_metric: deltaR            # 'deltaR' (eta-phi L2) or 'minkowski' (4-momenta).
+                                # deltaR pinned 2026-08-21 to match the other six
+                                # hybrids (see the GraphTrans twin for the evidence);
+                                # the BIT pins replay minkowski explicitly.
 
   # per-layer CGENN message passing
   cgenn_aggregation: mean

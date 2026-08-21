@@ -48,7 +48,12 @@ net:
   beam_spurion: xyplane
   add_time_spurion: true
   beam_mirror: true
-  knn_metric: minkowski
+  knn_metric: deltaR            # 'deltaR' (eta-phi L2) or 'minkowski' (4-momenta).
+                                # deltaR pinned 2026-08-21 to match the other six
+                                # hybrids: the A/B put it ahead on 5 of 7 models and
+                                # the trained LN-hybrid rows read 0.9412 deltaR vs
+                                # 0.9398 minkowski (~7sd on their seed spread). The
+                                # BIT pins replay minkowski explicitly, so they stand.
 
 defaults:
   - framesnet: identity

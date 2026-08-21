@@ -19,11 +19,16 @@ defaults:
 # recipe, and 1e-3 is trained-and-validated on PNPT (0.9414 vs weaver 0.9417, inside seed
 # spread). The finder stays as the CONFIRMATION tool; batch size cap stays <=512 (update
 # starvation under the epoch budget).
-# 1024 <- the flash-arm worst-case probe (bperf --find-batchsize, H100 2026-08-21):
-# compiled flash fits 1024 (sparse-era value was 512). lr stays 1e-3: the measured
-# ~2x-flat basin argument covers a 2x batch move (same claim the GPS 512->256
-# reduction used, opposite direction). Revert to 512 together with gp_impl: sparse.
-batchsize: 1024
+# 512, NOT the 1024 the flash probe fits (bperf --find-batchsize, H100 2026-08-21).
+# The probe answers "what fits", not "what to train at": the table-wide cap above is
+# <=512 precisely because of update starvation under the EPOCH budget, and 1024 would
+# give this row 23660 optimizer steps against every other hybrid's 47320 -- half the
+# updates, same data exposure. That asymmetry is the thing the cap exists to prevent,
+# and it is not worth the ~6-12% throughput the larger batch buys (flash-compiled
+# measured 849 jets/s @1024; @512 is the same basin, one rung down). lr 1e-3 is the
+# TABLE-WIDE value and is validated AT 512, so this pairing needs no re-derivation --
+# which 1024 would have (sqrt-map -> ~1.4e-3, unswept). Operator decision 2026-08-21.
+batchsize: 512
 lr: 1e-3
 
 # weight_decay: 0.01          # AdamW: tune on val {0, 0.01, 0.05, 0.1}
