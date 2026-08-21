@@ -4329,7 +4329,16 @@ success target ≥1.5x, else record why and close.
           tag_LorentzNetLGATrSlimGraphGPS --find-batchsize --size-per-state
       # 3. jc CGENN memory verification under the SATURATED probe (pre-queue)
       python utils/find_bs.py --task jctagging --models cgenn
-      # 4. AFTER #1 reads clean: the hybrids' flash A/B (one row each)
+      # 4. the hybrids' flash A/B (one row each). RESEQUENCED (operator ruling
+      #    2026-08-21): the MEASUREMENT is independent of #1 -- run it in the same
+      #    block; only the yaml FLIP waits (on this row clearing the bar AND #1
+      #    reading clean, since flash is TOL-class arithmetic and the revalidation
+      #    is the kernel family's one train-to-convergence proof). The memory axis
+      #    is the point for the hybrids: GPS is the memory-starved row (bs 256 cap,
+      #    91.9 GB OOM at 512 under compile) and flash retains less -- if the
+      #    per-state sizing lifts GPS back toward 512, the win compounds with the
+      #    family's validated 512/1e-3 operating point. Re-finding bs is not a cost:
+      #    --find-batchsize --size-per-state IS the instrument, minutes on the GPU.
       python utils/bperf.py --models CGENNLGATrGraphTrans CGENNLGATrGraphGPS \
           --find-batchsize --size-per-state --overrides model.net.gp_impl=flash
 
