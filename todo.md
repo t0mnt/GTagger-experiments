@@ -382,6 +382,21 @@ roadmap in its comment: 1.1 once lloca 2.0 lands, 1.2 at paper (todo done, defor
 reproduce/readme refreshed). (History: 0.9.0 was this fork's pre-release marker; the
 1.1.0 before that was inherited from upstream lloca-experiments and described that
 project, not this fork.)
+- [ ] **Derive `in_channels` instead of hardcoding 7** (`experiments/tagging/experiment.py:155`).
+      Today: `self.cfg.model.in_channels = 7 + self.extra_scalars`. Twelve lines below,
+      the equivectors branch computes the SAME quantity properly via
+      `get_num_tagging_features(self.cfg.data.tagging_features)` (embedding.py:308 --
+      all=7, zinvariant=5, so3invariant=2, None=0). So `data.tagging_features` anything
+      but `all` sets in_channels=7 against a dataloader emitting fewer: shape error at
+      the first linear, today, with no LLoCa involved. Invisible only because `all` is
+      the default and nothing exercises the others. One line, same value (7) under every
+      config ever run, so no rows change and no fixtures move:
+          in_channels = get_num_tagging_features(cfg.data.tagging_features) + extra_scalars
+      DO THIS WITH THE LLOCA 2.0 BUMP: it is also the thing that makes the upstream
+      `auxiliary_scalars="all" if is_lloca else ...` branch unnecessary here. LLoCa
+      forces "all" regardless of the data config; we are already at `all`, so toggling
+      LLoCa on is a no-op for in_channels TODAY -- but only by coincidence, and this
+      line is what makes that structural instead of lucky.
 - [ ] **Tag the pre-merge state before starting the campaign** (`git tag pre-lgatr2 &&
       git push --tags`). The campaign straddles the lgatr 1.x -> 2.0 boundary, so the
       top-tagging rows and the post-merge rows come from different code; a tag names the
