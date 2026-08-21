@@ -62,7 +62,15 @@ net:
 
   # static kNN graph + per-layer LorentzNet edge conv
   knn_k: 16
-  knn_metric: minkowski         # 'minkowski' (Lorentz-invariant) or 'deltaR' (eta-phi L2)
+  # deltaR, matching what the TRAINED table rows actually ran: the jc row's saved
+  # run config (runs/jc_debug/LorentzNetLGATrSlimGraphTrans_8864/config_0.yaml,
+  # verified 2026-08-21) says deltaR while this yaml said minkowski -- a rerun
+  # would have silently changed the graph. deltaR is also every sibling model's
+  # default (particlenet/pnt/plaingraphgps/pnpart-gps). minkowski remains the
+  # documented Lorentz-invariant alternative; the metric x k sweep is an open
+  # ablations item (docs/ablations.md). If re-running a TOP row, check its run
+  # dir's config the same way before assuming either value.
+  knn_metric: deltaR
   c_weight: 5e-3
   use_phi_m: true               # LorentzNet per-edge gate
   use_node_attr: true           # official LorentzNet: raw input scalars re-injected into phi_h every layer
