@@ -72,12 +72,16 @@ QKV_BIAS_RE = re.compile(r"\.attention\.(qkv_module|linear_in)\..*bias$")
 REDUCED = {
     "tag_lgatr": ["model=tag_lgatr"],
     "tag_slim": ["model=tag_slim", "model.net.hidden_v_channels=6"],
-    "tag_CGENNLGATrGraphTrans": ["model=tag_CGENNLGATrGraphTrans"],
-    "tag_CGENNLGATrGraphGPS": ["model=tag_CGENNLGATrGraphGPS"],
-    # knn_metric pinned to the RECORDED posture: the 1.4.4 fixtures (and their config
-    # snapshots) were taken with minkowski; the production+quick yamls moved to deltaR
-    # on 2026-08-21 (matching the trained table rows). The lgatr-transplant parity these
-    # gates check is orthogonal to the graph metric, so the fixtures pin their own.
+    # knn_metric pinned to the RECORDED posture on all four kNN hybrids: the 1.4.4
+    # fixtures (and their config snapshots) were taken with minkowski; the
+    # production+quick yamls moved to deltaR on 2026-08-21 (matching the trained table
+    # rows) -- the LN pair first, the CGENN pair with the flash adoption. The
+    # lgatr-transplant parity these gates check is orthogonal to the graph metric, so
+    # the fixtures pin their own.
+    "tag_CGENNLGATrGraphTrans": [
+        "model=tag_CGENNLGATrGraphTrans", "model.net.knn_metric=minkowski"],
+    "tag_CGENNLGATrGraphGPS": [
+        "model=tag_CGENNLGATrGraphGPS", "model.net.knn_metric=minkowski"],
     "tag_LorentzNetLGATrSlimGraphTrans": [
         "model=tag_LorentzNetLGATrSlimGraphTrans", "model.net.hidden_v_channels=6",
         "model.net.knn_metric=minkowski"],

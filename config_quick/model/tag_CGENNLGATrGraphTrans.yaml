@@ -38,7 +38,7 @@ net:
   beam_spurion: xyplane
   add_time_spurion: true
   beam_mirror: true
-  knn_metric: minkowski
+  knn_metric: deltaR            # follows production (pinned to the trained rows 2026-08-21)
 
 defaults:
   - framesnet: identity
