@@ -381,7 +381,8 @@ by operator decision (BIT-pinned, no knob).
 roadmap in its comment: 1.1 once lloca 2.0 lands, 1.2 at paper (todo done, deforked,
 reproduce/readme refreshed). (History: 0.9.0 was this fork's pre-release marker; the
 1.1.0 before that was inherited from upstream lloca-experiments and described that
-project, not this fork.)
+project, not this fork.) 
+Remember to make release or tag (likely latter) once done and dusted and paper attached
 - [ ] **Derive `in_channels` instead of hardcoding 7** (`experiments/tagging/experiment.py:155`).
       Today: `self.cfg.model.in_channels = 7 + self.extra_scalars`. Twelve lines below,
       the equivectors branch computes the SAME quantity properly via
