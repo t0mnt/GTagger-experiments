@@ -1172,9 +1172,25 @@ class CGENNLGATrGraphTransWrapper(nn.Module):
         px, py, pz = fourmomenta[:, 1], fourmomenta[:, 2], fourmomenta[:, 3]  # (E, px, py, pz)
         pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
         points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
-        fourmomenta, mask = to_dense_batch(fourmomenta, batch)
-        scalars, _ = to_dense_batch(scalars, batch)
-        points, _ = to_dense_batch(points, batch)
+        # COMPILE TWIN: dense P padded UP TO A MULTIPLE OF 8 when the net is
+        # compiled, exact batch max when eager. Under torch.compile, inductor
+        # materializes the boolean attn mask into an additive bias whose head
+        # stride is P*P, and the mem-efficient SDPA BACKWARD requires that
+        # stride 4-aligned -- an odd batch-max P (e.g. 117 at bs 512) dies with
+        # "RuntimeError: attn_bias is not correctly aligned (strideH)" (H100,
+        # 2026-08-21 flash A/B, CGENN-GPS row). The <=7 extra slots are
+        # mask-inert (padded keys contribute exact zeros) but re-chunk CPU SIMD
+        # reductions at last-ulp scale, so the EAGER path keeps the exact max
+        # and the hybrid BIT pins stand unchanged; compiled-vs-eager parity was
+        # TOL-class already. Computed eager-side (this wrapper stays eager), so
+        # the int() is not a graph break. Same hazard class applies to every
+        # dense-attention wrapper here if it ever bites.
+        pmax = int(torch.bincount(batch).max())
+        if getattr(self.net, "_compiled_call_impl", None) is not None:
+            pmax = -(-pmax // 8) * 8
+        fourmomenta, mask = to_dense_batch(fourmomenta, batch, max_num_nodes=pmax)
+        scalars, _ = to_dense_batch(scalars, batch, max_num_nodes=pmax)
+        points, _ = to_dense_batch(points, batch, max_num_nodes=pmax)
         # hoist the static kNN edges out of the (possibly compiled) net: identical values
         # in identical order eager -- the edges depend only on these inputs
         edges = self.net.build_edges(fourmomenta, mask, points)
@@ -1247,9 +1263,25 @@ class CGENNLGATrGraphGPSWrapper(nn.Module):
         px, py, pz = fourmomenta[:, 1], fourmomenta[:, 2], fourmomenta[:, 3]  # (E, px, py, pz)
         pt = torch.sqrt(px * px + py * py).clamp(min=1e-8)
         points = torch.stack([torch.asinh(pz / pt), torch.atan2(py, px)], dim=-1)
-        fourmomenta, mask = to_dense_batch(fourmomenta, batch)
-        scalars, _ = to_dense_batch(scalars, batch)
-        points, _ = to_dense_batch(points, batch)
+        # COMPILE TWIN: dense P padded UP TO A MULTIPLE OF 8 when the net is
+        # compiled, exact batch max when eager. Under torch.compile, inductor
+        # materializes the boolean attn mask into an additive bias whose head
+        # stride is P*P, and the mem-efficient SDPA BACKWARD requires that
+        # stride 4-aligned -- an odd batch-max P (e.g. 117 at bs 512) dies with
+        # "RuntimeError: attn_bias is not correctly aligned (strideH)" (H100,
+        # 2026-08-21 flash A/B, CGENN-GPS row). The <=7 extra slots are
+        # mask-inert (padded keys contribute exact zeros) but re-chunk CPU SIMD
+        # reductions at last-ulp scale, so the EAGER path keeps the exact max
+        # and the hybrid BIT pins stand unchanged; compiled-vs-eager parity was
+        # TOL-class already. Computed eager-side (this wrapper stays eager), so
+        # the int() is not a graph break. Same hazard class applies to every
+        # dense-attention wrapper here if it ever bites.
+        pmax = int(torch.bincount(batch).max())
+        if getattr(self.net, "_compiled_call_impl", None) is not None:
+            pmax = -(-pmax // 8) * 8
+        fourmomenta, mask = to_dense_batch(fourmomenta, batch, max_num_nodes=pmax)
+        scalars, _ = to_dense_batch(scalars, batch, max_num_nodes=pmax)
+        points, _ = to_dense_batch(points, batch, max_num_nodes=pmax)
         # hoist the static kNN edges out of the (possibly compiled) net: identical values
         # in identical order eager -- the edges depend only on these inputs
         edges = self.net.build_edges(fourmomenta, mask, points)
