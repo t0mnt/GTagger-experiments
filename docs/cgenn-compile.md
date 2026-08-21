@@ -4811,3 +4811,26 @@ not Lorentz-invariant; that pin is physics, not posture).
 by exact message (dynamo lru_cache notice, inductor's own _prims deprecation, sympy
 value-range interp log spam) — a bperf table should never again scroll out of a
 terminal behind 472 identical warnings.
+
+**ADDENDUM (2026-08-21, later): the sparse control WAS in bperf_results.md, and the
+revalidation read clean — every CGENN gate is now closed.**
+
+Sparse control (β-PERF 06:04, no overrides), completing the adoption A/B:
+
+| row | sparse compiled (own-best) | flash compiled (own-best) | flash/sparse |
+|---|---|---|---|
+| CGENNLGATrGraphTrans | 679 jets/s @256 | 849 @1024 | **1.25x** |
+| CGENNLGATrGraphGPS | 132 jets/s @256 | 237 @512 | **1.80x** |
+
+Both clear the pre-registered >10% bar — the adoption's "no control existed"
+caveat above is hereby RETIRED; the flip stands on measured ratios. Eager flash
+also dominates (531 vs 222; 201 vs 50): the Triton kernels beat the Function
+overhead outright. Note sparse-compiled Trans sized only 256 — flash's batch
+headroom over sparse is 4x on that row.
+
+REVALIDATION (the last CGENN gate): tag_cgenn flash @ shipped 512/1e-3 reads
+**94.25%** test accuracy; a sparse comparison at 128/1e-3 (off its matched
+5.57e-4 lr) reads 92.19% — operator verdict: reproduces well, CLEAN. The flash
+kernel family is convergence-validated; the jc CGENN rows and both flash hybrids
+are cleared to launch. (Per cleanup.md's status addendum, the
+deletable-at-revalidation list is now actionable at the operator's discretion.)
