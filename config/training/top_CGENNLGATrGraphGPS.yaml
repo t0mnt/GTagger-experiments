@@ -19,7 +19,11 @@ defaults:
 # recipe, and 1e-3 is trained-and-validated on PNPT (0.9414 vs weaver 0.9417, inside seed
 # spread). The finder stays as the CONFIRMATION tool; batch size cap stays <=512 (update
 # starvation under the epoch budget).
-batchsize: 256
+# 512 <- the flash-arm worst-case probe (bperf --find-batchsize, H100 2026-08-21;
+# 1024 OOM). This RETURNS the row to the family's lr-validated 512/1e-3 operating
+# point -- the 256 cap was sparse-era memory pressure. Revert to 256 together with
+# gp_impl: sparse.
+batchsize: 512
 lr: 1e-3
 
 # weight_decay: 0.01          # AdamW: tune on val {0, 0.01, 0.05, 0.1}

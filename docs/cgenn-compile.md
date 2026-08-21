@@ -4759,3 +4759,55 @@ Three gaps, each now closed or defined:
 3. **No accuracy protocol for TOL-class changes** — defined above (floors + seeded A/B +
    ratio), operator sign-off per change. It is deliberately not a pytest gate: it costs
    GPU-hours and judgment, and pretending otherwise would make it a gate nobody runs.
+
+### FLASH ADOPTED ON BOTH HYBRIDS (2026-08-21, operator ruling) — and the deltaR provenance pin
+
+**The A/B that authorized it (H100, post-alignment-fix, `--size-per-state`, full
+table also in `bperf_results.md`):**
+
+| row | bs (eager/compiled) | eager jets/s | compiled jets/s | note |
+|---|---|---|---|---|
+| CGENNLGATrGraphTrans, flash | 512/1024 | 531 | **849** | compiled ceiling ROSE 512→1024 |
+| CGENNLGATrGraphGPS, flash | 256/512 | 201 | **237** | the row that could never COMPLETE compiled before |
+
+Flash-armed gates 6/6 (`test_cgenn_compile -k flash`) and the 100-step varying-shape
+compiled soak 3/3 (tag_cgenn + both hybrids, losses falling, 100% nonzero grads).
+The **attn-bias alignment fix is GPU-CONFIRMED**: the exact row that died with
+`attn_bias is not correctly aligned (strideH=13689=117²)` now completes at 512 —
+root cause was inductor materializing the boolean attn mask into a (·,·,P,P) bias
+whose head stride P² must be 4-aligned, violated by odd batch-max P; fixed by the
+compile-twin pad-to-8 in both hybrid wrappers (f99655f; the unconditional first
+version tripped the BIT pins at last-ulp scale within minutes — eager keeps exact P).
+
+**Adoption basis, stated honestly:** no sparse-timed control row ever existed for
+either hybrid (the sparse-era GPS bperf was INCOMPLETE; Trans was never timed), so
+this adoption rests on (a) the tag_cgenn race transfer (same kernels, similar
+CGENN-stage shapes), (b) the memory-ceiling lifts (Trans 512→1024; GPS off the
+budget-crutch cap to a probe-safe 512), (c) gates+soak, and (d) the operator's
+explicit ruling to flip rather than re-spend GPU on a control. The sparse arm's
+table, if it ran in the same 3h block, is recoverable from `bperf_results.md`
+(bperf appends every report there — the scrollback loss was cosmetic); transcribe
+the ratio next to this entry when read. Accuracy: TOL-class only (kernel 3e-16,
+model bars in the battery); the tag_cgenn revalidation remains the kernel family's
+train-to-convergence leg and covers the hybrids. KILL SWITCHES (restore TOGETHER):
+Trans sparse+bs512; GPS sparse+bs256.
+
+**Transcribed:** `tag_CGENNLGATrGraphTrans.yaml`/`tag_CGENNLGATrGraphGPS.yaml`
+`gp_impl: flash`; `top_CGENNLGATrGraphTrans.yaml` bs 1024, `top_CGENNLGATrGraphGPS.yaml`
+bs 512 (RETURNS GPS to the family's lr-validated 512/1e-3 point). lr 1e-3 stands on
+the ~2x-flat basin argument, both directions.
+
+**deltaR provenance pin, same day:** the jc LN-hybrid run's saved config confirmed
+`knn_metric: deltaR` while the committed yamls said minkowski (the run carried it as
+a launch-time override/working-tree state — the commit d301a22 yaml says minkowski).
+Production AND quick yamls now pin deltaR (46f002f + this commit; memory sizing is
+metric-invariant — same k, same edge count). Fixture fallout resolved the recorded-
+posture way: `REDUCED` (lgatr migration) and the hybrid BIT-pin builder now pass
+`model.net.knn_metric=minkowski` explicitly — pins compare arithmetic, not graph
+choice — 87/87 green. `test_tag_equivariance` already pinned minkowski (deltaR is
+not Lorentz-invariant; that pin is physics, not posture).
+
+**QoL, same commit:** base_experiment now mutes three torch-internal noise families
+by exact message (dynamo lru_cache notice, inductor's own _prims deprecation, sympy
+value-range interp log spam) — a bperf table should never again scroll out of a
+terminal behind 472 identical warnings.

@@ -51,7 +51,11 @@ def _build(model, float64):
 
     experiments.logger.LOGGER.disabled = True
     overrides = ["save=false", "training.batchsize=4", "data.dataset=mini",
-                 f"model={model}", f"use_float64={'true' if float64 else 'false'}"]
+                 f"model={model}", f"use_float64={'true' if float64 else 'false'}",
+                 # pins were recorded under minkowski; the yamls moved to deltaR on
+                 # 2026-08-21 (trained-row provenance). BIT pins compare arithmetic,
+                 # not graph choice, so they replay the recorded posture explicitly.
+                 "model.net.knn_metric=minkowski"]
     with hydra.initialize_config_dir(config_dir=str(REPO / "config_quick"), version_base=None):
         cfg = hydra.compose(config_name="toptagging", overrides=overrides)
     torch.manual_seed(0)

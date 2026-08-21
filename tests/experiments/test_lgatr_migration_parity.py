@@ -74,10 +74,16 @@ REDUCED = {
     "tag_slim": ["model=tag_slim", "model.net.hidden_v_channels=6"],
     "tag_CGENNLGATrGraphTrans": ["model=tag_CGENNLGATrGraphTrans"],
     "tag_CGENNLGATrGraphGPS": ["model=tag_CGENNLGATrGraphGPS"],
+    # knn_metric pinned to the RECORDED posture: the 1.4.4 fixtures (and their config
+    # snapshots) were taken with minkowski; the production+quick yamls moved to deltaR
+    # on 2026-08-21 (matching the trained table rows). The lgatr-transplant parity these
+    # gates check is orthogonal to the graph metric, so the fixtures pin their own.
     "tag_LorentzNetLGATrSlimGraphTrans": [
-        "model=tag_LorentzNetLGATrSlimGraphTrans", "model.net.hidden_v_channels=6"],
+        "model=tag_LorentzNetLGATrSlimGraphTrans", "model.net.hidden_v_channels=6",
+        "model.net.knn_metric=minkowski"],
     "tag_LorentzNetLGATrSlimGraphGPS": [
-        "model=tag_LorentzNetLGATrSlimGraphGPS", "model.net.hidden_v_channels=6"],
+        "model=tag_LorentzNetLGATrSlimGraphGPS", "model.net.hidden_v_channels=6",
+        "model.net.knn_metric=minkowski"],
     # LGATrVectors insists on a SPARSE lloca attention backend; on CPU the only importable one
     # is flex, whose backward is unsupported on CPU -> this composition records WITHOUT the
     # gradient pack (reason stored in the fixture; frames-path backward coverage moves to

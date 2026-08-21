@@ -23,6 +23,26 @@ from experiments.ranger import Ranger
 
 # set to 'True' to debug autograd issues (slows down code)
 torch.autograd.set_detect_anomaly(False)
+
+# Mute three torch-internal noise families that flooded compiled runs (hundreds of
+# repeats per bperf pass -- a 2026-08-21 flash A/B's sparse table scrolled out of a
+# terminal behind them). Each is benign and non-actionable on our side, and each
+# filter matches the EXACT message so anything new still surfaces:
+#  - dynamo's lru_cache tracing notice (unsound only for caches reading mutable
+#    global state; ours/lgatr's are pure) -- fires once per compiled subgraph;
+#  - inductor's own call to torch's deprecated _prims_common.check (their code,
+#    their deprecation);
+#  - the sympy value-range interp failures on symbolic reciprocals (dynamo falls
+#    back to unbounded ranges; a log record, not a warning, hence the logger line).
+import warnings  # noqa: E402  (scoped filters, deliberately after torch import)
+
+warnings.filterwarnings(
+    "ignore", message=r"Dynamo detected a call to a `functools\.lru_cache` wrapped"
+)
+warnings.filterwarnings(
+    "ignore", message=r"`torch\._prims_common\.check` is deprecated"
+)
+logging.getLogger("torch.utils._sympy").setLevel(logging.ERROR)
 MIN_STEP_SKIP = 1000
 # Consecutive non-finite gradient norms tolerated before _step gives up. Generous:
 # a transient overflow under AMP is normal and self-corrects within a few steps once

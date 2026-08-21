@@ -20,8 +20,14 @@ activation_memory_budget: 0.5  # OOM escape hatch, ENGAGED 2026-08-15: the escap
 net:
   _target_: experiments.baselines.cgennlgatrgraphgps.CGENNLGATrGraphGPS
   _partial_: true
-  # einsum (BIT-reference) | matmul | sparse; sparse = lgatr-2.0 sparse_gp campaign posture (docs/cgenn-compile.md)
-  gp_impl: sparse
+  # einsum (BIT-reference) | matmul | sparse | flash. ADOPTED flash 2026-08-21
+  # (operator ruling): post-alignment-fix A/B at own-best batches -- eager 201@256,
+  # compiled 237@512 jets/s. This row could not even COMPLETE compiled under
+  # sparse sizing pressure (91.9 GB OOM history); under flash it sizes to 512
+  # probe-safe (1024 OOM) with activation budget 0.5 unchanged. Gates 6/6 + soak
+  # green; accuracy TOL-class (see tag_CGENNLGATrGraphTrans.yaml note). KILL
+  # SWITCH: sparse + training batchsize 256 restore TOGETHER.
+  gp_impl: flash
   in_s_channels: null           # init_physics -> extra_scalars + tagging features
   # num_classes is supplied by the wrapper at call time (= out_channels)
 
