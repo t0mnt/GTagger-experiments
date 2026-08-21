@@ -1,4 +1,4 @@
-# from https://github.com/DavidRuhe/clifford-group-equivariant-neural-networks
+# from https://github.com/DavidRuhe/clifford-group-equivariant-neural-networks originally, modified then loosely PR'd
 import functools
 import math
 
