@@ -416,7 +416,7 @@ Remember to make release or tag (likely latter) once done and dusted and paper a
 - [ ] Same timing for `todo.md` itself and, if you want the release lean, `docs/diffs.md`.
 - [ ] **`cleanup.md`** — run its runbook wipe, reconcile it against this section (it still
       schedules `utils/bperf.py` for deletion, which the item below overrides), and delete it
-      with the rest.
+      with the rest. Kept for methodology evidence and generally useful for others working on different infrastructure.
 - [ ] **More deletions and scaffolding removal.** `cleanup.md` schedules the one-shot
       instruments (`utils/bperf.py`, `test_cgenn_compile.py`, the compile fixtures); sweep
       once more at release for anything else that exists only because the build happened —
