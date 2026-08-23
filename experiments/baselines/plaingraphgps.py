@@ -1,7 +1,7 @@
 """Plain GraphGPS hybrid: interleaved static-MPNN + torch-MHA (GraphGPS recipe).
 
 GraphGPS (Rampasek et al., 2022, arXiv:2205.12454) differs from this repo's other
-graph-transformer hybrids in *how* the local and global stages are combined: each
+graph-transformer hybrids in *how* the local and global stages are combined (among other ways): each
 GPS layer runs a local message-passing block and a global attention block **in
 parallel on the same input** and sums them, rather than stacking a GNN stage and
 then a transformer stage (cf. PlainGraphTrans, which is sequential). The precise
