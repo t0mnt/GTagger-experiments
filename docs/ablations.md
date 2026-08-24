@@ -243,7 +243,7 @@ usually the fix, as lgatr already does for its own norm).
   dropout decision above.
 - **ReZero / zero-init residual gates** (init the residual branch scale at exactly 0) —
   overlaps with LayerScale; pick one.
-- **DeParT** employs Talking Multihead attention among a few other tricks not enumerated above or below
+- **DeParT** employs Talking Multihead attention among a few other tricks mostly not enumerated above or below
   and could be incorporated both in plain and ParT models easily and equivariant ones if proven. Knocking MHA can also be explored. 
 - **Register tokens** (a few extra learnable no-readout tokens alongside the CLS) — ViT
   finding that they absorb attention-sink artifacts; trivially equivariance-safe if kept
