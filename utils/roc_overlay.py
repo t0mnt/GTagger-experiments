@@ -52,6 +52,34 @@ def rej_at(fpr, tpr, eps_s):
     return float("inf") if f <= 0 else 1.0 / f
 
 
+def average_by_label(entries):
+    """Average the curves that share a label, so a 3-trial model draws ONE curve.
+
+    Averages 1/fpr on a common eps_S (=tpr) grid, NOT fpr. aggregate_table.py reports
+    the mean of 1/eps_B across trials, and mean(1/x) != 1/mean(x) -- averaging fpr would
+    give a curve whose rejections disagree with the table it sits beside, which is the
+    whole reason this option exists. Picking one trial instead is worse still: on
+    PlainGraphGPS the per-trial rej(0.3) spread is +-102 and the single-trial figure
+    inverted the deltaR-vs-minkowski conclusion the pooled table draws.
+    """
+    grid = np.linspace(0.005, 1.0, 4000)
+    groups = {}
+    for label, fpr, tpr in entries:
+        groups.setdefault(label, []).append((fpr, tpr))
+    out = []
+    for label, curves in groups.items():
+        if len(curves) == 1:
+            out.append((label, *curves[0]))
+            continue
+        rejs = []
+        for fpr, tpr in curves:
+            o = np.argsort(tpr)
+            rejs.append(np.interp(grid, tpr[o], 1.0 / fpr[o]))
+        mean_rej = np.mean(rejs, axis=0)
+        out.append((f"{label} [{len(curves)} trials]", 1.0 / mean_rej, grid))
+    return out
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("curves", nargs="*", help="LABEL=path/to/roc.txt")
@@ -62,6 +90,9 @@ def main():
                    help="read LABEL=path lines from FILE ('#' comments and blanks ignored)")
     p.add_argument("-o", "--out", default="roc_overlay.pdf")
     p.add_argument("--eps", type=float, nargs="*", default=[0.3, 0.5, 0.8])
+    p.add_argument("--average", action="store_true",
+                   help="curves sharing a label are averaged into one (use with "
+                        "roc_labels.py --all-trials, so the figure matches the pooled table)")
     args = p.parse_args()
 
     specs = list(args.curves)
@@ -83,6 +114,9 @@ def main():
             raise SystemExit(f"missing: {path}")
         fpr, tpr = load(path)
         entries.append((label, fpr, tpr))
+
+    if args.average:
+        entries = average_by_label(entries)
 
     print(f"{'model':28s} {'AUC':>7s} " + " ".join(f"{'1/eB('+str(e)+')':>11s}" for e in args.eps))
     for label, fpr, tpr in entries:
