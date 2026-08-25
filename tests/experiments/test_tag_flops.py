@@ -120,7 +120,13 @@ def test_tagging(framesnet, model_list, equivectors, jet_size=50):
                 raise
             pytest.skip(f"attention backend unavailable in this environment: {e}")
     flops = flop_counter.get_total_flops()
-    num_parameters = sum(p.numel() for p in exp.model.parameters())
+    # requires_grad, to match what the results tables record (base_experiment.py:177 and
+    # experiment.py's table row both filter). Without the filter this printed 2030817 for
+    # tag_slim against the table's 2014401 -- a 16416 gap that looks like an lgatr version
+    # skew and is not one: LGATrSlim freezes four tensors in its last block (out_v_channels
+    # is 0, so that block's vector-side weights carry no gradient). Every other model has
+    # no frozen parameters, which is why only this one row disagreed.
+    num_parameters = sum(p.numel() for p in exp.model.parameters() if p.requires_grad)
 
     print(
         f"flops(batchsize=1)={flops:.2e}; parameters={num_parameters}",
