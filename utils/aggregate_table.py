@@ -50,7 +50,7 @@ COLUMNS = {
 
 
 def training_batchsize(run_dir):
-    """`training.batchsize` from a run's config.yaml, or None.
+    r"""`training.batchsize` from a run's config.yaml, or None.
 
     Scoped to the `training:` block on purpose: the dump also carries
     `evaluation.batchsize` (2048 in the tagging configs), and a bare

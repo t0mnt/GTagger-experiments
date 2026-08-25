@@ -1,0 +1,18 @@
+# model	auc	flops	params	group
+# FLOPs here are the Table-1 cells, which come from experiment.py:_count_flops --
+# ONE arbitrary jet, so they carry an ~8x jet-size lottery. Regenerate with
+#   pytest tests/experiments/test_tag_flops.py -s -k "<model> and identity"
+# which pins jet_size=50 for EVERY model, before publishing this figure.
+LGATrSlim	0.9870	1.211e+08	2014401	baseline
+LGATr	0.9869	9.185e+08	1077474	baseline
+CGENN	0.9868	3.001e+09	322689	baseline
+ParticleNet	0.9858	1.403e+08	365903	baseline
+LorentzNet	0.9855	9.576e+07	226519	baseline
+PNParT-GraphTrans	0.9864	2.189e+08	2340863	hybrid
+PNParT-GraphGPS	0.9863	4.085e+08	2011375	hybrid
+LNSlim-GraphTrans	0.9863	1.275e+08	1833300	hybrid
+LNSlim-GraphGPS	0.9861	3.428e+08	2458571	hybrid
+CGENN-GraphTrans	0.9861	1.087e+09	1153064	hybrid
+CGENN-GraphGPS	0.9866	2.095e+09	1894357	hybrid
+PlainGraphGPS	0.9858	3.064e+08	2326927	plain
+PlainGraphTrans	0.9856	1.157e+08	2253199	plain
