@@ -33,7 +33,8 @@ lr_finder/
 lr_finder_*.png
 
 
-
+# other utils, plotters and more
+*.pdf
 # local sbatch copies (root only -- docs/oscar-train.sbatch stays tracked): the working
 # copy carries YOUR partition/account (-p/-A), which must never be committed to a public repo
 /*.sbatch
