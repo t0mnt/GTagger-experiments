@@ -103,6 +103,14 @@ Useful overrides: `data.dataset={full,mini}`, `training.iterations=…` (add
 `training.batchsize=…`, `training.lr=…`, `gpus=N`, `save={true,false}`,
 `model.net.knn_metric={deltaR,minkowski}`, `model.net.num_blocks=…`.
 
+> **Optional, but pass it if a ROC curve might ever be wanted:** `evaluation.save_roc=true`
+> writes `plots_<idx>/roc.txt` (two columns, fpr and tpr) alongside the per-run `roc.pdf`.
+> It defaults to `false`, so the curve is computed during evaluation, used for the
+> rejection cells, and then discarded — recovering it later costs a full re-evaluation of
+> every run (`train=false warm_start_idx=0`, loading each run's own saved config; see §8).
+> The file is a few MB on top tagging and is what `utils/roc_overlay.py` reads to put
+> several models on one axes.
+
 Each run prints a paste-ready LaTeX table row at the end:
 `table test: <Model> & <frames> & <iters> [N trials] & <params> & <acc> & <auc> &
 <rej03> & <rej05> & <rej08> & <time>s & <flops> & <kNN>` (the `[N trials]` tag and
