@@ -549,25 +549,83 @@ class TaggingExperiment(BaseExperiment):
             return "deltaR"  # L2 on (eta, phi)
         return "-"
 
+    FLOPS_JET_SIZE = 50  # same fixed multiplicity as tests/experiments/test_tag_flops.py
+
     @torch.no_grad()
     def _count_flops(self, loader):
-        """Forward FLOPs for a single jet (batchsize 1), as in test_tag_flops."""
-        try:
-            from torch.utils.flop_counter import FlopCounterMode
+        """Forward FLOPs for ONE jet of FLOPS_JET_SIZE constituents, through traceable ops.
 
-            batch = next(iter(loader)).clone().to(self.device)
-            n = int(batch.ptr[1].item())  # keep only the first jet
+        Matches test_tag_flops.py so the published column and the test agree; the two used
+        to disagree by ~7x. Three normalisations, each measured rather than assumed:
+
+        * FIXED jet size. This used to take the FIRST jet of the split. That is
+          deterministic (the eval loaders are shuffle=False) and therefore comparable
+          across models, but its multiplicity is incidental: tag_cgenn reads 3.0e9 at the
+          first test jet and 2.1e10 at n=50. A stated size is quotable, an incidental one
+          is not.
+        * EAGER. ``nn.Module.compile()`` installs ``_compiled_call_impl`` in place; under
+          FlopCounterMode dynamo declines to compile, and a model built with
+          fullgraph=True then raises "found no compiled frames". THAT is what produced the
+          `n/a` cells (tag_ParT, tag_MIParT) -- not a missing attention backend. Clearing
+          the hook restores the eager path, and compile does not change the count anyway
+          (measured: 1.4091e+08 either way on PlainGraphTrans).
+        * TRACEABLE geometric product. ``gp_impl='flash'`` routes the GP through the
+          Cl(1,3) Triton custom op (flash_kernels_p1m3.py), which is opaque to a counter
+          that dispatches on ATen -- tag_cgenn reads 1.41e9 on flash against 2.12e10 on
+          sparse. That sparse and einsum agree to the digit (both 2.1152e+10) is what
+          makes this a normalisation rather than a choice of favourable arm.
+
+        Both overrides are restored in ``finally``: this runs after training, but the model
+        object outlives the call and a silently de-compiled net would skew the next timing.
+        """
+        from torch.utils.flop_counter import FlopCounterMode
+
+        compiled, gp_arms = [], []
+        try:
+            for module in self.model.modules():
+                if getattr(module, "_compiled_call_impl", None) is not None:
+                    compiled.append((module, module._compiled_call_impl))
+                    module._compiled_call_impl = None
+                if getattr(module, "gp_impl", None) == "flash":
+                    gp_arms.append(module)
+                    module.gp_impl = "sparse"
+
+            # advance to a jet with enough constituents, then truncate to exactly
+            # FLOPS_JET_SIZE. Bounded: a split whose jets are all smaller must not spin.
+            target, batch, iterator = self.FLOPS_JET_SIZE, None, iter(loader)
+            for _ in range(64):
+                candidate = next(iterator).clone().to(self.device)
+                if int(candidate.ptr[1].item()) >= target:
+                    batch = candidate
+                    break
+                if batch is None or int(candidate.ptr[1].item()) > int(batch.ptr[1].item()):
+                    batch = candidate
+            n = min(target, int(batch.ptr[1].item()))
+            if n < target:
+                LOGGER.warning(f"FLOPs: no jet with >={target} constituents found; using n={n}")
             batch.x = batch.x[:n]
             batch.scalars = batch.scalars[:n]
             batch.batch = batch.batch[:n]
             batch.ptr = batch.ptr[:2]
+            batch.ptr[-1] = n
             batch.label = batch.label[:1]
-            with FlopCounterMode(display=False) as flop_counter:
+
+            # enable_grad, despite the no_grad decorator on this method: ParT and MIParT
+            # build a graph inside their forward (checkpointing / custom autograd) and
+            # assert "Expected gradient function to be set" when it is suppressed -- the
+            # SECOND independent cause of the n/a cells, separate from the compile hook
+            # above. FLOPs are a forward-op count and do not depend on grad mode.
+            with torch.enable_grad(), FlopCounterMode(display=False) as flop_counter:
                 self._get_ypred_and_label(batch)
             return flop_counter.get_total_flops()
         except Exception as e:
-            LOGGER.warning(f"FLOPs counting failed: {e}")
+            LOGGER.warning(f"FLOPs counting failed: {type(e).__name__}: {e}")
             return None
+        finally:
+            for module, impl in compiled:
+                module._compiled_call_impl = impl
+            for module in gp_arms:
+                module.gp_impl = "flash"
 
     def plot(self):
         plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
