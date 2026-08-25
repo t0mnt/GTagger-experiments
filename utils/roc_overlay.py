@@ -54,16 +54,31 @@ def rej_at(fpr, tpr, eps_s):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("curves", nargs="+", help="LABEL=path/to/roc.txt")
+    p.add_argument("curves", nargs="*", help="LABEL=path/to/roc.txt")
+    # Labels contain spaces (roc_labels.py emits "CGENN (gp_impl=flash, ...)"), so a
+    # bare $(cat curves.txt) word-splits every one of them into garbage. Reading the
+    # file here removes the shell from the path entirely.
+    p.add_argument("--list", dest="list_file", metavar="FILE",
+                   help="read LABEL=path lines from FILE ('#' comments and blanks ignored)")
     p.add_argument("-o", "--out", default="roc_overlay.pdf")
     p.add_argument("--eps", type=float, nargs="*", default=[0.3, 0.5, 0.8])
     args = p.parse_args()
 
+    specs = list(args.curves)
+    if args.list_file:
+        with open(args.list_file) as fh:
+            specs += [ln.strip() for ln in fh
+                      if ln.strip() and not ln.lstrip().startswith("#")]
+    if not specs:
+        raise SystemExit("no curves given: pass LABEL=path arguments or --list FILE")
+
     entries = []
-    for spec in args.curves:
+    for spec in specs:
         if "=" not in spec:
             raise SystemExit(f"expected LABEL=path, got {spec!r}")
-        label, path = spec.split("=", 1)
+        # rsplit, not split: roc_labels.py puts the differing config keys INTO the
+        # label ("CGENN (gp_impl=flash, ...)"), so the first "=" is inside the label.
+        label, path = spec.rsplit("=", 1)
         if not os.path.exists(path):
             raise SystemExit(f"missing: {path}")
         fpr, tpr = load(path)
