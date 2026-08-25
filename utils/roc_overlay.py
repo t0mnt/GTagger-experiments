@@ -19,7 +19,16 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 FONTSIZE, FONTSIZE_LEGEND = 14, 11
-CYCLE = ["#0343DE", "#A52A2A", "darkorange", "black", "#2E8B57", "#8B008B", "#B8860B", "#4682B4"]
+CYCLE = ["#0343DE", "#A52A2A", "darkorange", "black", "#2E8B57", "#8B008B",
+         "#B8860B", "#4682B4", "#C71585", "#008B8B", "#556B2F", "#FF4500"]
+# Separating deltaR from minkowski doubles the curve count, so colour alone runs out:
+# after one pass through CYCLE the linestyle changes too. A pair that shares a colour
+# is then still distinguishable in print and in greyscale.
+DASHES = ["-", "--", ":", "-."]
+
+
+def style(i):
+    return dict(color=CYCLE[i % len(CYCLE)], linestyle=DASHES[(i // len(CYCLE)) % len(DASHES)])
 
 
 def load(path):
@@ -69,7 +78,7 @@ def main():
         # panel 1 -- physicists' ROC
         fig, ax = plt.subplots(figsize=(5.2, 4.2))
         for i, (label, fpr, tpr) in enumerate(entries):
-            ax.plot(tpr, 1 / fpr, color=CYCLE[i % len(CYCLE)], label=label, lw=1.6)
+            ax.plot(tpr, 1 / fpr, label=label, lw=1.6, **style(i))
         rnd = np.linspace(1e-3, 1, 200)
         ax.plot(rnd, 1 / rnd, "k--", lw=1, label="random")
         ax.set_yscale("log")
@@ -85,8 +94,8 @@ def main():
         # field expect one or the other, so both are emitted.
         fig, ax = plt.subplots(figsize=(5.2, 4.2))
         for i, (label, fpr, tpr) in enumerate(entries):
-            ax.plot(tpr, fpr, color=CYCLE[i % len(CYCLE)],
-                    label=f"{label} (AUC = {auc_from_roc(fpr, tpr):.4f})", lw=1.4)
+            ax.plot(tpr, fpr, label=f"{label} (AUC = {auc_from_roc(fpr, tpr):.4f})",
+                    lw=1.4, **style(i))
         ax.set_yscale("log")
         ax.set_xlabel(r"True positive rate ($\epsilon_S$)", fontsize=FONTSIZE)
         ax.set_ylabel(r"False positive rate ($\epsilon_B$)", fontsize=FONTSIZE)
@@ -98,7 +107,7 @@ def main():
         # panel 3 -- significance improvement
         fig, ax = plt.subplots(figsize=(5.2, 4.2))
         for i, (label, fpr, tpr) in enumerate(entries):
-            ax.plot(tpr, tpr / np.sqrt(fpr), color=CYCLE[i % len(CYCLE)], label=label, lw=1.6)
+            ax.plot(tpr, tpr / np.sqrt(fpr), label=label, lw=1.6, **style(i))
         ax.plot(rnd, rnd**0.5, "k--", lw=1, label="random")
         ax.set_xlabel(r"$\epsilon_S$", fontsize=FONTSIZE)
         ax.set_ylabel(r"$\epsilon_S/\sqrt{\epsilon_B}$", fontsize=FONTSIZE)
