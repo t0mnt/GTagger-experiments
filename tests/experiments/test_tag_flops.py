@@ -19,6 +19,9 @@ from experiments.tagging.experiment import TopTaggingExperiment
 )
 @pytest.mark.parametrize(
     "model_list",
+    # ids: name each case after its model, so a single row can be regenerated with
+    #   pytest tests/experiments/test_tag_flops.py -s -k "tag_cgenn and identity"
+    # (the default ids are positional -- model_list13 -- which makes that impossible).
     [
         ["model=tag_ParT"],
         ["model=tag_particlenet"],
@@ -31,14 +34,24 @@ from experiments.tagging.experiment import TopTaggingExperiment
         ["model=tag_MIParT-L"],
         ["model=tag_lorentznet"],
         ["model=tag_pelican_fair"],
-        ["model=tag_CGENNLGATrGraphTrans"],
+        ["model=tag_slim"],
+        ["model=tag_top_transformer"],
+        # tag_cgenn is the reference row for BOTH CGENN hybrids, so it belongs here --
+        # gp_impl pinned because `flash` routes the geometric product through the
+        # Cl(1,3) Triton custom op (flash_kernels_p1m3.py). FlopCounterMode dispatches
+        # on ATen and has no flop formula for a custom op, so the fused GP would count
+        # as ZERO and the row would silently under-report. `sparse` is the same maths
+        # through traceable ops. Same reason the two CGENN hybrids below are pinned.
+        ["model=tag_cgenn", "model.net.gp_impl=sparse"],
+        ["model=tag_CGENNLGATrGraphTrans", "model.net.gp_impl=sparse"],
         ["model=tag_LorentzNetLGATrSlimGraphTrans"],
         ["model=tag_PlainGraphTrans"],
         ["model=tag_PlainGraphGPS"],
         ["model=tag_ParticleNetParTGraphGPS"],
-        ["model=tag_CGENNLGATrGraphGPS"],
+        ["model=tag_CGENNLGATrGraphGPS", "model.net.gp_impl=sparse"],
         ["model=tag_LorentzNetLGATrSlimGraphGPS"],
     ],
+    ids=lambda ml: ml[0].split("=", 1)[1] + ("" if len(ml) == 1 else "-pinned"),
 )
 def test_tagging(framesnet, model_list, equivectors, jet_size=50):
     experiments.logger.LOGGER.disabled = True  # turn off logging
