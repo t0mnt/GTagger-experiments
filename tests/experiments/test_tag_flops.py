@@ -1,5 +1,9 @@
-# Should be evaluated on GPU
-# otherwise the transformer FLOPs will be off, because it is not using flash-attention
+# Should be evaluated on GPU for any model with an attention stage: FlopCounterMode has
+# no formula for aten::_scaled_dot_product_flash_attention_for_cpu, so a CPU run prices
+# EVERY SDPA call at zero -- that is the transformers, the lgatr family, and all GT
+# hybrids (their trunks). Measured: L-GATr-slim 297M CPU vs 333M GPU (todo.md, FLOPs
+# provenance note). Attention-free models (ParticleNet, LorentzNet, MIParT, ParT,
+# tag_cgenn) are device-independent and can be (re)priced anywhere.
 import hydra
 import pytest
 from torch.utils.flop_counter import FlopCounterMode

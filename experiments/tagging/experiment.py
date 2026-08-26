@@ -594,13 +594,17 @@ class TaggingExperiment(BaseExperiment):
             # FLOPS_JET_SIZE. Bounded: a split whose jets are all smaller must not spin.
             target, batch, iterator = self.FLOPS_JET_SIZE, None, iter(loader)
             for _ in range(64):
-                candidate = next(iterator).clone().to(self.device)
+                try:
+                    candidate = next(iterator).clone().to(self.device)
+                except StopIteration:
+                    break  # short split: fall through to the best jet seen, not to n/a
                 if int(candidate.ptr[1].item()) >= target:
                     batch = candidate
                     break
                 if batch is None or int(candidate.ptr[1].item()) > int(batch.ptr[1].item()):
                     batch = candidate
             n = min(target, int(batch.ptr[1].item()))
+            self._flops_jet_n = n  # actual multiplicity used (utils/flops.py reports it)
             if n < target:
                 LOGGER.warning(f"FLOPs: no jet with >={target} constituents found; using n={n}")
             batch.x = batch.x[:n]

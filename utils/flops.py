@@ -60,8 +60,10 @@ def main():
     if flops is None:
         print(f"{args.model}{extra}  [{args.task}]  FLOPs=FAILED  params={params}")
         sys.exit(1)
+    n = getattr(exp, "_flops_jet_n", exp.FLOPS_JET_SIZE)
+    tag = "" if n == exp.FLOPS_JET_SIZE else "  [WARNING: no jet reached FLOPS_JET_SIZE]"
     print(f"{args.model}{extra}  [{args.task}]  "
-          f"FLOPs={flops:.4e}  params={params}  (n={exp.FLOPS_JET_SIZE})")
+          f"FLOPs={flops:.4e}  params={params}  (n={n}){tag}")
 
 
 if __name__ == "__main__":
