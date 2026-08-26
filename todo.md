@@ -175,9 +175,48 @@ eigenvector ambiguity) — expected to show it doesn't help, per the argument ab
 
 ## 3a-bis. JetClass cost: CGENN-GraphGPS dominates the campaign
 
-Forward FLOPs/jet at P=50, measured by `tests/experiments/test_tag_flops.py` (same convention
-as Table 2 of arXiv:2512.17011 — five of its rows reproduce exactly, e.g. ParT 211M,
-ParticleNet 413M, LorentzNet 676M, L-GATr 2060M):
+Forward FLOPs/jet at P=50, measured by `tests/experiments/test_tag_flops.py` and by the table
+recorder in `experiments/tagging/experiment.py` (the two agree; `utils/flops.py` prices a single
+model through the recorder without retraining).
+
+**This is our convention, not a reproduction of anyone else's.** Table 2 of arXiv:2512.17011
+quotes FLOPs/forward for several of the same architectures, but on **JetClass**, not top
+tagging, so it is a near neighbour rather than the same measurement. Where the architecture is
+shared, it lands like this:
+
+| Table 2 row | Table 2 | ours (P=50) | delta | |
+|---|---|---|---|---|
+| ParticleNet  |  413M |  413.0M | +0.0%  | device-independent |
+| LorentzNet   |  676M |  676.6M | +0.1%  | device-independent |
+| MIParT-L     |  225M |  225.1M | +0.0%  | device-independent |
+| ParT         |  211M |  232.9M | +10.4% | device-independent |
+| L-GATr-slim  |  329M |  333M   | +1.2%  | GPU only |
+| L-GATr       | 2060M | 1966M   | -4.6%  | GPU only |
+| Transformer  |  210M |  209.5M | --     | CPU only, attention excluded; unmeasured on GPU |
+| PELICAN-lite | 1370M |  --     | --     | the recorder fails on this model, no cell |
+
+Three rows land on the published digit and one within 1.2%; ParT and L-GATr do not, and the
+divergence is confined to models with a learned attention stage. The parameter counts show the
+configs are not identical either (MIParT-L 2380k vs our 2292k, L-GATr-slim 2031k vs 2014k,
+LorentzNet 223k vs 227k), which is what two different datasets should look like. So quote the
+numbers below as ours at a stated convention -- never as agreeing with Table 2.
+
+Two rules the column depends on:
+
+* **Measure on a GPU.** `FlopCounterMode` has no formula for
+  `aten::_scaled_dot_product_flash_attention_for_cpu`, so a CPU run prices *every* SDPA call at
+  zero, and `lloca/backbone/attention_backends/__init__.py:31` additionally drops the `xformers`
+  and `flash` backends when the device is CPU. Measured: L-GATr 1885M on CPU against 1966M on
+  GPU, L-GATr-slim 297M against 333M -- the gap is the whole attention term. Models without a
+  fused attention path (ParticleNet, LorentzNet, MIParT-L via `need_weights=True`, ParT) are
+  device-independent and can be priced anywhere.
+* **`attention_backend: xformers` is not a blind spot.** In fp32 -- and `use_amp: false` ships in
+  every model config -- the xformers dispatcher selects `cutlass.FwOp`, whose operator is
+  `aten::_efficient_attention_forward`, which the flop registry does price. Unlike CGENN's
+  `gp_impl=flash` (a Triton custom op the recorder has to swap to `sparse`), there is no
+  silent-zero path here.
+
+The per-model campaign costs:
 
 | model | GFLOPs/jet | | model | GFLOPs/jet |
 |---|---|---|---|---|
