@@ -321,7 +321,7 @@ class PlainGraphGPS(nn.Module):
                  edge_reps=None,
                  ffn_ratio=2,
                  dropout=0.0,
-                 attn_dropout=0.0,
+                 attn_dropout=0.0, #keep at 0, matching the 0.5 of some of GPS repo results in table test: PlainGraphGPS & IdentityFrames & 47320 & 2326927 & 0.9351 & 0.9834 & 1020 & 282 & 47 & 7755s & 9.796e+08 & deltaR \\ (bad)
                  act="relu",
                  norm="batch",
                  # readout
