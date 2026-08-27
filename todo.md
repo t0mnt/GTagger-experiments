@@ -152,10 +152,15 @@ per-run `table …:` log line that the regex reads.
 
 Other knobs worth a sweep: width/capacity (`hidden_*_channels`, `dim`, `gnn_dims`, `embed_dim`);
 input-skip (`model.net.use_input_concat`); residual-symmetry spurions on the equivariant models
-(`model.net.beam_spurion`, `model.net.add_time_spurion`); dropout — incl. the uniform
-`model.net.attn_dropout` knob on all four GPS models (attention-weights dropout via sdpa;
-GraphGPS ships 0.5, jet lineage ships none — a one-override family row on top-tagging). Depth and width move the param
+(`model.net.beam_spurion`, `model.net.add_time_spurion`). Depth and width move the param
 count (a table column) — pair them with FLOPs/time for a fair efficiency plot.
+
+**attn_dropout is CLOSED — measured, harmful, do not sweep it.** Plain-GPS on top tagging at
+`attn_dropout=0.5` (the GraphGPS-native value): accuracy 0.9351 against the default's
+0.9400 ± 0.0002, rej@0.5 282 vs 415 ± 15, rej@0.3 1020 vs 1599 ± 102. -0.0049 accuracy is
+~24 sigma of the trial spread and a third off both rejections. The campaign default of 0
+stands. Full reasoning, including why the official-config argument for 0.5 did not transfer,
+in docs/ablations.md "Capacity and shape".
 
 **Off by design: global spectral PE/SE (LapPE / SignNet / eigenvalue SE).** A LapPE node-encoder
 now EXISTS behind `use_lappe` (+`lappe_k`) on PlainGraphGPS — implemented exactly as the

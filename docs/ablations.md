@@ -80,20 +80,31 @@ ParT pairwise-bias features, PE/SE, depth) live in `todo.md` §3 and are not rep
 - GELU vs ReLU unification across the non-equivariant pair (currently per-reference).
 - Dropout 0.1 vs 0.0 family-wide (per-reference now; the most likely of this list to actually
   matter at a fixed 20-epoch budget).
-- **Attention-weight dropout on the GPS models** (`attn_dropout=0.5` for the GraphGPS-native
-  value, `0.1` as the softer point). Official GraphGPS uses 0.5 essentially everywhere at our
-  model scale — small benchmarks (12k–45k graphs) AND the base PCQM4Mv2-full config
-  (3.7M graphs, 5 layers, ~6M params); only the scaled-up entries (GPSmedium ~20M,
-  GPSdeep 16 layers) trade attn_dropout down to 0.1 while *raising* residual dropout 0→0.1.
-  So the driver is model capacity, not dataset size: at 1.2–2.5M params the official recipe
-  says 0.5, making it the primary ablation value (PlainGraphGPS first, cheapest); the
-  campaign default stays 0. Equivariance-safe everywhere: attention probabilities are
-  Lorentz invariants. Non-equivariant GPS = config-only (keys exist), and the LLoCa
-  transport path already forwards `dropout_p` to the native sdpa backend; the embedded
-  L-GATr stacks in the hybrids also dispatch native (dense `attn_mask`), so they accept
-  `dropout_p` on stock lgatr too. Only the *pure* LGATr/Transformer taggers default to the
-  xformers backend, which needs a `dropout_p`→`p` rename upstream (flex/varlen have no
-  dropout at all — small lgatr+lloca PRs, drafted in the campaign notes).
+- ~~**Attention-weight dropout on the GPS models**~~ — **MEASURED AND CLOSED, do not run it
+  again.** Plain-GPS, top tagging, the shared 47,320-iteration recipe, ΔR, n=1:
+  `model.net.attn_dropout=0.5` gives accuracy **0.9351** against the 3-trial default's
+  0.9400 ± 0.0002, AUC 0.9834 vs 0.9858, rej@0.5 **282** vs 415 ± 15 and rej@0.3 **1020** vs
+  1599 ± 102. That is −0.0049 accuracy, roughly 24 sigma of the trial spread, and a third
+  off both rejections — not a null, an active harm, and far too large for n=1 to be the
+  explanation. Dropped from the plan for the whole family; the campaign default of 0 stands
+  and needs no further defence.
+
+  Worth recording *why* the prior reading was wrong, since it was argued from the official
+  configs: GraphGPS ships 0.5 essentially everywhere at our model scale — the small
+  benchmarks (12k–45k graphs) and the base PCQM4Mv2-full config (3.7M graphs, 5 layers,
+  ~6M params) alike — with only the scaled-up entries (GPSmedium ~20M, GPSdeep 16 layers)
+  trading it down to 0.1 while *raising* residual dropout 0→0.1. That pattern says the
+  driver is model capacity, so at 1.2–2.5M params the official recipe reads as 0.5. It does
+  not transfer: those datasets are 10^4–10^6 graphs where regularising attention buys
+  generalisation, and top tagging trains on 1.2M jets x 20 epochs where it just destroys
+  signal. Capacity was the wrong axis to reason from; data scale was the right one.
+
+  The plumbing note stays true if anyone revisits it: equivariance-safe everywhere
+  (attention probabilities are Lorentz invariants); non-equivariant GPS is config-only,
+  the LLoCa transport forwards `dropout_p` to the native sdpa backend, and the embedded
+  L-GATr stacks dispatch native (dense `attn_mask`) so they take `dropout_p` on stock
+  lgatr. Only the *pure* LGATr/Transformer taggers default to xformers, which would need a
+  `dropout_p`→`p` rename upstream.
 - **ParticleNet multi-scale fusion, `model.net.use_fusion=true`** (currently `false` in both
   `tag_ParticleNetParTGraphTrans` and the `tag_particlenet` reference). Off, the transformer
   half receives only the LAST EdgeConv block's output (256 ch). On, ParticleNet's original
@@ -153,7 +164,9 @@ ParT pairwise-bias features, PE/SE, depth) live in `todo.md` §3 and are not rep
 
 Where this repo's GPS family deviates from the recipe the official configs actually run, and
 what the official repo's own precedent says about each axis. (attn_dropout, the largest
-deviation, is covered in "Capacity and shape" above.)
+deviation, is MEASURED and closed in "Capacity and shape" above: GraphGPS's 0.5 costs
+-0.0049 accuracy and a third of both rejections here. Read the rest of this section with
+that in mind -- official-config parity is a source of hypotheses, not of defaults.)
 
 - **PE/SE encodings.** Official GraphGPS node-encodes in essentially every config — including
   datasets with *no real edge features*: MalNet-Tiny ships LapPE by default (plus `+RWSE`,
