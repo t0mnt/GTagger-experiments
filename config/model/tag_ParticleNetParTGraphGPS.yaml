@@ -52,7 +52,9 @@ net:
   edge_reps: "64x0n+16x1n"
   ffn_ratio: 2                  # GraphGPS FFN inner width = 2 * dim
   dropout: 0.0
-  attn_dropout: 0.0
+  attn_dropout: 0.0  # KEEP 0. Measured, not inherited: GraphGPS's own 0.5 costs
+                     # Plain-GPS -0.0049 accuracy and a third of both rejections on
+                     # top tagging (docs/ablations.md, "Capacity and shape").
   act: relu
   norm: batch                   # 'batch' (GraphGPS default, every config) or 'layer' (padding-safe ablation)
 

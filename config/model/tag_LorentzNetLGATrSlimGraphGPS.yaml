@@ -54,11 +54,13 @@ net:
   # dropout_prob = the external GraphGPS branch dropout (grade-aware, on branch outputs).
   # attn_dropout = dropout on the attention WEIGHTS, threaded as sdpa dropout_p through
   # lgatr's single joint (mv,s) attention call -- the same site as the non-equivariant
-  # models' attn_dropout, so the family dropout ablation is one axis. 0.0 = exact no-op
+  # models' attn_dropout. 0.0 = exact no-op
   # (kwarg omitted; keeps non-sdpa attention backends working). Weights are Lorentz
   # invariants, so this preserves equivariance.
   dropout_prob: null
-  attn_dropout: 0.0
+  attn_dropout: 0.0  # KEEP 0. Measured, not inherited: GraphGPS's own 0.5 costs
+                     # Plain-GPS -0.0049 accuracy and a third of both rejections on
+                     # top tagging (docs/ablations.md, "Capacity and shape").
 
   # static kNN graph + per-layer LorentzNet edge conv
   knn_k: 16

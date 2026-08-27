@@ -49,7 +49,9 @@ net:
   # joint (mv,s) attention call (same site as the non-equivariant models' attn_dropout;
   # invariant weights -> equivariance preserved). 0.0 = exact no-op (kwarg omitted).
   dropout_prob: null
-  attn_dropout: 0.0
+  attn_dropout: 0.0  # KEEP 0. Measured, not inherited: GraphGPS's own 0.5 costs
+                     # Plain-GPS -0.0049 accuracy and a third of both rejections on
+                     # top tagging (docs/ablations.md, "Capacity and shape").
 
   # static kNN graph (shared by every layer's local CGENN branch)
   k: 16
