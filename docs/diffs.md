@@ -152,7 +152,9 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
 - Hybrid-family fairness: shared AdamW/schedule/budget, per-model batchsize+lr from the LR
   finder; dropout kept per-reference (ParT-side blocks 0.1, GPS and L-GATr sides 0/none);
   `use_pre_activation_pair: false` on the PNParT hybrids (published-ParT parity); a uniform
-  `attn_dropout: 0.0` knob on all four GPS models (sdpa dropout_p; equivariance-safe);
+  `attn_dropout: 0.0` knob on all four GPS models (sdpa dropout_p; equivariance-safe) --
+  0.0 is now MEASURED, not just inherited: GraphGPS's own 0.5 costs Plain-GPS -0.0049
+  accuracy and a third of both rejections on top tagging, see docs/ablations.md;
   Plain-GPS `use_edge_attr` = the ParT pair features MPNN-routed (ParticleNeXt-style
   routing ablation), OFF by default so Plain stays the bare backbone.
 - JetClass recipes: `weight_decay: 0`, `epochs: 5` (ParT-standard exposure), per-model
