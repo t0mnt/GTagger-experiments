@@ -38,6 +38,27 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 
+def _minimal_files(task, user_overrides):
+    """One file per split for the streaming tasks, unless the caller asked otherwise.
+
+    The experiment builds train, val AND test loaders before a single batch can be read,
+    so the shipped ranges open 121 files (jctagging) or 675 (toptagxl) to sample one
+    batch -- minutes of wall clock, and enough of a login node to draw a resource
+    warning. The weights come from --ckpt and the batch is a 256-jet sample either way,
+    so one file per split measures the same thing at ~1/100 the setup. Any explicit
+    data.*_files_range override wins, for when a wider sample IS the point.
+    """
+    ranges = {
+        "jctagging": {"train": [0, 1], "test": [100, 101], "val": [120, 121]},
+        "toptagxl": {"train": [0, 1], "test": [500, 501], "val": [625, 626]},
+    }.get(task, {})
+    return [
+        f"data.{split}_files_range=[{lo},{hi}]"
+        for split, (lo, hi) in ranges.items()
+        if not any(o.startswith(f"data.{split}_files_range") for o in user_overrides)
+    ]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model", nargs="?", default="tag_PlainGraphGPS")
@@ -61,6 +82,12 @@ def main():
           f"evaluation.batchsize={args.jets}", *args.overrides]
     if args.task == "toptagging":
         ov.append(f"data.dataset={args.dataset}")
+    else:
+        shrunk = _minimal_files(args.task, args.overrides)
+        ov += shrunk
+        if shrunk:
+            print(f"[note] sampling one file per split ({len(shrunk)} ranges narrowed) -- "
+                  f"pass data.<split>_files_range to widen")
 
     with hydra.initialize_config_dir(config_dir=cdir, version_base=None):
         cfg = hydra.compose(config_name=args.task, overrides=ov)
