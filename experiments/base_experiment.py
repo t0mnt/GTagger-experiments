@@ -932,6 +932,75 @@ class BaseExperiment:
         metric would have picked a different checkpoint. No-op here; the tagging experiment
         overrides it with a loss-vs-accuracy cross-check."""
 
+    def _dump_nonfinite_batch(self, data, loss, grad_norm, step):
+        """Persist the batch that produced non-finite gradients -- ONCE per run.
+
+        The skip guard below keeps a bad step from touching the weights, but it throws
+        away the only evidence of WHY: the batch is gone by the next iteration, and at a
+        rate like 2 trips in 976k steps no reproduction attempt is affordable. This
+        writes the offending batch next to the run so the cause can be found offline.
+
+        Once per run on purpose. A genuinely diverged model trips the guard on every
+        subsequent step, and 50 dumps of a multi-MB batch before the abort helps nobody.
+
+        Fully defensive: a dump that fails must never take down a multi-day job, so the
+        whole thing is wrapped and the per-tensor summary is logged first -- that survives
+        even when the write does not.
+        """
+        if getattr(self, "_nonfinite_dumped", False):
+            return
+        self._nonfinite_dumped = True
+        try:
+            tensors = {}
+
+            def walk(obj, name):
+                if torch.is_tensor(obj):
+                    tensors[name] = obj
+                elif isinstance(obj, dict):
+                    for k, v in obj.items():
+                        walk(v, f"{name}.{k}")
+                elif isinstance(obj, (list, tuple)):
+                    for i, v in enumerate(obj):
+                        walk(v, f"{name}[{i}]")
+                else:  # PyG Data and friends expose their tensors as attributes
+                    for k in getattr(obj, "keys", lambda: [])():
+                        try:
+                            walk(obj[k], f"{name}.{k}")
+                        except Exception:
+                            pass
+
+            walk(data, "batch")
+            LOGGER.warning(
+                f"non-finite gradients at iteration {step}: loss={loss.item() if torch.is_tensor(loss) else loss}, "
+                f"grad_norm={grad_norm}; batch tensors follow"
+            )
+            for name, t in tensors.items():
+                if not t.is_floating_point():
+                    LOGGER.warning(f"  {name}: shape {tuple(t.shape)} dtype {t.dtype}")
+                    continue
+                finite = torch.isfinite(t)
+                f = t[finite]
+                LOGGER.warning(
+                    f"  {name}: shape {tuple(t.shape)} finite={int(finite.sum())}/{t.numel()} "
+                    f"min={f.min().item() if f.numel() else float('nan'):.6g} "
+                    f"max={f.max().item() if f.numel() else float('nan'):.6g} "
+                    f"absmax={f.abs().max().item() if f.numel() else float('nan'):.6g}"
+                )
+
+            path = os.path.join(self.cfg.run_dir, f"nonfinite_batch_step{step}.pt")
+            torch.save(
+                {
+                    "step": step,
+                    "loss": loss.detach().cpu() if torch.is_tensor(loss) else loss,
+                    "grad_norm": grad_norm.detach().cpu() if torch.is_tensor(grad_norm) else grad_norm,
+                    "tensors": {k: v.detach().cpu() for k, v in tensors.items()},
+                },
+                path,
+            )
+            LOGGER.warning(f"non-finite batch written to {path}")
+        except Exception as e:  # never let diagnostics kill the run
+            LOGGER.warning(f"could not dump the non-finite batch: {type(e).__name__}: {e}")
+
     def _step(self, data, step):
         # actual update step
         loss, metrics = self._batch_loss(data)
@@ -1031,6 +1100,7 @@ class BaseExperiment:
                 f"[{self._nonfinite_steps} consecutive]"
             )
             self.scaler.update()
+            self._dump_nonfinite_batch(data, loss, grad_norm, step)
             # A model whose PARAMETERS have gone non-finite produces a non-finite loss and
             # non-finite gradients on every subsequent step, so skipping would silently
             # no-op for the rest of a multi-day job. Failing loudly is strictly better than
