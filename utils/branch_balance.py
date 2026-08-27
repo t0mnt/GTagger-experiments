@@ -9,8 +9,18 @@ A GraphGPS layer fuses its two branches by SUM -- ``h = h_local + h_attn`` -- an
 branch arrives through its own norm, so the branches' relative magnitude at that sum is
 what decides which one the layer is using. Reading it off the norm's gamma is a good
 proxy and cheap (no data needed), but it assumes both branches' normalised outputs carry
-comparable structure. This measures the thing itself: RMS of each branch's output over
-the REAL nodes, per layer, on a live forward.
+comparable structure. This measures the thing itself, on a live forward, over the REAL
+nodes only.
+
+Measured as the SPREAD ACROSS NODES, not the RMS -- an earlier version of this script
+used RMS and it was wrong in a way worth recording. A norm emits ``gamma * x_hat + beta``,
+so its RMS is ``sqrt(gamma^2 + beta^2)``: a branch whose output has collapsed to a learned
+constant still reads large. Only the per-node variation reaches the sum as information,
+and beta is subtracted straight back out by the next layer's norm (every layer but the
+last). On a JetClass PlainGraphGPS checkpoint the RMS ratio read 1.1-1.3 across the stack
+while the gamma ratio read 3-9; solving sqrt(gamma^2 + beta^2) showed both branches were
+bias-dominated (beta ~1.4 against gamma ~0.04-0.35) and the gamma reading had been right.
+The ``const/sig`` columns exist so that regime is visible rather than inferred.
 
 Companion to utils/graph_diameter.py. The diameter says where the local branch runs out
 of new information to deliver; this says whether the model noticed. A local branch still
@@ -26,8 +36,8 @@ Without --ckpt this reports an untrained network (all gamma = 1), which is the b
 the trained profile should be read against, and a way to check the script itself. Read
 only the RATIO there: the forward runs in eval mode, so a MaskedNorm with norm='batch'
 uses running stats, and an untrained net's (0, 1) stats make it a near-identity -- the
-absolute RMS then just tracks the residual stream doubling at each sum fusion (0.55 ->
-497 over ten layers), which says nothing about a trained model.
+absolute spread then just tracks the residual stream doubling at each sum fusion (0.50 ->
+386 over ten layers), which says nothing about a trained model.
 """
 import argparse, os, sys, warnings
 
@@ -111,7 +121,7 @@ def main():
     if not layers:
         sys.exit(f"{args.model} has no GPS layer with norm_local/norm_attn branches")
 
-    rms = {}
+    stats = {}
 
     def hook(tag, i):
         def fn(_mod, inp, out):
@@ -119,7 +129,17 @@ def main():
             # the average is over real nodes and never over padding.
             mask = inp[1] if len(inp) > 1 and inp[1] is not None else None
             vals = out[mask] if mask is not None and mask.dtype == torch.bool else out.reshape(-1, out.shape[-1])
-            rms.setdefault((i, tag), []).append(vals.float().pow(2).mean().sqrt().item())
+            v = vals.float()
+            # SPREAD ACROSS NODES, not RMS. A norm emits gamma*x_hat + beta, so its RMS is
+            # sqrt(gamma^2 + beta^2) -- a branch collapsed to a constant still reads large.
+            # Only the per-node variation reaches the sum as information, and beta is
+            # subtracted out by the next layer's norm anyway (except in the last layer).
+            stats.setdefault((i, tag), []).append(
+                (
+                    v.std(dim=0, unbiased=False).pow(2).mean().sqrt().item(),  # signal
+                    v.mean(dim=0).pow(2).mean().sqrt().item(),                 # constant
+                )
+            )
         return fn
 
     handles = []
@@ -143,16 +163,25 @@ def main():
 
     src = args.ckpt or "UNTRAINED (gamma = 1 baseline)"
     print(f"{args.model} [{args.task}]  {len(layers)} layers  {args.jets} jets\n  {src}")
-    print(f"{'layer':>5} {'rms_local':>10} {'rms_attn':>9} {'rms_ratio':>10} {'gamma_ratio':>12}")
+    def avg(i, tag, j):
+        vals = [s[j] for s in stats.get((i, tag), [])]
+        return sum(vals) / len(vals) if vals else float("nan")
+
+    print(f"{'layer':>5} {'sig_local':>10} {'sig_attn':>9} {'sig_ratio':>10} "
+          f"{'gamma_ratio':>12} {'const/sig_L':>12} {'const/sig_A':>12}")
     for i, layer in enumerate(layers):
-        rl = sum(rms.get((i, "local"), [0])) / max(1, len(rms.get((i, "local"), [1])))
-        ra = sum(rms.get((i, "attn"), [0])) / max(1, len(rms.get((i, "attn"), [1])))
+        sl, sa = avg(i, "local", 0), avg(i, "attn", 0)
+        cl, ca = avg(i, "local", 1), avg(i, "attn", 1)
         gl, ga = gamma(layer.norm_local), gamma(layer.norm_attn)
-        print(f"{i:5d} {rl:10.4f} {ra:9.4f} {rl / ra if ra else float('nan'):10.3f} "
-              f"{gl / ga if ga else float('nan'):12.3f}")
-    print("  rms_ratio is the measurement; gamma_ratio is the weight-only proxy. They "
-          "agree only if\n  both branches' normalised outputs carry comparable structure "
-          "-- where they disagree,\n  believe the activations.")
+        print(f"{i:5d} {sl:10.4f} {sa:9.4f} {sl / sa if sa else float('nan'):10.3f} "
+              f"{gl / ga if ga else float('nan'):12.3f} "
+              f"{cl / sl if sl else float('nan'):12.2f} {ca / sa if sa else float('nan'):12.2f}")
+    print("  sig_* is the per-node SPREAD of each branch's output -- the part that reaches\n"
+          "  the sum as information. sig_ratio is the measurement; gamma_ratio is the\n"
+          "  weight-only proxy for it, and they should track closely.\n"
+          "  const/sig is how far each branch has collapsed toward a constant. Above ~1 the\n"
+          "  branch is mostly a learned offset, which the NEXT layer's norm subtracts out --\n"
+          "  so a high value means that layer is contributing little to what follows.")
 
 
 if __name__ == "__main__":
