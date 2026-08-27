@@ -1,0 +1,26 @@
+# TopTagXL training recipe for tag_particlenet -- the SHARED family recipe, deliberately.
+#
+#   python run.py -cp config -cn toptagxl model=tag_particlenet training=xl_particlenet gpus=1
+#
+# Inherits xl_gts_and_friends_default (-> tag_default): batchsize 512, lr 1e-3,
+# weight_decay 0, epochs 5, CosineAnnealingWarmup, clip_grad_norm 1.0. No per-model lr
+# and no per-model optimizer. Every XL row trains under ONE recipe, which is what makes
+# the XL column a like-for-like architecture comparison rather than a comparison of how
+# well each row was swept.
+#
+# Upstream precedent, and exactly where it stops (jet-universe/particle_transformer,
+# read from train_TopLandscape.sh:19-38 and train_JetClass.sh:32-43):
+#   SHARED across ParT and ParticleNet -- the optimizer (ranger), --batch-size 512,
+#   --num-epochs 20, and the schedule. This repo's top_particlenet.yaml already mirrors
+#   that by inheriting top_ParT wholesale.
+#   NOT shared -- the learning rate. ParticleNet trains at 1e-2 there, ten times ParT's
+#   1e-3, on BOTH TopLandscape and JetClass. Upstream never adopts ParT's lr onto
+#   ParticleNet, and carries no "better performance this way" note for doing so.
+# The uniform 1e-3 here is therefore OUR choice for table comparability, not upstream
+# practice. State it that way in the paper.
+#
+# One more upstream detail this recipe departs from: ParT carries weight_decay 0.01 on
+# TopLandscape (top_ParT.yaml keeps it); at XL's 100M-jet scale the family recipe sets
+# weight_decay 0, matching the jc_* convention.
+defaults:
+  - xl_gts_and_friends_default
