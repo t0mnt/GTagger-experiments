@@ -13,7 +13,8 @@ import matplotlib; matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 FONTSIZE = 13
-STYLE = {"baseline": ("#7B68EE", "o"), "hybrid": ("#2E8B57", "s"), "plain": ("darkorange", "^")}
+STYLE = {"baseline": ("#7B68EE", "o"), "hybrid": ("#2E8B57", "s"), "plain": ("darkorange", "^"),
+         "reduced": ("#C71585", "D")}
 
 
 def main():
@@ -33,6 +34,13 @@ def main():
         rows.append((name, float(auc), float(flops), int(params), group))
     if not rows:
         raise SystemExit("no data rows -- fields must be TAB separated")
+    # The scatter loop below iterates STYLE, not rows, so a group with no style is drawn
+    # as a floating annotation with no marker -- present on the figure, absent from the
+    # data. Fail instead.
+    unknown = sorted({r[4] for r in rows} - set(STYLE))
+    if unknown:
+        raise SystemExit(f"no marker style for group(s) {unknown}; add them to STYLE "
+                         f"(known: {sorted(STYLE)})")
 
     xi = 2 if args.x == "flops" else 3
     fig, ax = plt.subplots(figsize=(6.2, 5.0))

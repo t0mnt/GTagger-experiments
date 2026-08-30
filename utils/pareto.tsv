@@ -1,18 +1,30 @@
 # model	auc	flops	params	group
-# FLOPs here are the Table-1 cells, which come from experiment.py:_count_flops --
-# ONE arbitrary jet, so they carry an ~8x jet-size lottery. Regenerate with
-#   pytest tests/experiments/test_tag_flops.py -s -k "<model> and identity"
-# which pins jet_size=50 for EVERY model, before publishing this figure.
-LGATrSlim	0.9870	1.211e+08	2014401	baseline
-LGATr	0.9869	9.185e+08	1077474	baseline
-CGENN	0.9868	3.001e+09	322689	baseline
-ParticleNet	0.9858	1.403e+08	365903	baseline
-LorentzNet	0.9855	9.576e+07	226519	baseline
-PNParT-GraphTrans	0.9864	2.189e+08	2340863	hybrid
-PNParT-GraphGPS	0.9863	4.085e+08	2011375	hybrid
-LNSlim-GraphTrans	0.9863	1.275e+08	1833300	hybrid
-LNSlim-GraphGPS	0.9861	3.428e+08	2458571	hybrid
-CGENN-GraphTrans	0.9861	1.087e+09	1153064	hybrid
-CGENN-GraphGPS	0.9866	2.095e+09	1894357	hybrid
-PlainGraphGPS	0.9858	3.064e+08	2326927	plain
-PlainGraphTrans	0.9856	1.157e+08	2253199	plain
+# Top tagging, deltaR, IdentityFrames. AUC and params from the aggregate; FLOPs from
+# experiment.py:_count_flops, which since FLOPS_JET_SIZE=50 prices ONE jet of exactly 50
+# constituents for every model -- the ~8x jet-size lottery that the previous version of
+# this file warned about is gone, and these numbers agree with utils/flops.py to the digit.
+# Regenerate a cell with:  python utils/flops.py tag_<model>          (GPU: the CPU path
+# prices SDPA at zero, see utils/branch_balance.py's docstring).
+#
+# The `reduced` group is the depth study (topt_L2/L4/L6): same architectures at fewer
+# layers. They belong on this figure because they move the frontier -- PlainGraphGPS-L2
+# reaches the L10 model's AUC at a fifth of its FLOPs.
+LGATrSlim	0.9870	3.332e+08	2014401	baseline
+LGATr	0.9869	1.966e+09	1077474	baseline
+CGENN	0.9868	2.115e+10	322689	baseline
+ParticleNet	0.9858	4.130e+08	365903	baseline
+ParticleTransformer	0.9856	2.329e+08	2141005	baseline
+LorentzNet	0.9855	6.766e+08	226519	baseline
+PNParT-GraphTrans	0.9864	6.749e+08	2340863	hybrid
+PNParT-GraphGPS	0.9863	1.243e+09	2011375	hybrid
+LNSlim-GraphTrans	0.9863	3.808e+08	1833300	hybrid
+LNSlim-GraphGPS	0.9861	1.023e+09	2458571	hybrid
+CGENN-GraphTrans	0.9861	7.214e+09	1153064	hybrid
+CGENN-GraphGPS	0.9866	6.474e+10	1894357	hybrid
+PlainGraphGPS	0.9858	9.796e+08	2326927	plain
+PlainGraphTrans	0.9856	4.152e+08	2253199	plain
+PlainGraphGPS-L4	0.9859	3.919e+08	937615	reduced
+PlainGraphGPS-L2	0.9857	1.960e+08	474511	reduced
+PlainGraphTrans-L6	0.9856	3.297e+08	1460111	reduced
+PNParT-GraphGPS-L6	0.9864	7.636e+08	1215215	reduced
+CGENN-GraphTrans-L4	0.9860	6.281e+09	614840	reduced
