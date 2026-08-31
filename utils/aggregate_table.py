@@ -9,9 +9,21 @@ Every ``run.py`` invocation logs one line per evaluated split:
 For warm-started runs that line already carries ``mean +- std`` over the trials in
 that run directory (the CANONICAL trial mechanism for campaign rows — GUIDE.md §8).
 This script walks a ``runs/`` tree, takes the latest such line per run directory
-(highest ``run_idx`` = most trials), groups directories by (task, model, frames, kNN)
-— so ablation variants of the same model keep separate rows — and consolidates each
-group into one row. Single-trial rows in a group pool into ``mean +- std [n trials]``
+(highest ``run_idx`` = most trials), groups directories by
+(task, model, frames, kNN, exp_name) and consolidates each group into one row.
+
+``exp_name`` is in the key because it is the ONLY axis that separates arbitrary
+ablations. frames and kNN are table columns, so variants along those axes label
+themselves; a depth/width/budget ablation looks identical in every keyed cell, so
+without exp_name a ``topt_L4`` run and the campaign's L10 run land in one bucket, the
+params guard below refuses to pool, and the newest run is printed under the plain
+model name -- a table row silently claiming to be the campaign row. Run dirs are laid
+out ``runs/<exp_name>/<Model>_<nnnn>`` (base_experiment.py), so ``exp_name=`` on the
+CLI is what keeps an ablation out of the campaign's row. exp_name is not a column, so
+where one variant appears under several of them the model cell is annotated ``[exp]``
+at render time; a scan of a single campaign root is unannotated.
+
+Single-trial rows in a group pool into ``mean +- std [n trials]``
 at parse time; the pooling REFUSES (keeps the newest by log mtime, with a note) when
 inference could lie: mixed with an in-run-aggregated row (double-counting),
 disagreeing iters/params/FLOPs cells (different experiments sharing a key), or
@@ -68,6 +80,24 @@ def training_batchsize(run_dir):
         return None
     m = re.search(r"^\s+batchsize:\s*(\d+)", blk.group(1), re.M)
     return int(m.group(1)) if m else None
+
+
+def run_expname(run_dir):
+    """The run's `exp_name`, from its config.yaml, falling back to the parent directory.
+
+    Both agree by construction -- base_experiment.py builds the run dir as
+    `runs/<exp_name>/<run_name>` -- but the config is authoritative if a run dir is ever
+    moved or copied, and the fallback keeps a dir with an unreadable config out of every
+    OTHER group rather than silently joining one.
+    """
+    try:
+        with open(os.path.join(run_dir, "config.yaml")) as f:
+            m = re.search(r"^exp_name:\s*(\S+)", f.read(), re.M)
+            if m:
+                return m.group(1)
+    except OSError:
+        pass
+    return os.path.basename(os.path.dirname(os.path.abspath(run_dir)))
 
 
 def seconds_to_hours(cell):
@@ -150,7 +180,8 @@ def _is_aggregated(row):
 def _consolidate(key, entries):
     """Collapse one variant's run dirs into a single (mtime, row, dirs) table entry.
 
-    entries: list of (mtime, row, run_dir) for the SAME (exp_type, model, frames, kNN).
+    entries: list of (mtime, row, run_dir) for the SAME
+    (exp_type, model, frames, kNN, exp_name).
     """
     entries = sorted(entries, key=lambda e: e[0])
     if len(entries) == 1:
@@ -238,9 +269,10 @@ def main():
             for p in glob(os.path.join(args.runs, "**", "out_*.log"), recursive=True)
         }
     )
-    # key on (model, frames, kNN) -- the variant axes that are table columns -- so
-    # ablation runs of the SAME model (identity vs learnedpd frames, deltaR vs
-    # minkowski kNN) each keep their own row. On a true re-run of the identical
+    # key on (model, frames, kNN) -- the variant axes that are table columns -- plus
+    # exp_name, the axis that separates everything else (depth, width, budget, knn_k).
+    # So ablation runs of the SAME model keep their own row whether the difference is
+    # visible in a column or only in `exp_name=`. On a true re-run of the identical
     # variant the row with the NEWEST log mtime wins (run-dir names carry a random
     # suffix, so lexicographic path order says nothing about which run is current).
     rows = {}  # key -> (mtime, row, run_dir)
@@ -263,7 +295,7 @@ def main():
         knn = cells[-1] if len(cells) > 2 else ""
         # different tasks (toptagging / toptagxl / jctagging) report different metric
         # columns -> group into SEPARATE tables keyed by the run's exp_type
-        key = (etype, model, frames, knn)
+        key = (etype, model, frames, knn, run_expname(d))
         rows.setdefault(key, []).append((mtime, row, d))
         batchsizes.setdefault(key, set()).add(training_batchsize(d))
 
@@ -284,8 +316,23 @@ def main():
     tables = []
     for et in etypes:
         keys = [k for k in sorted(rows) if k[0] == et]
-        # one batchsize per key, or None -> augment_row writes `n/a` rather than guessing
-        shown = [augment_row(rows[k][1], _sole(batchsizes.get(k))) for k in keys]
+        # exp_name is in the key but is NOT a column, so two rows differing only in it
+        # would render identically -- and an unlabelled ablation row beside the campaign
+        # row is exactly the confusion this key was added to end. Annotate the model cell
+        # only where the same (model, frames, kNN) spans several exp_names: a scan of one
+        # campaign root prints unannotated, as before.
+        spans = {}
+        for k in keys:
+            spans.setdefault(k[:4], []).append(k)
+        shown = []
+        for k in keys:
+            row = rows[k][1]
+            if len(spans[k[:4]]) > 1:
+                cells = [c.strip() for c in row.split("&")]
+                cells[0] = f"{cells[0]} [{k[4]}]"
+                row = " & ".join(cells)
+            # one batchsize per key, or None -> augment_row writes `n/a` rather than guessing
+            shown.append(augment_row(row, _sole(batchsizes.get(k))))
         body = " \\\\\n".join(shown) + " \\\\"
         ncols = shown[0].count("&") + 1
         # model frames | iters jets params | metrics... | time flops | knn

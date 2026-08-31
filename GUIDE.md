@@ -521,8 +521,11 @@ path is version-sensitive, so smoke-test it on your GPU first).
   critical path).
 - **Independent run dirs also group at aggregation** — submit the identical command N
   times (plain `sbatch train.sbatch tag_X`); `utils/aggregate_table.py` groups run
-  directories by `(task, model, frames, kNN)` and forms `mean ± std` across them at parse
-  time, and each run's own log keeps reporting *that* run. Use this where wall-clock for
+  directories by `(task, model, frames, kNN, exp_name)` and forms `mean ± std` across them
+  at parse time, and each run's own log keeps reporting *that* run. **`exp_name` is in the
+  key, so every ablation needs its own `exp_name=` on the CLI** — frames and kNN label
+  themselves in columns, but a depth/width/budget/`knn_k` ablation is identical in every
+  keyed cell, and without a distinct `exp_name` it shares the campaign's bucket. Use this where wall-clock for
   ONE variant matters (three parallel jobs beat three chained ones — e.g. adding a single
   row late), or as recovery when trials were accidentally scattered across dirs. Its limit
   is that the grouping is *inferred* from the table key, so the aggregator refuses to pool

@@ -888,7 +888,7 @@ grouping is *explicit* — the directory IS the ensemble — so nothing can sile
 inequivalent runs, and a pinned `seed` is caught at launch (with `seed=null`, the default,
 every trial draws a fresh init; batch order stays sampler-seeded and identical across
 trials). Plain independent submissions of the same variant also work: the aggregator (§8)
-groups them by `(task, model, frames, kNN)` at parse time and refuses to pool whenever that
+groups them by `(task, model, frames, kNN, exp_name)` at parse time and refuses to pool whenever that
 inference could lie (disagreeing iters/params/FLOPs, identical-metric seed clones, or a mix
 with an in-run-aggregated row). Use independent dirs when wall-clock for ONE variant
 matters (three parallel jobs) — for campaign rows, prefer the warm-start mechanism above.
