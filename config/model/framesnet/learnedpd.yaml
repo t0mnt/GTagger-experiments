@@ -8,71 +8,15 @@
 # E/m via E^2-|p|^2 gives 5.8e-13, via (E-|p|)(E+|p|) 8.0e-13, against lloca's 6.2e-13).
 # Recovering a small mass from a large E and |p| is ill-conditioned, full stop; only
 # carrying m instead of recovering it helps (3.9e-17), and a network-predicted vector has
-# no carried mass. The float64 upcast in polar_decomposition is applied. learnedso13
-# escapes it by never building a rest frame at all, not by better arithmetic.
-#
-# THE BACKWARD IS NOT PROTECTED BY THE FORWARD CLAMP (2026-09-02). polar_decomposition.py
-# does `one_minus_beta2 = clamp_min(1 - beta2, 1e-10); gamma = rsqrt(one_minus_beta2)`,
-# so the VALUE is bounded (gamma <= 1e5) and the DERIVATIVE is at its maximum exactly
-# there: d(rsqrt)/dx = -0.5 x^(-3/2) = -5e14 at the floor, and nine lines on,
-# `scale = (gamma-1)/clamp_min(beta2,1e-10)` differentiates to ~1e25. fp32 tops out at
-# 3.4e38, so TWO such factors in one product overflow -> inf -> NaN. The signature is a
-# finite loss with a NaN grad_norm and every input finite. Measured: all three
-# tag_ParticleNetParTGraphGPS + learnedpd trials died this way ~2 epochs in (first skip
-# it 4771, 50 consecutive by 6759), while the same config on GraphTrans survived -- the
-# ordering follows the per-forward COUNT of frame-transport sites (ParT attention-only <
-# PNParT-GraphTrans 3+10 < the GPS pair 10+10), not parameter count.
-#
-# Both regularizers upstream provides were off here, and both are now on:
-#   gamma_max  -- clamp_boost (equi_frames.py:542) returns the boost UNTOUCHED when this
-#                 is null, so gamma_hardness below was inert. The soft clamp it gates,
-#                 `max - softplus(max - x, beta=hardness)`, has a sigmoid derivative in
-#                 (0,1): it bounds the GRADIENT, which the forward clamp does not.
-#                 PROVISIONAL VALUE -- chosen to stop the divergence, not measured.
-#                 Re-derive per task from the realized gamma, which is already tracked:
-#                   sqlite3 runs/<exp>/mlflow/mlflow.db \
-#                     "SELECT key,MIN(value),AVG(value),MAX(value) FROM metrics
-#                      WHERE key LIKE '%gamma%' GROUP BY key;"
-#                 and raise it if the bulk of frames sit near the cap (regularizing the
-#                 tail is the intent; clamping the typical frame is not).
-#                 MEASURED, and it is a mitigation and NOT a guarantee. Backward through
-#                 clamp_boost -> restframe_boost, |grad| at the input, fp32:
-#                       1-beta^2 | gamma_max=null | gamma_max=50
-#                          1e-2  |          7.124 |        7.124   (clamp inactive)
-#                          1e-4  |          70.71 |         1.98   (36x better)
-#                          1e-6  |          702.5 |        2.744   (256x better)
-#                          1e-8  |          2e+05 |          nan   <-- WORSE
-#                 The 1e-8 NaN is clamp_boost's OWN: it opens with
-#                 `mass = lorentz_squarednorm(x).clamp(min=0).sqrt()`, and enabling
-#                 gamma_max routes the output through `x_reg = mass * (...)`, so a
-#                 gradient now flows through sqrt() at mass=0, where it is infinite.
-#                 With gamma_max null that path exists but is unused. So this trades a
-#                 large-but-finite gradient for a bounded one across the plausible
-#                 regime, and for a NaN in the extreme one.
-#                 gamma = 1/sqrt(1-beta^2), so CHECK WHICH REGIME YOU ARE IN before
-#                 trusting this: realized gamma ~1e3 (1-beta^2 ~ 1e-6) is fixed here;
-#                 realized gamma >~1e4 is not, and the answer there is learnedso13
-#                 (never forms a rest frame, so no rsqrt cliff) or lloca 2.0.
-#   mass_reg   -- was never set, so mass_regularize() (equi_frames.py:64) was a no-op:
-#                 the constructor default is None. 5e-3 is the value lloca's own
-#                 docs/source/numerics.rst gives for the TAGGING experiments (1e-5 is
-#                 theirs for amplitude regression). Input-side protection, complementary
-#                 to gamma_max: this conditions the four-momenta entering equivectors,
-#                 gamma_max bounds the boost it predicts. Only gamma_max fixes the NaN,
-#                 and note mass_reg does NOT close clamp_boost's mass=0 hole above --
-#                 it conditions the equivectors INPUT, not the vector equivectors emits.
-#
-# BOTH ARE DEVIATIONS FROM UPSTREAM'S SHIPPED NULLS. Every PD row measured before this
-# commit (PNParT-GraphTrans 0.9391, PlainGraphTrans 0.9374, PlainGraphGPS 0.9343) ran
-# unregularized. Those rows and any re-run share the aggregate key -- same model, same
-# `LearnedPDFrames` frames cell, same params -- so they WILL pool silently. Give new PD
-# work its own `exp_name=`.
+# no carried mass. lloca already applies both available mitigations -- the float64 upcast
+# in polar_decomposition and the lightlike/mass regularizers. learnedso13 escapes it by
+# never building a rest frame at all, not by better arithmetic.
+# gamma is unregulated at gamma_max: null (upstream's setting too) -- watch gamma_mean.
 _target_: lloca.framesnet.equi_frames.LearnedPDFrames
 is_global: false
 random: false
 fix_params: false
-mass_reg: 5e-3
-gamma_max: 50
+gamma_max: null
 gamma_hardness: 10
 deterministic_boost: null
 compile: false
