@@ -11,7 +11,7 @@ matplotlib
 scikit-learn
 
 # deep learning
-torch>=2.0.0
+torch>=2.0.0 #grabs triton too, 2.4+ makes most use out of lgatr/xformers
 torch-geometric>=2.6.0 # ptr-only Aggregation calls (tagging/wrappers.py) raise NotImplementedError on <= 2.5
 torch-ema
 pytorch_optimizer>=3.2.0
