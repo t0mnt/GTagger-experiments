@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 import torch
+from omegaconf import open_dict
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from torch_geometric.loader import DataLoader
 
@@ -170,6 +171,31 @@ class TaggingExperiment(BaseExperiment):
                 )
                 self.cfg.model.framesnet.equivectors.num_scalars = self.extra_scalars
                 self.cfg.model.framesnet.equivectors.num_scalars += num_tagging_features
+                # data.mass_reg reaches the framesnet ONLY through here. Three call sites
+                # consume it -- wrappers.py:169/173 (jet frame + constituents, ours) and
+                # lloca's own LearnedFrames.forward -- and all three are gated on
+                # `self.mass_reg is not None`, whose CONSTRUCTOR DEFAULT IS None. So before
+                # this line the 5e-3 in config/tagging.yaml (lloca's docs/source/numerics.rst
+                # prescribes exactly that for tagging; 1e-5 for amplitudes) was read by
+                # nothing on the tagging path and mass_regularize() returned its input
+                # untouched -- a configured physics floor that silently did not apply.
+                # NOT the amplitudes mechanism: amplitudes/utils.py:88 rewrites the DATASET
+                # energies once at load (`E = sqrt(|p|^2 + m^2)`, unconditional, every model
+                # including identity frames). This one is conditional on
+                # `lorentz_squarednorm < mass_reg^2`, runs per forward, and touches only what
+                # the framesnet sees. Copying amplitudes here would move every baseline row.
+                # BEHAVIOUR CHANGE for learned frames only. Identity has no `equivectors`
+                # key, so it never enters this branch and every published row is untouched.
+                # PD/SO13 rows measured before this commit are NOT comparable to ones after,
+                # and they share the aggregate key (same model, same frames cell, same param
+                # count) -- give new learned-frame runs their own `exp_name=`.
+                # Revert by deleting this block.
+                # open_dict is REQUIRED: the framesnet node is struct-mode and the yamls do
+                # not declare `mass_reg`, so a plain assignment raises ConfigAttributeError
+                # ("Key 'mass_reg' is not in struct") at launch, for every learned-frame run.
+                if self.cfg.data.get("mass_reg", None) is not None:
+                    with open_dict(self.cfg.model.framesnet):
+                        self.cfg.model.framesnet.mass_reg = self.cfg.data.mass_reg
                 # PURE-ROTATION frames (LearnedSO3/SO2) can't restore a boosted jet's
                 # momentum: boost_jet strands it at (M,0,0,0) and 4/7 local tagging features
                 # degenerate. Measured frame-local median pt/E (float64): so3/so2 4.5e-15
