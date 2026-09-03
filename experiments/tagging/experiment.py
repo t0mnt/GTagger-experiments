@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 import torch
+from lloca.framesnet.equi_frames import LearnedFrames
 from omegaconf import open_dict
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from torch_geometric.loader import DataLoader
@@ -472,11 +473,23 @@ class TaggingExperiment(BaseExperiment):
         serves several config variants (all four random-frames configs -- randomlorentz /
         randomrotation / randomxyrotation / randomztransform -- instantiate the same
         ``RandomFrames`` class; without the transform_type they would collide into a
-        single aggregate_table row)."""
+        single aggregate_table row).
+
+        ``is_global`` is the same kind of collision: it replaces the per-particle frames by
+        one event-averaged frame, which moves the accuracy but changes neither the class
+        name nor the parameter count, so the two variants are indistinguishable in every
+        table column. Only the LEARNED framesnets are annotated: all six ``learned*.yaml``
+        ship ``is_global: false``, so the tag marks a deviation from the config default and
+        no previously-recorded row changes, whereas the random/identity framesnets are
+        global by construction and already disambiguated by ``transform_type``."""
         fn = self.model.framesnet
         name = type(fn).__name__
         kind = getattr(fn, "transform_type", None)
-        return f"{name}({kind})" if kind is not None else name
+        if kind is not None:
+            return f"{name}({kind})"
+        if isinstance(fn, LearnedFrames) and fn.is_global:
+            return f"{name}(global)"
+        return name
 
     def _log_table_row(self, loader, title, row, metric_fmts):
         """Emit the parseable ``table <title>:`` results row for this split.
