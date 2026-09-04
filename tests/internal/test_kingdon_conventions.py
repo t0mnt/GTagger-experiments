@@ -94,3 +94,35 @@ def test_full_multiplication_table_identity(algebras):
     # every (left, right) pair lands on exactly ONE output blade
     assert int((reference != 0).sum()) == 256
     assert ((reference != 0).sum(dim=1) == 1).all()
+
+
+def test_weight_placement_is_checked_against_kingdon():
+    """A permuted compact-path table must not reach the emitter.
+
+    `spath[i, j]` -- which of the 35 compact weights each blade-pair term is multiplied
+    by -- is the one generator input with no kingdon counterpart to check it against:
+    swapping two weight slots leaves every term's (right blade, sign) untouched and still
+    exercises all 35 paths, so both pre-existing asserts pass. The kernels would then be
+    silently mis-weighted against every stored checkpoint. `_kingdon_weighted_forward`
+    rebuilds the forward from grade projections alone, and this pins that it fires.
+    """
+    from utils import flash_gen
+
+    original = flash_gen._repo_tables
+
+    def permuted():
+        alg, pidx, spath, spval, kidx = original()
+        a, b = 3, 7
+        swapped = spath.clone()
+        swapped[spath == a], swapped[spath == b] = b, a
+        return alg, pidx, swapped, spval, kidx
+
+    flash_gen._repo_tables = permuted
+    try:
+        with pytest.raises(AssertionError, match="disagrees with kingdon"):
+            flash_gen._build_expressions()
+    finally:
+        flash_gen._repo_tables = original
+
+    # and the unperturbed tables still pass, so the check is not vacuously failing
+    flash_gen._build_expressions()

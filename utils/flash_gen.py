@@ -11,7 +11,11 @@ repo-specific hardenings:
   products, the tool the port is built on and cites) and then ASSERTED, sign by sign
   and path by path, against this repo's reference tables (`CliffordAlgebra.cayley`,
   `sparse_gp_tables`) before a single line is emitted. Step 1 proved the two agree
-  globally; the generator re-proves it at every term it uses.
+  globally; the generator re-proves it at every term it uses. Two levels: per term,
+  that (right blade, sign) is kingdon's; and globally, that the assembled weighted
+  forward equals kingdon's own `sum_p w_p * <x_a y_c>_b` over the grade triples --
+  the second is what pins the WEIGHT each term is multiplied by, which the first
+  cannot see (`_kingdon_weighted_forward`).
 - WEIGHT ORDER IS THE REPO'S COMPACT-PATH ORDER (`geometric_product_paths.nonzero()`,
   35 paths for the Lorentz metric) so generated kernels are checkpoint-compatible
   with every existing sparse-GP weight tensor.
@@ -46,7 +50,7 @@ def _repo_tables():
     pidx = alg.geometric_product_paths.nonzero().T.contiguous()
     spath, spval, _ = sparse_gp_tables(alg, pidx)
     assert pidx.shape[1] == NPATH, f"expected {NPATH} Lorentz paths, got {pidx.shape[1]}"
-    return alg, spath.long(), spval, alg.gp_k_idx.long()
+    return alg, pidx, spath.long(), spval, alg.gp_k_idx.long()
 
 
 def _kingdon_terms():
@@ -69,8 +73,46 @@ def _kingdon_terms():
     return terms
 
 
+def _kingdon_weighted_forward(pidx, x, y, w):
+    """The whole weighted forward, reassembled from kingdon's grade projections.
+
+    `_kingdon_terms` checks each term's (right blade, sign); nothing checked WHICH WEIGHT
+    a term is multiplied by. That comes from `spath[i, j]`, the only generator input taken
+    from the repo on faith, and a permuted one still satisfies the per-term assert and the
+    all-35-paths assert while silently mixing up the compact weight vector.
+
+    This closes it without giving up checkpoint compatibility, because the two things are
+    separable: `pidx` (which grade triples exist, in which ORDER) stays the repo's, since
+    that order is what every stored sparse-GP weight tensor is indexed by; the ASSIGNMENT
+    of blade pairs to those triples is pure algebra, so it is rebuilt here as
+    `sum_p w_p * <x_<g_left> y_<g_right>>_<g_out>` and never reads `spath` at all.
+
+    `pidx` rows are the cayley's [left, OUT, right] orientation, not [left, right, out].
+    """
+    from kingdon import Algebra
+
+    theirs = Algebra(1, 3)
+    names = list(theirs.canon2bin)
+    kx, ky = theirs.multivector(name="x"), theirs.multivector(name="y")
+    # kingdon names a coefficient after its blade ('e12' -> 'x12', scalar 'e' -> 'x'); the
+    # blade order is gated as the identity permutation in test_kingdon_conventions.py.
+    rename = {}
+    for i, name in enumerate(names):
+        rename[sympy.Symbol(f"x{name[1:]}")] = x[i]
+        rename[sympy.Symbol(f"y{name[1:]}")] = y[i]
+
+    fwd = [sympy.Integer(0)] * NB
+    for p in range(NPATH):
+        g_left, g_out, g_right = (int(v) for v in pidx[:, p])
+        proj = (kx.grade(g_left) * ky.grade(g_right)).grade(g_out)
+        for blade, coeff in zip(proj.keys(), proj.values()):
+            j = names.index(theirs.bin2canon[blade])
+            fwd[j] = fwd[j] + w[p] * sympy.sympify(coeff).xreplace(rename)
+    return fwd
+
+
 def _build_expressions():
-    alg, spath, spval, kidx = _repo_tables()
+    alg, pidx, spath, spval, kidx = _repo_tables()
     kd = _kingdon_terms()
 
     x = sympy.symbols(f"x0:{NB}")
@@ -96,6 +138,17 @@ def _build_expressions():
             fwd[j] = fwd[j] + sign * w[p] * x[i] * y[k]
     assert used_paths == set(range(NPATH)), "not every compact path is exercised"
     assert sum(len(e.args) for e in fwd) == 256, "expected 256 forward terms total"
+
+    # weight placement (see `_kingdon_weighted_forward`): the per-term assert above is the
+    # localized one and fires first with the offending (i, j); this one is global and is
+    # the only check that `spath` puts each term under the right compact weight.
+    king = _kingdon_weighted_forward(pidx, x, y, w)
+    mismatched = [j for j in range(NB) if sympy.expand(fwd[j] - king[j]) != 0]
+    assert not mismatched, (
+        f"weighted forward disagrees with kingdon at output blades {mismatched}: the "
+        f"repo's spath assigns those terms a different compact weight than the grade "
+        f"triple in geometric_product_paths does"
+    )
 
     loss = sum(gj * fj for gj, fj in zip(g, fwd))
     gx = [sympy.diff(loss, xi) for xi in x]
