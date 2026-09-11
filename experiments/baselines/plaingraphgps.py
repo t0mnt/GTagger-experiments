@@ -348,7 +348,10 @@ class PlainGraphGPS(nn.Module):
         if attn_reps is not None:
             attn_reps_t = TensorReps(attn_reps)
             assert attn_reps_t.dim * num_heads == dim, f"{attn_reps_t.dim}*{num_heads} != dim {dim}"
-            self.lloca_attn = LLoCaAttention(attn_reps_t, num_heads)
+            self.lloca_attn = LLoCaAttention(
+                attn_reps_t, num_heads,
+                preserve_variance=False,  # lloca 2.0 default is True and needs p_ref; keep 1.3.6 numerics (docs/lloca2-migration.md)
+            )
 
         self.bn_fts = nn.BatchNorm1d(input_dim) if use_fts_bn else None
         enc_in = input_dim + (rwse_k if use_rwse else 0) + (lappe_k if use_lappe else 0)

@@ -818,7 +818,10 @@ class ParticleNetParTGraphTrans(nn.Module):
         if attn_reps is not None:
             attn_reps_t = TensorReps(attn_reps)
             embed_dim = attn_reps_t.dim * num_heads
-            self.lloca_attn = LLoCaAttention(attn_reps_t, num_heads)
+            self.lloca_attn = LLoCaAttention(
+                attn_reps_t, num_heads,
+                preserve_variance=False,  # lloca 2.0 default is True and needs p_ref; keep 1.3.6 numerics (docs/lloca2-migration.md)
+            )
         else:
             embed_dim = embed_dims[-1] if len(embed_dims) > 0 else input_dim
             self.lloca_attn = None

@@ -8,6 +8,7 @@ attention_backend: xformers
 
 net:
  _target_: lloca.backbone.transformer.Transformer
+ preserve_variance: false  # lloca 2.0 default is true and needs p_ref; keep 1.3.6 numerics (docs/lloca2-migration.md)
  _partial_: true
 
  in_channels: null

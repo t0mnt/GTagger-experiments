@@ -4,6 +4,7 @@ network_float64: null
 
 net:
  _target_: lloca.backbone.transformer.Transformer
+ preserve_variance: false  # lloca 2.0 default is true and needs p_ref; keep 1.3.6 numerics (docs/lloca2-migration.md)
 
  in_channels: null
  attn_reps: "8x0n+2x1n"

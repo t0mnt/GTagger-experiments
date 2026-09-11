@@ -1067,7 +1067,10 @@ class ParticleTransformer(nn.Module):
 
         attn_reps = TensorReps(attn_reps)
         self.embed_dim = attn_reps.dim * num_heads
-        self.attention = LLoCaAttention(attn_reps, num_heads)
+        self.attention = LLoCaAttention(
+                attn_reps, num_heads,
+                preserve_variance=False,  # lloca 2.0 default is True and needs p_ref; keep 1.3.6 numerics (docs/lloca2-migration.md)
+            )
         default_cfg = dict(
             embed_dim=self.embed_dim,
             num_heads=num_heads,
