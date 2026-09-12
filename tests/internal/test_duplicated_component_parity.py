@@ -412,16 +412,13 @@ def test_local_part_pins_the_library_identity_path():
 
     from experiments.baselines.particletransformer import ParticleTransformer as LocParT
 
-    # lloca 2.0: (a) asserts `not trim` with LLoCa frames, so the pin runs trim=False;
-    # (b) follows weaver main (d53f590) for the per-head scale, `x * c_attn.view(1,1,H,1)`,
-    # while this file keeps the original `einsum("bthd,h->btdh")` (head/dim permuted before
-    # the reshape -- the layout every stored ParT checkpoint was trained with). The two are
-    # NOT equal, so the pin disables scale_heads and guards everything else on the identity
-    # path. See docs/lloca2-migration.md.
+    # lloca 2.0 asserts `not trim` with LLoCa frames, so the pin runs trim=False. The local
+    # file follows weaver main (d53f590) for the per-head scale like lloca 2.0 does
+    # (legacy_head_scale=False), so the whole identity path is pinned again. See
+    # docs/lloca2-migration.md.
     kw = dict(input_dim=7, num_classes=2, attn_reps="8x0n+2x1n", trim=False,
               use_pre_activation_pair=False, pair_input_dim=4,
-              block_params=dict(scale_heads=False),
-              cls_block_params=dict(dropout=0, attn_dropout=0, activation_dropout=0, scale_heads=False),
+              cls_block_params=dict(dropout=0, attn_dropout=0, activation_dropout=0),
               version=1)
     torch.manual_seed(7)
     lib = LibParT(**kw)

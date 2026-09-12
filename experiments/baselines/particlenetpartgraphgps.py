@@ -170,6 +170,7 @@ class ParticleNetParTGraphGPS(nn.Module):
                  head_layers=2,
                  for_inference=False,
                  use_amp=False,
+                 preserve_variance=True,  # lloca 2.0: 1/gamma_i rescaling of transported q/k/v; needs p_ref
                  **kwargs):
         super().__init__(**kwargs)
         if knn_metric not in ("deltaR", "minkowski"):
@@ -188,7 +189,7 @@ class ParticleNetParTGraphGPS(nn.Module):
             assert attn_reps_t.dim * num_heads == dim, f"{attn_reps_t.dim}*{num_heads} != dim {dim}"
             self.lloca_attn = LLoCaAttention(
                 attn_reps_t, num_heads,
-                preserve_variance=False,  # lloca 2.0 default is True and needs p_ref; keep 1.3.6 numerics (docs/lloca2-migration.md)
+                preserve_variance=preserve_variance,
             )
 
         self.bn_fts = nn.BatchNorm1d(input_dim) if use_fts_bn else None
@@ -217,7 +218,7 @@ class ParticleNetParTGraphGPS(nn.Module):
         head += [nn.Linear(d, num_classes)]
         self.head = nn.Sequential(*head)
 
-    def forward(self, points, features, v=None, mask=None, frames=None):
+    def forward(self, points, features, v=None, mask=None, frames=None, p_ref=None):
         if mask is None:
             mask = (features.abs().sum(dim=1, keepdim=True) != 0)
         else:
@@ -238,7 +239,7 @@ class ParticleNetParTGraphGPS(nn.Module):
                     "(the attention branch has no tensorial reps to transport q/k/v). Set "
                     "model.net.attn_reps, or use identity frames."
                 )
-            self.lloca_attn.prepare_frames(frames)
+            self.lloca_attn.prepare_frames(frames, p_ref=p_ref)
         block_lloca = self.lloca_attn if do_transport else None
 
         with torch.amp.autocast("cuda", enabled=self.use_amp):

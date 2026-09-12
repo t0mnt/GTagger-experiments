@@ -1025,12 +1025,9 @@ On the login node, inside the venv/overlay you certified in §2/§2.9:
 
 ```bash
 pip install --upgrade 'lgatr[xformers-attention]>=2.0.0'
-pip install einops                   # KEEP EINOPS. An earlier revision of this appendix said
-                                     # to uninstall it because v2 dropped the requirement --
-                                     # that is wrong and would break the env. lloca imports
-                                     # einops unconditionally at `import lloca` and does not
-                                     # declare it; lgatr 1.4.x used to supply it transitively.
-                                     # It is now a direct pin in requirements.txt.
+pip uninstall -y einops              # lloca 2.0 no longer imports einops (the 1.3.6 line did,
+                                     # undeclared); nothing in this repo uses it either --
+                                     # CGENN's `gp_impl=einsum` is torch.einsum, not einops.
 python -c "import lgatr, lloca; print(lgatr.__version__)"   # expect 2.0.x, and lloca must import
 ```
 

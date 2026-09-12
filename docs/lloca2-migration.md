@@ -48,6 +48,45 @@ backend module). `get_batch_from_ptr`/`get_ptr_from_batch` gained optional
 
 ## Decisions
 
+Two commits. The first is the bit-exact port (below). The second turns on the 2.0
+improvements that are worth a retrain:
+
+- **`preserve_variance=True` everywhere** (five nets, seven transformer configs; a real
+  constructor argument on every net, no `**kwargs` swallowing). The base wrapper computes
+  `p_ref` once per event as the global-frame, energy-first jet momentum over real particles
+  and every wrapper passes it. Class tokens (GraphTrans hybrids) already used the covariant
+  jet rest frame (`cls_frames=self._jet_frames`); the transformer's global readout tokens now
+  do too (`compute_jet_frames = not mean_aggregation`), because an identity frame there
+  gives gamma = E_jet/m_jet in the lab, which breaks invariance under boosts. In the jet
+  rest frame gamma is 1. Pinned by `tests/experiments/test_preserve_variance.py`: p_ref
+  reaches `LLoCaAttention`, gamma >= 1 with max > 1.05 on top jets, readout gamma ~ 1, the
+  flag changes the score, Lorentz invariance holds (learnedpd float64 tolerance).
+- **Amplitudes** pass `p_ref = fourmomenta_global.sum(-2)`, the total momentum of the
+  process (all energies positive, incoming partons included; timelike with E > 0 for every
+  event in `zgggg`/`ttbar`). **Event generation stays at `preserve_variance=False`**: the
+  CFM velocity net sees the interpolated `x(t)`, whose event total is noise-dominated at
+  small `t` (not timelike, energy sign not guaranteed), so there is no sound reference
+  momentum. Turning it on there would need a schedule-aware reference (e.g. the data
+  endpoint's total momentum), which is its own experiment.
+- **Numerics:** with the rescaling on, the learnedso13 Lorentz-invariance floor of the
+  hybrids drops (PlainGraphGPS, 4 seeds: 4e-7 to 5e-6 versus 1e-5 to 2e-4 with it off),
+  because the transported q/k/v no longer carry gamma^grade amplification. The
+  `test_lloca_frame_invariance` assert tolerance (1e-4) sits below the file's stated 1e-3
+  static-kNN neighbour-flip floor, and one RNG-order-dependent PlainGraphGPS case crossed
+  it: replayed with the same init and batch, 3 of 2960 node-slots re-ranked under the boosts
+  with the flag on and off alike, gamma_i was stable to 9e-5, and the score moved 3.9e-4 (on)
+  versus 1.7e-4 (off). The flip is the cause; the flag only scales its footprint. The test
+  now runs PlainGraphGPS fully connected, as it already did for the dynamic-kNN hybrid.
+- **weaver-main per-head scale in the vendored ParT** (`legacy_head_scale=False` default).
+  The original einsum permuted (head, dim) before `out_proj`, so `scale_heads` never was a
+  per-head gain. Checkpoints trained with the einsum load bit-exactly with
+  `block_params=dict(legacy_head_scale=True)` (and the same in `cls_block_params`). The
+  identity-path parity pin against the library runs with the head scale on again.
+- Not changed: `trim=True` stays on the official ParT row only (efficiency plus a weak
+  random-truncation augmentation on the longest events); hybrids never trimmed.
+
+The bit-exact port:
+
 - **`preserve_variance=False` everywhere, explicitly** (five code sites, seven transformer configs). This is the 1.3.6 numerics, so every
   recorded baseline and checkpoint stays valid. lloca's own docs take the same route for the
   ParT/transformer ports ("pass `preserve_variance=False` to keep the diff minimal").
@@ -69,7 +108,6 @@ backend module). `get_batch_from_ptr`/`get_ptr_from_batch` gained optional
 
 ## Follow-ups (not in this port)
 
-- `preserve_variance=True` + `p_ref` plumbing, gated like the lgatr 2.0 posture flip.
 - Port lloca 2.0's ParT fix "compile the forward, not the whole class" into the vendored
   `experiments/baselines/particletransformer.py` (`torch.compile(self.__class__, ...)`).
 - kingdon: 3.0.0 is out. `utils/flash_gen.py` regenerates `flash_ref_p1m3.py` byte-for-byte

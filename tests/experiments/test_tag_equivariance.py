@@ -209,10 +209,17 @@ def test_full_group_invariance(model, full_group_off, transform):
 # neighbours re-rank and the graph jumps (the ~1e-3 kNN floor of test 1, amplified by the
 # tensorial transport). We test its transport fully connected to isolate it from that
 # discontinuity, which test 1 covers separately.
+# PlainGraphGPS's static kNN is built once from the local-frame inputs, so it is invariant up
+# to the frame numerics -- but a near-tied pair can still re-rank under a boost. Measured on
+# the learnedso13/lorentz case that crossed the assert tolerance: 3 of 2960 node-slots changed
+# neighbours, gamma_i (lloca 2.0 preserve_variance) was stable to 9e-5 across the transforms,
+# and the score moved 3.9e-4 with the rescaling on versus 1.7e-4 with it off (same init and
+# batch). That is the kNN floor test 1 covers, not the transport, so it runs fully connected
+# here like the dynamic-kNN hybrid below.
 CANONICALIZED_MODELS = [
     ("tag_ParticleNetParTGraphTrans", []),
     ("tag_PlainGraphTrans", []),
-    ("tag_PlainGraphGPS", []),
+    ("tag_PlainGraphGPS", ["model.net.knn_k=9999"]),  # static kNN -> fully connected
     ("tag_ParticleNetParTGraphGPS", ["model.net.knn_k=9999"]),  # dynamic kNN -> fully connected
 ]
 

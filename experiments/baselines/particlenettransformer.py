@@ -781,6 +781,7 @@ class ParticleNetParTGraphTrans(nn.Module):
                  #trim=True,
                  for_inference=False,
                  use_amp=False,
+                 preserve_variance=True,  # lloca 2.0: 1/gamma_i rescaling of transported q/k/v; needs p_ref
                  **kwargs) -> None:
         super().__init__(**kwargs)
 
@@ -820,7 +821,7 @@ class ParticleNetParTGraphTrans(nn.Module):
             embed_dim = attn_reps_t.dim * num_heads
             self.lloca_attn = LLoCaAttention(
                 attn_reps_t, num_heads,
-                preserve_variance=False,  # lloca 2.0 default is True and needs p_ref; keep 1.3.6 numerics (docs/lloca2-migration.md)
+                preserve_variance=preserve_variance,
             )
         else:
             embed_dim = embed_dims[-1] if len(embed_dims) > 0 else input_dim
@@ -883,7 +884,7 @@ class ParticleNetParTGraphTrans(nn.Module):
         return {'cls_token', }
 
     def forward(self, points, features, v=None, mask=None, uu=None, uu_idx=None,
-                frames=None, cls_frames=None):
+                frames=None, cls_frames=None, p_ref=None):
 
         '''
         Points: (N, 2, P)
@@ -978,7 +979,9 @@ class ParticleNetParTGraphTrans(nn.Module):
                 else:
                     cls_mat = lorentz_eye((B,), device=frames.device, dtype=frames.dtype)
                 seq_mat = torch.cat([cls_mat.unsqueeze(1), frames.matrices], dim=1)  # (N, P+1, 4, 4)
-                self.lloca_attn.prepare_frames(Frames(seq_mat, is_global=False, is_identity=False))
+                self.lloca_attn.prepare_frames(
+                    Frames(seq_mat, is_global=False, is_identity=False), p_ref=p_ref
+                )
                 block_lloca = self.lloca_attn
 
             for block in self.blocks:

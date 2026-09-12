@@ -103,7 +103,10 @@ class TransformerWrapper(AmplitudeWrapper):
             tracker,
         ) = super().forward(fourmomenta_global)
         features = torch.cat([features_local, particle_type], dim=-1)
-        output = self.net(features, frames)
+        # lloca 2.0 preserve_variance: the reference momentum is the total momentum of the
+        # process in the global frame (all energies positive, incoming partons included; the
+        # total is timelike with E > 0 for every event in the datasets)
+        output = self.net(features, frames, p_ref=fourmomenta_global.sum(dim=-2))
         amp = output.mean(dim=-2)
         return amp, tracker, frames
 

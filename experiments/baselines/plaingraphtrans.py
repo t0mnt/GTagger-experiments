@@ -270,6 +270,7 @@ class PlainGraphTrans(nn.Module):
                  # misc
                  for_inference=False,
                  use_amp=False,
+                 preserve_variance=True,  # lloca 2.0: 1/gamma_i rescaling of transported q/k/v; needs p_ref
                  **kwargs) -> None:
         super().__init__(**kwargs)
         if knn_metric not in ('deltaR', 'minkowski'):
@@ -302,7 +303,7 @@ class PlainGraphTrans(nn.Module):
             )
             self.lloca_attn = LLoCaAttention(
                 attn_reps_t, num_heads,
-                preserve_variance=False,  # lloca 2.0 default is True and needs p_ref; keep 1.3.6 numerics (docs/lloca2-migration.md)
+                preserve_variance=preserve_variance,
             )
 
         bridge_in = gnn_out + input_dim if use_input_concat else gnn_out
@@ -331,7 +332,7 @@ class PlainGraphTrans(nn.Module):
             "cls_token",
         }
 
-    def forward(self, points, features, v=None, mask=None, frames=None, cls_frames=None):
+    def forward(self, points, features, v=None, mask=None, frames=None, cls_frames=None, p_ref=None):
         '''
         points: (N, 2, P)   features: (N, C, P)   v: (N, 4, P) [px,py,pz,E]   mask: (N, 1, P)
         frames: Frames (N, P, 4, 4) per-particle local frames, or None. The LLoCa transport is
@@ -401,7 +402,9 @@ class PlainGraphTrans(nn.Module):
                 else:
                     cls_mat = lorentz_eye((N,), device=frames.device, dtype=frames.dtype)
                 seq_mat = torch.cat([cls_mat.unsqueeze(1), frames.matrices], dim=1)  # (N, P+1, 4, 4)
-                self.lloca_attn.prepare_frames(Frames(seq_mat, is_global=False, is_identity=False))
+                self.lloca_attn.prepare_frames(
+                    Frames(seq_mat, is_global=False, is_identity=False), p_ref=p_ref
+                )
                 block_lloca = self.lloca_attn
 
             for block in self.blocks:
