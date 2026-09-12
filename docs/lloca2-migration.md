@@ -75,8 +75,12 @@ improvements that are worth a retrain:
   static-kNN neighbour-flip floor, and one RNG-order-dependent PlainGraphGPS case crossed
   it: replayed with the same init and batch, 3 of 2960 node-slots re-ranked under the boosts
   with the flag on and off alike, gamma_i was stable to 9e-5, and the score moved 3.9e-4 (on)
-  versus 1.7e-4 (off). The flip is the cause; the flag only scales its footprint. The test
-  now runs PlainGraphGPS fully connected, as it already did for the dynamic-kNN hybrid.
+  versus 1.7e-4 (off); the migration-only tree (b6efa2d, before any of this) shows the same
+  3 flips and the same 1.7e-4. The flip is the cause and is not new; the flag only scales
+  its footprint. The test now has two PlainGraphGPS rows: the experiment kNN under the
+  file's ~1e-3 neighbour-flip floor (the architecture as trained), and fully connected
+  under the tight tolerance (the transport in isolation, as the dynamic-kNN hybrid already
+  was). Nothing in the experiment configs changed.
 - **`p_ref` is cast to the network dtype** (the frames already were). Production runs
   float64 momenta (`data.momentum_float64: true`) through float32 nets; a float64 `p_ref`
   makes lloca fold a float64 gamma into the frames and silently run the whole q/k/v
