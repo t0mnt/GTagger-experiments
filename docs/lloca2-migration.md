@@ -77,6 +77,11 @@ improvements that are worth a retrain:
   with the flag on and off alike, gamma_i was stable to 9e-5, and the score moved 3.9e-4 (on)
   versus 1.7e-4 (off). The flip is the cause; the flag only scales its footprint. The test
   now runs PlainGraphGPS fully connected, as it already did for the dynamic-kNN hybrid.
+- **`p_ref` is cast to the network dtype** (the frames already were). Production runs
+  float64 momenta (`data.momentum_float64: true`) through float32 nets; a float64 `p_ref`
+  makes lloca fold a float64 gamma into the frames and silently run the whole q/k/v
+  transport in float64 (verified on `LLoCaAttention` directly: `frames_out` came back
+  float64 while the output stayed float32). Pinned by `test_p_ref_keeps_the_network_dtype`.
 - **weaver-main per-head scale in the vendored ParT** (`legacy_head_scale=False` default).
   The original einsum permuted (head, dim) before `out_proj`, so `scale_heads` never was a
   per-head gain. Checkpoints trained with the einsum load bit-exactly with

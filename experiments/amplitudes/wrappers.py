@@ -106,7 +106,8 @@ class TransformerWrapper(AmplitudeWrapper):
         # lloca 2.0 preserve_variance: the reference momentum is the total momentum of the
         # process in the global frame (all energies positive, incoming partons included; the
         # total is timelike with E > 0 for every event in the datasets)
-        output = self.net(features, frames, p_ref=fourmomenta_global.sum(dim=-2))
+        p_ref = fourmomenta_global.sum(dim=-2).to(self.network_dtype)  # dtype like the frames
+        output = self.net(features, frames, p_ref=p_ref)
         amp = output.mean(dim=-2)
         return amp, tracker, frames
 

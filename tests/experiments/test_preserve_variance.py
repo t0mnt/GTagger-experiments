@@ -94,3 +94,31 @@ def test_preserve_variance_is_live_and_invariant(model, extra, readout, gamma_re
         exp, data, transform="lorentz", num_checks=5, rtol=1e-2, atol=1e-2
     )
     assert max_dev < 2e-2, f"{model}: not Lorentz invariant with preserve_variance (max dev {max_dev:.2e})"
+
+
+@pytest.mark.parametrize("model", ["tag_PlainGraphTrans", "tag_transformer", "tag_ParT"])
+def test_p_ref_keeps_the_network_dtype(model):
+    """Production runs float64 momenta (data.momentum_float64=true) through float32 nets. A
+    float64 p_ref would make lloca 2.0 fold a float64 gamma into the frames and silently run
+    the whole q/k/v transport in float64, so p_ref must arrive in the network dtype."""
+    seen = []
+    orig = LLoCaAttention.prepare_frames
+
+    def spy(self, frames, p_ref=None, ptr=None):
+        seen.append((None if p_ref is None else p_ref.dtype, frames.matrices.dtype))
+        return orig(self, frames, p_ref=p_ref, ptr=ptr)
+
+    LLoCaAttention.prepare_frames = spy
+    try:
+        exp = _build([f"model={model}", "model/framesnet=learnedpd", "use_float64=false",
+                      "data.momentum_float64=true"])
+        data = next(iter(exp.train_loader))
+        exp.model.eval()
+        with torch.no_grad():
+            exp._get_ypred_and_label(data.clone())
+    finally:
+        LLoCaAttention.prepare_frames = orig
+    assert seen, f"{model}: prepare_frames never called"
+    p_dtype, f_dtype = seen[-1]
+    assert f_dtype == torch.float32, f"{model}: frames are {f_dtype}"
+    assert p_dtype == torch.float32, f"{model}: p_ref is {p_dtype}, would upcast the transport"

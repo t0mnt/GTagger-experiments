@@ -291,7 +291,10 @@ class TaggerWrapper(nn.Module):
             reduce="sum",
             dim_size=B,
         )  # (B, 4)
-        self._p_ref = jet_global
+        # network dtype like the frames below: a float64 p_ref with float32 frames would
+        # silently upcast lloca's whole q/k/v transport to float64 (gamma ~ 1..1e2 needs no
+        # extra precision)
+        self._p_ref = jet_global.to(scalars_nospurions.dtype)
         jet_nospurions = jet_global.index_select(0, batch_nospurions)
         jet_local_nospurions = self.trafo_fourmomenta(jet_nospurions, frames_nospurions)
         local_tagging_features_nospurions = get_tagging_features(
