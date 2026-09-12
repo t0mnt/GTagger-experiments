@@ -118,4 +118,5 @@ The bit-exact port:
 - kingdon: 3.0.0 is out. `utils/flash_gen.py` regenerates `flash_ref_p1m3.py` byte-for-byte
   identical under 3.0.0 (only the version stamps differ) and the Step 1 gates in
   `tests/internal/test_kingdon_conventions.py` pass except the deliberate version pin.
-  Bump `KINGDON_PIN` in its own commit after re-running the Step 1+2 gates there.
+  Bumped in its own commit after re-running the gates. kingdon is deliberately not in
+  `requirements.txt`: it is a codegen/gate tool, and the gates `importorskip` it.

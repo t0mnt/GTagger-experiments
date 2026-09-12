@@ -1025,9 +1025,11 @@ On the login node, inside the venv/overlay you certified in §2/§2.9:
 
 ```bash
 pip install --upgrade 'lgatr[xformers-attention]>=2.0.0'
-pip uninstall -y einops              # lloca 2.0 no longer imports einops (the 1.3.6 line did,
-                                     # undeclared); nothing in this repo uses it either --
-                                     # CGENN's `gp_impl=einsum` is torch.einsum, not einops.
+# einops: no longer needed (lloca 2.0 stopped importing it; nothing in this repo uses it --
+# CGENN's `gp_impl=einsum` is torch.einsum). Harmless if it stays installed; optional:
+# pip uninstall -y einops
+# kingdon: only for regenerating the flash kernels and running their gates (tests skip without it):
+# pip install kingdon==3.0.0
 python -c "import lgatr, lloca; print(lgatr.__version__)"   # expect 2.0.x, and lloca must import
 ```
 

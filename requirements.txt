@@ -20,10 +20,11 @@ pytorch_optimizer>=3.2.0
 torchdiffeq
 xformers # might be challenging to install, see https://github.com/facebookresearch/xformers
 pelican-lite
-kingdon==3.0.0  # flash-kernel codegen (utils/flash_gen.py) and its Step 1+2 gates only; not a runtime import
 lgatr[xformers-attention]>=2.0.0  # upgraded to 2.0 (not backwards compatabible)
-lloca[xformers-attention]>=2.0.0  # upgraded to 2.0 (see docs/lloca2-migration.md); einops pin
-        # dropped again: lloca 2.0 no longer imports it
+lloca[xformers-attention]>=2.0.0  # upgraded to 2.0 (see docs/lloca2-migration.md). einops is no
+        # longer needed (lloca 2.0 stopped importing it; nothing here uses it) -- harmless if
+        # still installed. kingdon==3.0.0 is NOT listed: it is only needed to regenerate
+        # the flash kernels (utils/flash_gen.py) and to run their gates (which skip without it)
 
 # weaver packages
 tqdm>=4.41.0
