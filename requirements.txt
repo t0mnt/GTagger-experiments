@@ -6,7 +6,7 @@ mlflow-skinny # can optionally install extras, see https://pypi.org/project/mlfl
 requests #replaces wget which is abandonware and not really suited for big downloads like the new XL dataset
 
 # standard science stack
-numpy>=1.19.5,<2.0.0 # constrain version for weaver (for miniweaver, weaver now updated to support this but parity is unneeded)
+numpy>=1.19.5,<2.0.0 # constrain version for weaver (for miniweaver, weaver now updated to support this but parity is unneeded) the cap is dropable 
 matplotlib
 scikit-learn
 
