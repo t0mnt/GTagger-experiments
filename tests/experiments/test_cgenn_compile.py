@@ -517,9 +517,6 @@ def test_regional_compile_vs_eager(monkeypatch):
     assert gd < 1e-8, f"REGIONAL grads: {gd:.3e} >= 1e-8"
 
 
-# Requires torch >= 2.4 (verified on torch 2.14, Python 3.11 and 3.12). Unlike rotorch's
-# whole-model compile there is no Python 3.12 floor here: nothing on this path goes through a
-# functools.cached_property, which is what holds the lock dynamo refuses to trace on 3.11.
 @pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile gates run with CGENN_COMPILE_GATES=1")
 @pytest.mark.parametrize("impl", ["einsum", "sparse", "flash"])
 def test_fullgraph_compiles(impl):
