@@ -9,7 +9,9 @@ Each run writes plots_<idx>/roc.txt (two columns: fpr, tpr) when the run had
         "PlainGraphTrans=runs/.../PlainGraphTrans_6377/plots_0/roc.txt" \
         "PlainGraphGPS=runs/.../PlainGraphGPS_7101/plots_0/roc.txt"
 
-Emits both panels the field uses: 1/eps_B vs eps_S (log y) and SIC.
+Emits both panels the field uses: 1/eps_B vs eps_S (log y) and SIC, and with
+--ratio-to LABEL a fourth page: rejection zoomed to [--xmin, 1] over a ratio strip
+against LABEL (the ParT/ParticleNet comparison figure).
 """
 import argparse, os
 import numpy as np
@@ -93,6 +95,12 @@ def main():
     p.add_argument("--average", action="store_true",
                    help="curves sharing a label are averaged into one (use with "
                         "roc_labels.py --all-trials, so the figure matches the pooled table)")
+    p.add_argument("--ratio-to", metavar="LABEL",
+                   help="add a page: rejection (log y) with a lower panel of each curve's "
+                        "rejection divided by LABEL's, on a shared eps_S grid -- the "
+                        "ParT/ParticleNet-style comparison figure")
+    p.add_argument("--xmin", type=float, default=0.6,
+                   help="left edge of the ratio page's eps_S axis (default 0.6)")
     args = p.parse_args()
 
     specs = list(args.curves)
@@ -163,6 +171,38 @@ def main():
         ax.set_xlim(0, 1)
         ax.legend(frameon=False, fontsize=FONTSIZE_LEGEND)
         fig.savefig(pdf, bbox_inches="tight", format="pdf")
+        plt.close(fig)
+
+        # panel 4 (optional) -- rejection over a zoomed eps_S window with a ratio strip
+        # against one reference curve. Curves are sampled onto one eps_S grid (each
+        # run's ROC has its own thresholds), so the ratio is rej_i(eps) / rej_ref(eps).
+        if args.ratio_to:
+            labels = [e[0] for e in entries]
+            if args.ratio_to not in labels:
+                raise SystemExit(f"--ratio-to {args.ratio_to!r} is not one of {labels}")
+            grid = np.linspace(args.xmin, 1.0, 400)
+
+            def rej_on_grid(fpr, tpr):
+                order = np.argsort(tpr)  # np.interp needs ascending x
+                return 1.0 / np.interp(grid, tpr[order], fpr[order])
+
+            ref = rej_on_grid(*entries[labels.index(args.ratio_to)][1:])
+            fig, (top, bot) = plt.subplots(
+                2, 1, figsize=(5.2, 5.6), sharex=True,
+                gridspec_kw={"height_ratios": [3, 1], "hspace": 0.06})
+            for i, (label, fpr, tpr) in enumerate(entries):
+                rej = rej_on_grid(fpr, tpr)
+                top.plot(grid, rej, label=label, lw=1.6, **style(i))
+                if label != args.ratio_to:
+                    bot.plot(grid, rej / ref, lw=1.4, **style(i))
+            top.set_yscale("log")
+            top.set_ylabel(r"Background rejection $1/\epsilon_B$", fontsize=FONTSIZE)
+            top.legend(frameon=True, fontsize=FONTSIZE_LEGEND)
+            bot.axhline(1.0, color="k", lw=0.8)
+            bot.set_ylabel(f"Ratio", fontsize=FONTSIZE)
+            bot.set_xlabel(r"$\epsilon_S$", fontsize=FONTSIZE)
+            bot.set_xlim(args.xmin, 1)
+            fig.savefig(pdf, bbox_inches="tight", format="pdf")
         plt.close(fig)
     print(f"\nwrote {args.out}")
 
