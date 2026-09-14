@@ -916,6 +916,11 @@ path. Listed so a reader (or a fork) knows they were weighed rather than missed.
       1.5-2x in wall time, since padded attention is a dense GEMM at higher efficiency than a
       varlen one). `lgatr[xformers-attention]` already ships `BlockDiagonalMask`, so the
       mechanism exists rather than needing to be built.
+      Measured by tagging-guide (cost_estimate/inference_gpu.json, H100, bs 512): slim
+      1.95x time / 2.5x mem, L-GATr 1.72x / 2.9x, LLoCa-transformer 1.40x / 1.2x at their
+      size 0, growing with size; ParT-family stays padded (dense pair bias). Unrelated to
+      the loader: tagging-guide's fused-numba miniweaver is bit-equal to ours on the same
+      file (verified) -- only a per-batch CPU win, at the cost of a numba dependency.
       Why it is not planned: it is a large rewrite touching every model forward and every
       dense-mask interface the compile program spent months hardening, and its
       data-dependent `nnz` makes CUDA graphs permanently uncapturable -- the mutually
