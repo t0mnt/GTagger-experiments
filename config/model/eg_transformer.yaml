@@ -2,6 +2,7 @@ _target_: experiments.eventgen.wrappers.TransformerCFM
 
 net:
  _target_: lloca.backbone.transformer.Transformer
+ preserve_variance: false  # CFM: the velocity net sees the interpolated x(t), whose event total momentum is noise-dominated at small t (not timelike) -- no sound p_ref, so the rescaling stays off here
 
  in_channels: null
  out_channels: null
