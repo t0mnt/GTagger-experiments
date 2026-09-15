@@ -11,7 +11,7 @@ matplotlib
 scikit-learn
 
 # deep learning
-torch>=2.4.0 # lloca 2.0 needs nn.RMSNorm (2.4); also makes most use out of lgatr/xformers
+torch>=2.4.0 # makes most use out of lgatr/xformers/lloca
 torch-geometric>=2.6.0 # ptr-only Aggregation calls (tagging/wrappers.py) raise NotImplementedError on <= 2.5
 torch-ema
 pytorch_optimizer>=3.2.0
@@ -20,11 +20,8 @@ pytorch_optimizer>=3.2.0
 torchdiffeq
 xformers # might be challenging to install, see https://github.com/facebookresearch/xformers
 pelican-lite
-lgatr[xformers-attention]>=2.0.0  # upgraded to 2.0 (not backwards compatabible)
-lloca[xformers-attention]>=2.0.0  # upgraded to 2.0 (see docs/lloca2-migration.md). einops is no
-        # longer needed (lloca 2.0 stopped importing it; nothing here uses it) -- harmless if
-        # still installed. kingdon==3.0.0 is NOT listed: it is only needed to regenerate
-        # the flash kernels (utils/flash_gen.py) and to run their gates (which skip without it)
+lgatr[xformers-attention]>=2.0.0  # upgraded to 2.0 (not backwards compatible)
+lloca[xformers-attention]>=2.0.0  # upgraded to 2.0 (same thing)
 
 # weaver packages
 tqdm>=4.41.0

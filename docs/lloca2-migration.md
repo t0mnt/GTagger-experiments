@@ -93,6 +93,17 @@ improvements that are worth a retrain:
   identity-path parity pin against the library runs with the head scale on again.
 - Not changed: `trim=True` stays on the official ParT row only (efficiency plus a weak
   random-truncation augmentation on the longest events); hybrids never trimmed.
+- **The lgatr 1.4.4 transplant gates** (`tests/experiments/test_lgatr_migration_parity.py`)
+  predate both this port and main's 7664162 (framesnet `mass_reg` wiring, 2026-09-03; the
+  fixtures are from 2026-08-21). The learned-frames composition (`equivectors_lgatr`) is
+  therefore compared with `preserve_variance=false` pinned and the framesnet `mass_reg`
+  restored to the recorded None, as verification instruments like the existing affine,
+  sparse_gp and gelu-flavor pins: so measured it meets the 1e-10 bar (1.9e-13), which shows
+  lloca 2.0's learned-frames path is bit-compatible with 1.3.6. With the two left as shipped
+  the gap is 0.40 (the rescaling) and 2.9e-6 (the mass floor) -- both deliberate, neither the
+  transplant. The config-snapshot gate allows exactly the three resulting key changes at
+  their shipped values (framesnet `compile` gone, `preserve_variance: true`, framesnet
+  `mass_reg` equal to `data.mass_reg`).
 
 The bit-exact port:
 
@@ -111,7 +122,7 @@ The bit-exact port:
   per-head scale is now a documented divergence from the library (above). With both off the
   pin is bit-exact again, so it still guards embedding, pair embedding, masks, attention,
   FFN, class attention and the head.
-- **Not adopting weaver's new `c_attn` form.** Doing so would silently re-weight every
+- **Not adopting weaver's new `c_attn` form** (in this first commit; the second adopts it, see above). Doing so would silently re-weight every
   stored ParT checkpoint (the permutation is baked into their `out_proj`). If a future
   retrain wants the new form, it is one line in the vendored Block plus a fresh baseline.
 
