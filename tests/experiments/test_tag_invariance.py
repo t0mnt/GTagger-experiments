@@ -46,6 +46,14 @@ def test_amplitudes(
     batchsize=4,
 ):
     experiments.logger.LOGGER.disabled = True  # turn off logging
+    # Deterministic: config_quick sets no seed, so the init, the shuffled batch and the
+    # random transforms below all came from whatever RNG state earlier tests left behind.
+    # The invariance floor is set by mass regularization (E -> sqrt(|p|^2 + mass_reg^2) is
+    # not covariant; with data.mass_reg=null every row is exactly invariant, with the
+    # framesnet wiring of 7664162 the learnedpd rows sit at ~1e-7 to 4e-7 max MSE), and one
+    # session-order draw of a large boost pushed the graphnet+edges/learnedpd/lorentz row to
+    # 1.2e-5 while the same case measured 1.5e-7 and 3.7e-7 standalone.
+    torch.manual_seed(0)
 
     # create experiment environment
     with hydra.initialize(config_path="../../config_quick", version_base=None):
