@@ -329,7 +329,12 @@ PARITY_PINS = {
     "tag_LorentzNetLGATrSlimGraphGPS": ["+model.net.nonlinearity_v=null"],
     "tag_CGENNLGATrGraphTrans": ["+model.net.norm_elementwise_affine=false"],
     "tag_CGENNLGATrGraphGPS": [],
-    "equivectors_lgatr": ["+model.framesnet.equivectors.net.norm_elementwise_affine=false"],
+    # lloca 2.0 (docs/lloca2-migration.md): preserve_variance rescales the transported q/k/v by
+    # 1/gamma_i, an O(1) change to the backbone output that the 1.4.4 fixture predates. Pinned
+    # off here as a verification instrument, like the affine and sparse_gp pins: this gate
+    # isolates the lgatr transplant; the shipped model keeps it on.
+    "equivectors_lgatr": ["+model.framesnet.equivectors.net.norm_elementwise_affine=false",
+                          "model.net.preserve_variance=false"],
 }
 # Tier 1 additionally forces the DENSE geometric product on full-LGATr-bearing models (S3);
 # slim models have no geometric product.
@@ -385,6 +390,15 @@ def _transplant_check(name, overrides):
     # the session, cascading spurious failures (final audit finding)
     try:
         exp = _build("config_quick", list(overrides) + pins, with_data=False)
+        learned_frames = any("framesnet=learned" in o for o in overrides)
+        if learned_frames and getattr(exp.model.framesnet, "mass_reg", None) is not None:
+            # 7664162 (2026-09-03) wires data.mass_reg into the framesnet; the 1.4.4 fixtures
+            # (2026-08-21) were recorded with the framesnet's constructor default None, and
+            # its own comment says rows before and after are not comparable. Restore the
+            # recorded posture for the comparison (verification instrument, same as the S9
+            # gelu-flavor patch): with it the learned-frames composition meets the 1e-10 bar,
+            # with it on the gap is ~3e-6 -- the physics floor, not the transplant.
+            exp.model.framesnet.mass_reg = None
         missing, unexpected = exp.model.load_state_dict(sd, strict=False)
         # v1-side keys with no v2 slot, derived by rule: S5 qkv biases + the attention `metric`
         # buffer v2 made non-persistent (constant Minkowski signature, zero learnable content).
@@ -396,7 +410,6 @@ def _transplant_check(name, overrides):
         tier1 = os.environ.get("LGATR_PARITY_TIER", "1") == "1"
         tol = 1e-10 if tier1 else 1e-8
         mode = _grad_mode(name)
-        learned_frames = any("framesnet=learned" in o for o in overrides)
         for tag in ("main", "edge"):
             data = _rebuild_batch(ref[f"batch_{tag}"])
             # S10 (operator ruling 2026-08-07): a multiplicity-1 jet degenerates the LEARNED-frames
@@ -709,6 +722,24 @@ def test_config_snapshot_diff(name):
         f"{name}: activation_memory_budget must ship null (torch default untouched); "
         f"setting it trades backward FLOPs for memory:\n" + "\n".join(amb_added))
     added = [l for l in added if key_of(l) != "activation_memory_budget"]
+    # lloca 2.0 (docs/lloca2-migration.md), both pinned to the shipped posture: the framesnet
+    # `compile` option no longer exists (its removal is the only allowed lost key, and only
+    # at its recorded value false), and the backbones grew `preserve_variance`, campaign
+    # posture true. 7664162 wires data.mass_reg into the framesnet: allowed as an addition
+    # only at the data value (the transplant gate above nulls it for the comparison).
+    fn_compile_removed = [l for l in removed if key_of(l) == "compile"]
+    assert all(val_of(l).split("#")[0].strip() == "false" for l in fn_compile_removed), (
+        f"{name}: only the lloca-2.0 removal of framesnet compile=false may go:\n"
+        + "\n".join(fn_compile_removed))
+    removed = [l for l in removed if key_of(l) != "compile"]
+    pv_added = [l for l in added if key_of(l) == "preserve_variance"]
+    assert all(val_of(l).split("#")[0].strip() == "true" for l in pv_added), (
+        f"{name}: preserve_variance must ship true (campaign posture):\n" + "\n".join(pv_added))
+    added = [l for l in added if key_of(l) != "preserve_variance"]
+    mr_added = [l for l in added if key_of(l) == "mass_reg"]
+    assert all(float(val_of(l).split("#")[0]) == float(exp.cfg.data.mass_reg) for l in mr_added), (
+        f"{name}: framesnet mass_reg must equal data.mass_reg (7664162):\n" + "\n".join(mr_added))
+    added = [l for l in added if key_of(l) != "mass_reg"]
     bad_removed = [l for l in removed
                    if key_of(l) not in {"increase_hidden_channels", "activation", "_target_"}]
     bad_added = [l for l in added
