@@ -78,6 +78,15 @@ def average_by_label(entries):
             o = np.argsort(tpr)
             rejs.append(np.interp(grid, tpr[o], 1.0 / fpr[o]))
         mean_rej = np.mean(rejs, axis=0)
+        # Every ROC ends at (eps_B, eps_S) = (1, 1), but a saved curve holds thousands of
+        # rows with tpr == 1 (fpr keeps climbing after every signal jet is accepted), and
+        # np.argsort is not stable, so interpolating a trial AT eps_S = 1 returns whichever
+        # of those rows the sort left last -- a rejection just above 1. The mean then puts
+        # the pooled curve's last point at eps_B < 1: it stops short of the corner, and the
+        # AUC integral silently loses that entire slice (measured on the landscape L-GATr
+        # trials: pooled curve ended at eps_B = 0.9794 and read 0.9663 against the trials'
+        # own 0.9869 -- the deficit is the missing band, to four decimals). Pin the corner.
+        mean_rej[-1] = 1.0
         out.append((f"{label} [{len(curves)} trials]", 1.0 / mean_rej, grid))
     return out
 
@@ -121,6 +130,13 @@ def main():
         if not os.path.exists(path):
             raise SystemExit(f"missing: {path}")
         fpr, tpr = load(path)
+        # A curve that stops short of the corner is a truncated roc.txt -- an interrupted
+        # np.savetxt, or an evaluation that did not finish. Its rejections at the working
+        # points still read correctly, so neither the figure nor the table looks wrong,
+        # while every AUC computed from it collapses. Say so rather than plotting it mutely.
+        if tpr.max() < 0.999 or fpr.max() < 0.999:
+            print(f"WARNING truncated curve, AUC unusable: {path} reaches only "
+                  f"eps_S={tpr.max():.4f}, eps_B={fpr.max():.4f} -- regenerate this roc.txt")
         entries.append((label, fpr, tpr))
 
     if args.average:
