@@ -597,6 +597,20 @@ class BaseExperiment:
         """
         epochs = OmegaConf.select(self.cfg, "training.epochs", default=None)
         iterations = OmegaConf.select(self.cfg, "training.iterations", default=None)
+        # An empty train loader is a data problem, not a budget problem, and it used to
+        # surface as `ZeroDivisionError: division by zero` from the "N iterations = X epochs"
+        # log line hundreds of lines later (or, on an epochs recipe, as a silent
+        # `iterations = 0`). The usual cause is data_dir resolving to nothing -- a dataset
+        # purged from scratch, or a symlink/bind that does not reach the container -- which
+        # miniweaver has already reported above as "matched no files on disk".
+        if len(self.train_loader) == 0:
+            raise ValueError(
+                f"The training dataloader is empty (0 batches), so no budget can be "
+                f"resolved and nothing can be trained or standardized. Check that "
+                f"data.data_dir ({OmegaConf.select(self.cfg, 'data.data_dir')}) resolves to "
+                f"actual files from INSIDE the container, and see the '[miniweaver] WARNING: "
+                f"... matched no files on disk' line above for the paths that were tried."
+            )
         if epochs is not None:
             if iterations is not None:
                 # a CLI training.iterations=N on an epochs-based recipe is silently
