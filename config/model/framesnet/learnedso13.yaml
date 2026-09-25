@@ -11,7 +11,6 @@ _target_: lloca.framesnet.equi_frames.LearnedSO13Frames
 is_global: false
 random: false
 fix_params: false
-compile: false
 ortho_kwargs:
  use_float64: true
  method: gramschmidt

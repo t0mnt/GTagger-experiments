@@ -130,6 +130,7 @@ class TaggerWrapper(nn.Module):
         # readout token in a tensorial backbone) set this; forward then fills _jet_frames.
         self.compute_jet_frames = False
         self._jet_frames = None
+        self._p_ref = None  # (B, 4) global jet momentum, filled by forward
 
     def jet_frames(self, fourmomenta, scalars, ptr, is_spurion=None):
         """A single covariant frame per event: the boost into the jet rest frame.
@@ -280,13 +281,21 @@ class TaggerWrapper(nn.Module):
         fourmomenta_local_nospurions = self.trafo_fourmomenta(
             fourmomenta_nospurions, frames_nospurions
         )
-        jet_nospurions = scatter(
+        # per-event jet four-momentum in the GLOBAL frame (energy-first, real particles only):
+        # the reference momentum `p_ref` for lloca 2.0's preserve_variance rescaling, and the
+        # per-particle broadcast the local tagging features need
+        jet_global = scatter(
             fourmomenta_nospurions,
             index=batch_nospurions,
             dim=0,
             reduce="sum",
             dim_size=B,
-        ).index_select(0, batch_nospurions)
+        )  # (B, 4)
+        # network dtype like the frames below: a float64 p_ref with float32 frames would
+        # silently upcast lloca's whole q/k/v transport to float64 (gamma ~ 1..1e2 needs no
+        # extra precision)
+        self._p_ref = jet_global.to(scalars_nospurions.dtype)
+        jet_nospurions = jet_global.index_select(0, batch_nospurions)
         jet_local_nospurions = self.trafo_fourmomenta(jet_nospurions, frames_nospurions)
         local_tagging_features_nospurions = get_tagging_features(
             fourmomenta_local_nospurions,
@@ -399,6 +408,10 @@ class TransformerWrapper(AggregatedTaggerWrapper):
         self.use_amp = use_amp
         self.attention_backend = attention_backend
         self.mean_aggregation = mean_aggregation
+        # global readout tokens need a covariant frame once preserve_variance rescales by
+        # gamma_i = (L_i p_ref)^0 / m_ref: the identity would give the non-invariant lab-frame
+        # E_jet/m_jet. The jet rest frame gives exactly 1 (see jet_frames).
+        self.compute_jet_frames = not mean_aggregation
         self.net = net(in_channels=self.in_channels, out_channels=self.out_channels)
 
         if attention_backend == "flex":
@@ -468,7 +481,8 @@ class TransformerWrapper(AggregatedTaggerWrapper):
             is_global_channel[is_global] = 1
             features_local = torch.cat((features_local, is_global_channel), dim=-1)
 
-            # global token frames are identity
+            # global token frames: the covariant jet rest frame when the framesnet is learned
+            # (see __init__), the identity otherwise
             matrices_new = (
                 torch.eye(4, device=frames.device, dtype=frames.dtype)
                 .unsqueeze(0)
@@ -485,6 +499,11 @@ class TransformerWrapper(AggregatedTaggerWrapper):
                 .expand(is_global.shape[0], -1, -1)
             ).clone()
             inv_new[~is_global] = frames.inv
+            if self._jet_frames is not None:
+                jf = self._jet_frames
+                matrices_new[is_global] = jf.matrices.to(frames.dtype)
+                det_new[is_global] = jf.det.to(frames.dtype)
+                inv_new[is_global] = jf.inv.to(frames.dtype)
             frames = Frames(
                 matrices_new,
                 is_global=frames.is_global,
@@ -505,7 +524,9 @@ class TransformerWrapper(AggregatedTaggerWrapper):
 
         # network
         with torch.autocast(features_local.device.type, enabled=self.use_amp):
-            outputs = self.net(inputs=features_local, frames=frames, **mask_kwarg)
+            outputs = self.net(
+                inputs=features_local, frames=frames, p_ref=self._p_ref, ptr=ptr, **mask_kwarg
+            )
 
         # aggregation
         outputs = outputs[0, ...]
@@ -779,6 +800,7 @@ class ParTWrapper(TaggerWrapper):
             frames=frames,
             v=fourmomenta_local,
             mask=mask,
+            p_ref=self._p_ref,
         )
         return score, tracker, frames
 
@@ -1387,6 +1409,7 @@ class ParticleNetParTGraphTransWrapper(TaggerWrapper):
             frames=dense_frames,
             mask=mask,
             cls_frames=self._jet_frames,
+            p_ref=self._p_ref,
         )
         return score, tracker, frames
 
@@ -1599,6 +1622,7 @@ class PlainGraphTransWrapper(TaggerWrapper):
             mask=mask.unsqueeze(1).float(),  # (B, 1, P)
             frames=dense_frames,
             cls_frames=self._jet_frames,
+            p_ref=self._p_ref,
         )
         return score, tracker, frames
 
@@ -1667,6 +1691,7 @@ class PlainGraphGPSWrapper(TaggerWrapper):
             v=fourmomenta_local.transpose(1, 2).contiguous(),  # (B, 4, P)
             frames=dense_frames,
             mask=mask.unsqueeze(1).float(),  # (B, 1, P)
+            p_ref=self._p_ref,
         )
         return score, tracker, frames
 
@@ -1740,6 +1765,7 @@ class ParticleNetParTGraphGPSWrapper(TaggerWrapper):
             v=fourmomenta_local.transpose(1, 2).contiguous(),  # (B, 4, P)
             frames=dense_frames,
             mask=mask.unsqueeze(1).float(),  # (B, 1, P)
+            p_ref=self._p_ref,
         )
         return score, tracker, frames
 

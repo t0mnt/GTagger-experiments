@@ -18,6 +18,7 @@ compile: true                   # torch.compile(net, dynamic=True). Routes PairE
 
 net:
  _target_: experiments.baselines.particletransformer.ParticleTransformer
+ preserve_variance: true  # lloca 2.0: 1/gamma rescaling of transported q/k/v (p_ref = jet momentum from the wrapper)
  _partial_: true
  input_dim: null
  num_classes: null
