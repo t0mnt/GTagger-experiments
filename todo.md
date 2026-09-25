@@ -947,6 +947,7 @@ Critical (still point at the upstream LLoCa project):
       `model.attention_backend=flash|flex` does it as a config override (GUIDE §7, docs/OSCAR.md §2
       note). Rewrite the paragraph; upstream PR comment about it planned separately.
 - [ ] `LICENSE` — copyright currently lists the upstream LLoCa authors; add your authors / mark derivative.
+- [ ] **New license** for the release (pick it, replace the inherited text, update the `Legacy License` file's role and the README badge).
 - [ ] **Humanize the prose** in the assistant-drafted texts/files before publication — `GUIDE.md`,
       `docs/{OSCAR,SLURM,ablations,diffs}.md`, this todo, the longer code comments: pass for
       personal voice, trim the em-dash-heavy style, keep the technical content.
