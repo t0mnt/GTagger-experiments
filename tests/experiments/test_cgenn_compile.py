@@ -515,3 +515,26 @@ def test_regional_compile_vs_eager(monkeypatch):
     assert torch.isfinite(y_r).all() and torch.isfinite(g_r).all(), "REGIONAL: non-finite"
     assert fd < 1e-10, f"REGIONAL fwd: {fd:.3e} >= 1e-10"
     assert gd < 1e-8, f"REGIONAL grads: {gd:.3e} >= 1e-8"
+
+
+@pytest.mark.skipif(not RUN_COMPILE_GATES, reason="compile gates run with CGENN_COMPILE_GATES=1")
+@pytest.mark.parametrize("impl", ["einsum", "sparse", "flash"])
+def test_fullgraph_compiles(impl):
+    """FULLGRAPH: the net compiles with fullgraph=True (dynamic=True kept -- the two flags are
+    independent: fullgraph forbids graph breaks, dynamic forbids per-shape re-specialization)
+    and agrees with eager at the TOL bar. BREAKS asserts 0 breaks on a cold explain; this
+    asserts the stricter thing inductor itself enforces, which is what rotorch's whole-model
+    compile relies on (docs/gato-lessons.md). No runtime code path changes."""
+    ref = torch.load(FIX / "fp64.pt", weights_only=False)
+    ov = [f"model.net.gp_impl={impl}"]
+    exp = _build(float64=True, extra_overrides=ov)
+    exp.model.load_state_dict(ref["sd"], strict=True)
+    data = _rebuild(ref["batch"])
+    y_eager = _forward(exp, data)
+
+    exp2 = _build(float64=True, extra_overrides=ov)
+    exp2.model.load_state_dict(ref["sd"], strict=True)
+    exp2.model.net = torch.compile(exp2.model.net, dynamic=True, fullgraph=True)
+    y_full = _forward(exp2, _rebuild(ref["batch"]))
+    rel = ((y_full - y_eager).abs().max() / y_eager.abs().max().clamp(min=1e-30)).item()
+    assert rel <= 1e-10, f"FULLGRAPH[{impl}]: compiled-vs-eager rel {rel:.2e} > 1e-10"
