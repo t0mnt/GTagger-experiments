@@ -3,7 +3,9 @@
 per-run plots cannot produce.
 
 Each run writes plots_<idx>/roc.txt (two columns: fpr, tpr) when the run had
-`evaluation.save_roc=true`. Point this at those files:
+`evaluation.save_roc=true`; a JetClass run writes one roc_<Class>.txt per non-QCD class
+instead (the one-vs-QCD curves its rejection cells are read from). Point this at those
+files:
 
     python roc_overlay.py -o roc_overlay.pdf \
         "PlainGraphTrans=runs/.../PlainGraphTrans_6377/plots_0/roc.txt" \

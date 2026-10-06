@@ -1,14 +1,17 @@
 """Gate for `run.py::_check_recipe_is_swept`.
 
-KEEP while any recipe still carries `???`. The guard exists because that marker does NOT
-behave as hydra's mandatory value: the per-model recipes inherit `tag_gts_and_friends_default`
--> `tag_default`, which DEFINES `batchsize: 512` and `lr: 1e-3`, and OmegaConf merge treats a
-child `???` as "no value supplied", so the parent's survives. An unswept recipe therefore
-trains at 512 / 1e-3 and produces a plausible-looking results row instead of an error.
+KEEP: the guard stays armed for the next scaffolded recipe even though no shipped one carries
+`???` today. It exists because that marker does NOT behave as hydra's mandatory value: the
+per-model recipes inherit `tag_gts_and_friends_default` -> `tag_default`, which DEFINES
+`batchsize: 512` and `lr: 1e-3`, and OmegaConf merge treats a child `???` as "no value
+supplied", so the parent's survives. An unswept recipe therefore trains at 512 / 1e-3 and
+produces a plausible-looking results row instead of an error.
 
-25 recipes carry the marker today. Only the 8 `jc_*` ones warn about this in a comment; the
-`top_*` and `xl_*` ones call the keys "REQUIRED". A comment was already the fix and it did not
-propagate, hence a check.
+When this gate was written 25 recipes carried the marker (only the 8 `jc_*` ones warned about
+it in a comment; the `top_*` and `xl_*` ones called the keys "REQUIRED"). The `top_*` and
+`jc_*` families were filled in 2026-08 and the `xl_*` family in 2026-10, so the fixture below
+manufactures the unswept state. A comment was already the fix once and it did not propagate,
+hence a check.
 
 FIRES     an unswept recipe raises SystemExit rather than training
 CLI       a key supplied on the command line counts as filled
@@ -128,6 +131,11 @@ def test_marker_inventory_matches_what_the_guard_catches():
     Anything the guard would catch must be a `top_/jc_/xl_` per-model recipe, and every
     recipe carrying a bare `???` must be one the guard catches — a marker it cannot see is
     a silent 512/1e-3 run waiting to happen.
+
+    The inventory is EMPTY today (every shipped recipe is filled; the `xl_*` family was the
+    last, 2026-10). That is the guard succeeding, not a reason to delete it: a newly
+    scaffolded recipe legitimately carries `???` until its sweep lands, and this test keeps
+    the guard's parser honest for that day.
     """
     caught, present = set(), set()
     for path in sorted((CONFIG / "training").glob("*.yaml")):
@@ -144,7 +152,6 @@ def test_marker_inventory_matches_what_the_guard_catches():
         if any(l.strip().endswith("???") and not l.strip().startswith("#") for l in lines):
             present.add(path.name)
     assert caught == present, f"markers the guard cannot see: {present - caught}"
-    assert caught, "no recipe carries `???` any more — delete this guard and its gate"
     assert all(n.split("_")[0] in ("top", "jc", "xl") for n in caught), sorted(caught)
     print(f"guard covers {len(caught)} unswept recipes: {sorted(caught)}")
 
@@ -157,8 +164,8 @@ def test_find_lr_names_the_recipe_for_every_model():
     MODEL CONFIG name; it used to key off the net's CLASS name, which agrees for the 8
     hybrids (tag_PlainGraphGPS -> PlainGraphGPS -> top_PlainGraphGPS.yaml) and disagrees for
     all 8 baselines (tag_cgenn -> CGENN -> top_CGENN.yaml, which does not exist), silently
-    printing no pointer at all -- including for tag_cgenn, whose recipe is one of the unswept
-    25 and whose gp_impl posture is still open.
+    printing no pointer at all -- including for tag_cgenn, whose recipe was one of the
+    then-unswept 25 and whose gp_impl posture was still open.
 
     Mirrors find_lr's lookup rather than importing it: the real one needs a live HydraConfig.
     """

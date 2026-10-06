@@ -670,6 +670,23 @@ class TaggingExperiment(BaseExperiment):
             for module in gp_arms:
                 module.gp_impl = "flash"
 
+    def _roc_curves(self, results):
+        """``{file stem: (fpr, tpr)}`` that ``evaluation.save_roc`` writes under plots_<idx>/.
+
+        Binary tagging (top tagging, TopTagXL) has the one curve, ``roc.txt``. JetClass
+        overrides this with its nine one-vs-QCD curves: a 10-class softmax has no single
+        ROC, and the base ``plot()`` used to reach for ``results["fpr"]`` there and
+        KeyError -- after the whole training had run, with ``save_roc`` the one extra
+        thing the operator had asked for.
+        """
+        return {"roc": (results["fpr"], results["tpr"])}
+
+    def _save_roc(self, plot_path):
+        """Write every curve of ``_roc_curves`` as ``<plot_path>/<stem>.txt``: two
+        columns, fpr and tpr, the form ``utils/roc_overlay.py`` reads back."""
+        for stem, (fpr, tpr) in self._roc_curves(self.results["test"]).items():
+            np.savetxt(os.path.join(plot_path, f"{stem}.txt"), np.stack((fpr, tpr), axis=-1))
+
     def plot(self):
         plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
         os.makedirs(plot_path, exist_ok=True)
@@ -681,9 +698,7 @@ class TaggingExperiment(BaseExperiment):
             and self.cfg.evaluate
             and ("test" in self.cfg.evaluation.eval_set)
         ):
-            file = f"{plot_path}/roc.txt"
-            roc = np.stack((self.results["test"]["fpr"], self.results["test"]["tpr"]), axis=-1)
-            np.savetxt(file, roc)
+            self._save_roc(plot_path)
 
         plot_dict = {}
         if self.cfg.evaluate and ("test" in self.cfg.evaluation.eval_set):

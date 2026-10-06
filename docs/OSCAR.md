@@ -433,8 +433,8 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
 
 When it finishes, `exit` back to the login shell.
 
-Commands swap exactly as in §2.1: `-cn toptagxl` + `training=xl_<hybrid>`, with the
-`???` knobs filled from a `utils/find_lr.py -cn toptagxl` sweep (science: GUIDE §5.2 —
+Commands swap exactly as in §2.1: `-cn toptagxl` + `training=xl_<hybrid>`, whose
+batchsize/lr are the swept `jc_` values unchanged (science: GUIDE §5.2 —
 binary task on JetClass-wide inputs, shared epochs=5, wd=0; the shipped
 `data.val_files_range` is the canonical 10M-jet validation split -- keep it,
 it costs ~3% of training compute).
