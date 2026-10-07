@@ -272,8 +272,9 @@ class JetClassTaggingExperiment(TaggingExperiment):
         Each is the one-vs-QCD curve scored as p_class / (p_QCD + p_class) on the QCD +
         class subset -- exactly the curve the ``rej*_<i>`` cells above are read from, so a
         ``utils/roc_overlay.py`` rejection at eps_S = 0.5 reproduces the table's number.
-        Nine files on the 20M-jet test split, tens of MB each; ``utils/roc_labels.py
-        --roc roc_HToBB`` picks one for an overlay.
+        Nine files on the 20M-jet test split, a few MB each up to ~20 MB for the least
+        separable class (roc_curve keeps only the points where the class sequence turns);
+        ``utils/roc_labels.py --roc roc_HToBB`` picks one for an overlay.
         """
         return {f"roc_{name}": curve for name, curve in results["roc_curves"].items()}
 

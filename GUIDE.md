@@ -115,8 +115,10 @@ Useful overrides: `data.dataset={full,mini}`, `training.iterations=…` (add
 > `plots_<idx>/roc_<Class>.txt` per non-QCD class — the one-vs-QCD curve scored as
 > p_class/(p_QCD+p_class) on the QCD+class subset, i.e. exactly the curve each per-class
 > rejection cell is read from, so an overlay's rejection at ε_S = 0.5 reproduces the table.
-> Nine files, tens of MB each on the 20M-jet test split. `utils/roc_labels.py --roc roc_HToBB`
-> selects one of them for the overlay.
+> Nine files on the 20M-jet test split, a few MB each up to ~20 MB for the least separable
+> class (`roc_curve` keeps only the points where the class sequence turns, so the size
+> tracks the overlap, not the jet count). `utils/roc_labels.py --roc roc_HToBB` selects one
+> of them for the overlay.
 
 Each run prints a paste-ready LaTeX table row at the end:
 `table test: <Model> & <frames> & <iters> [N trials] & <params> & <acc> & <auc> &
