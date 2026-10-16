@@ -209,12 +209,26 @@ def test_full_group_invariance(model, full_group_off, transform):
 # neighbours re-rank and the graph jumps (the ~1e-3 kNN floor of test 1, amplified by the
 # tensorial transport). We test its transport fully connected to isolate it from that
 # discontinuity, which test 1 covers separately.
+# PlainGraphGPS's static kNN is built once from the local-frame inputs, so it is invariant up
+# to the frame numerics -- but a near-tied pair can still re-rank under a boost. Measured on
+# the learnedso13/lorentz case that crossed the tight tolerance: 3 of 2960 node-slots changed
+# neighbours, identically with lloca 2.0's preserve_variance on and off and on the
+# migration-only tree (same init and batch), gamma_i was stable to 9e-5 across the
+# transforms, and the score moved 3.9e-4 (on) versus 1.7e-4 (off). So the flip is the
+# static-kNN floor this file already names (~1e-3), and the rescaling only changes how much
+# of it reaches the score. Two rows therefore: the experiment configuration under the kNN
+# floor tolerance (the architecture as trained), and fully connected under the tight
+# tolerance (the transport in isolation), like the dynamic-kNN hybrid below.
 CANONICALIZED_MODELS = [
-    ("tag_ParticleNetParTGraphTrans", []),
-    ("tag_PlainGraphTrans", []),
-    ("tag_PlainGraphGPS", []),
-    ("tag_ParticleNetParTGraphGPS", ["model.net.knn_k=9999"]),  # dynamic kNN -> fully connected
+    ("tag_ParticleNetParTGraphTrans", [], None),
+    ("tag_PlainGraphTrans", [], None),
+    ("tag_PlainGraphGPS", [], "knn"),  # static kNN as trained -> kNN-floor tolerance
+    ("tag_PlainGraphGPS", ["model.net.knn_k=9999"], None),  # fully connected -> transport only
+    ("tag_ParticleNetParTGraphGPS", ["model.net.knn_k=9999"], None),  # dynamic kNN -> fully connected
 ]
+# tolerance for rows that keep a static kNN graph: the ~1e-3 neighbour-flip floor (test 1 asserts
+# 2e-2 for the same reason on the xy-rotation check); learnedpd's own floor already exceeds it
+KNN_FLOOR_TOL = (1e-3, 1e-3, 2e-3)
 
 
 # Per-frame float64 tolerance: (rtol, atol, bound). learnedso13 builds the frame by direct
@@ -232,10 +246,10 @@ FRAME_TOL = {
 }
 
 
-@pytest.mark.parametrize("model,extra", CANONICALIZED_MODELS)
+@pytest.mark.parametrize("model,extra,floor", CANONICALIZED_MODELS)
 @pytest.mark.parametrize("framesnet", ["learnedpd", "learnedso13"])
 @pytest.mark.parametrize("transform", ["rotation", "lorentz"])
-def test_lloca_frame_invariance(model, transform, extra, framesnet):
+def test_lloca_frame_invariance(model, transform, extra, framesnet, floor):
     exp = _build(
         [
             f"model={model}",
@@ -249,6 +263,8 @@ def test_lloca_frame_invariance(model, transform, extra, framesnet):
     )
     data = next(iter(exp.train_loader))
     rtol, atol, bound = FRAME_TOL[framesnet]
+    if floor == "knn":
+        rtol, atol, bound = (max(a, b) for a, b in zip((rtol, atol, bound), KNN_FLOOR_TOL))
     max_dev = check_tagging_invariance(
         exp, data, transform=transform, num_checks=5, rtol=rtol, atol=atol
     )

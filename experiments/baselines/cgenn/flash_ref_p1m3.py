@@ -1,7 +1,7 @@
 """Cl(1,3) weighted geometric product -- GENERATED, DO NOT EDIT.
 
 Generator: utils/flash_gen.py (FLASH PLAN v2 step 2), terms sourced from kingdon
-2.1.1 (`Algebra(1, 3)` blade products; MIT, arXiv:2503.10451) and asserted against
+3.0.0 (`Algebra(1, 3)` blade products; MIT, arXiv:2503.10451) and asserted against
 this repo's `CliffordAlgebra` cayley + `sparse_gp_tables` at generation time; the
 expression assembly, differentiation and CSE run in sympy 1.14.0 (a stated deviation
 from kingdon's own compile() printer pipeline -- sourcing terms from the product
@@ -12,7 +12,7 @@ checkpoint-compatible with every sparse-GP weight tensor. Flat arithmetic bodies
 (flash-kingdon's trick); the torch wrappers below are the CPU reference / parity
 twin. Gates: tests/internal/test_flash_ref_p1m3.py.
 """
-# generated-with: kingdon=2.1.1 sympy=1.14.0
+# generated-with: kingdon=3.0.0 sympy=1.14.0
 
 import torch
 

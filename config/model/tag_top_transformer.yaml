@@ -8,6 +8,7 @@ attention_backend: xformers
 
 net:
  _target_: lloca.backbone.transformer.Transformer
+ preserve_variance: true  # lloca 2.0: 1/gamma rescaling of transported q/k/v (p_ref = jet momentum from the wrapper)
  _partial_: true
 
  in_channels: null

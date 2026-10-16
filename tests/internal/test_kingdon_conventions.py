@@ -26,7 +26,7 @@ kingdon = pytest.importorskip("kingdon")
 
 from experiments.baselines.cgenn.cliffordalgebra import CliffordAlgebra
 
-KINGDON_PIN = "2.1.1"  # bump deliberately, with this file's gates green under the new pin
+KINGDON_PIN = "3.0.0"  # bump deliberately, with this file's gates green under the new pin
 
 
 def test_kingdon_version_is_pinned():

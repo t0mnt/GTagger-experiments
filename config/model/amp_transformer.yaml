@@ -4,6 +4,7 @@ network_float64: null
 
 net:
  _target_: lloca.backbone.transformer.Transformer
+ preserve_variance: true  # lloca 2.0: 1/gamma rescaling of transported q/k/v (p_ref = jet momentum from the wrapper)
 
  in_channels: null
  attn_reps: "8x0n+2x1n"

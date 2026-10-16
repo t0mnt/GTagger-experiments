@@ -19,6 +19,7 @@ compile: true                   # torch.compile(net, dynamic=True). Routes the k
 
 net:
   _target_: experiments.baselines.plaingraphtrans.PlainGraphTrans
+  preserve_variance: true  # lloca 2.0: 1/gamma rescaling of transported q/k/v (p_ref = jet momentum from the wrapper)
   _partial_: true
   input_dim: null               # supplied by the wrapper (= in_channels)
   num_classes: null             # supplied by the wrapper (= out_channels)

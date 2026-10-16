@@ -904,6 +904,7 @@ class Block(nn.Module):
         scale_fc=True,
         scale_heads=True,
         scale_resids=True,
+        legacy_head_scale=False,
     ):
         super().__init__()
 
@@ -945,6 +946,11 @@ class Block(nn.Module):
         self.c_attn = (
             nn.Parameter(torch.ones(num_heads), requires_grad=True) if scale_heads else None
         )
+        # weaver main (d53f590) applies c_attn as a per-head gain. The original ParT einsum
+        # "bthd,h->btdh" permuted (head, dim) before the reshape into out_proj, so the gain
+        # was never per-head; lloca 2.0 follows weaver main. Checkpoints trained with the
+        # einsum need legacy_head_scale=True to load bit-exactly.
+        self.legacy_head_scale = legacy_head_scale
         self.w_resid = (
             nn.Parameter(torch.ones(embed_dim), requires_grad=True) if scale_resids else None
         )
@@ -992,7 +998,10 @@ class Block(nn.Module):
         if self.c_attn is not None:
             bsz, tgt_len, _ = x.size()
             x = x.reshape(bsz, tgt_len, self.num_heads, self.head_dim)
-            x = torch.einsum("bthd,h->btdh", x, self.c_attn)
+            if self.legacy_head_scale:
+                x = torch.einsum("bthd,h->btdh", x, self.c_attn)
+            else:
+                x = x * self.c_attn.view(1, 1, self.num_heads, 1)
             x = x.reshape(bsz, tgt_len, self.embed_dim)
         x = self.post_attn_norm(x)
         x = self.dropout(x)
@@ -1055,6 +1064,7 @@ class ParticleTransformer(nn.Module):
         compile=False,
         compile_mode="default",
         compile_dynamic=False,  # ParT does not rely on dynamic shapes that much
+        preserve_variance=True,  # lloca 2.0: 1/gamma_i rescaling of transported q/k/v; needs p_ref
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
@@ -1067,7 +1077,10 @@ class ParticleTransformer(nn.Module):
 
         attn_reps = TensorReps(attn_reps)
         self.embed_dim = attn_reps.dim * num_heads
-        self.attention = LLoCaAttention(attn_reps, num_heads)
+        self.attention = LLoCaAttention(
+                attn_reps, num_heads,
+                preserve_variance=preserve_variance,
+            )
         default_cfg = dict(
             embed_dim=self.embed_dim,
             num_heads=num_heads,
@@ -1083,6 +1096,7 @@ class ParticleTransformer(nn.Module):
             scale_attn=True,
             scale_heads=True,
             scale_resids=True,
+            legacy_head_scale=False,
         )
         if version > 1:
             default_cfg.update(
@@ -1199,7 +1213,7 @@ class ParticleTransformer(nn.Module):
             "cls_token",
         }
 
-    def _forward_encoder(self, x, v=None, mask=None, uu=None, uu_idx=None, frames=None):
+    def _forward_encoder(self, x, v=None, mask=None, uu=None, uu_idx=None, frames=None, p_ref=None):
         with torch.no_grad():
             if not self.for_inference:
                 if uu_idx is not None:
@@ -1239,7 +1253,7 @@ class ParticleTransformer(nn.Module):
                     )
             padding_mask = ~mask.squeeze(1)  # (batch_size, seq_len)
         if frames is not None:
-            self.attention.prepare_frames(frames)
+            self.attention.prepare_frames(frames, p_ref=p_ref)
 
         with torch.autocast(x.device.type, enabled=self.use_amp):
             # input embedding
@@ -1300,14 +1314,14 @@ class ParticleTransformer(nn.Module):
             x_cls = self.norm(cls_tokens)  # (batch, embed_dim)
         return x_cls
 
-    def forward(self, x, frames, v=None, mask=None, uu=None, uu_idx=None):
+    def forward(self, x, frames, v=None, mask=None, uu=None, uu_idx=None, p_ref=None):
         # x: (batch_size, num_fts, seq_len)
         # v: (batch_size, 4, seq_len) [px,py,pz,energy]
         # mask: (batch_size, 1, seq_len) -- real particle = 1, padded = 0
         # for pytorch: uu (batch_size, C', num_pairs), uu_idx (batch_size, 2, num_pairs)
         # for onnx: uu (batch_size, C', seq_len, seq_len), uu_idx=None
         x, padding_mask = self._forward_encoder(
-            x, v=v, mask=mask, uu=uu, uu_idx=uu_idx, frames=frames
+            x, v=v, mask=mask, uu=uu, uu_idx=uu_idx, frames=frames, p_ref=p_ref
         )
 
         if self.cls_blocks is None and self.fc is None:

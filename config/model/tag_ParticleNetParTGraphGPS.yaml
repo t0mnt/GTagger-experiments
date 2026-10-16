@@ -18,6 +18,7 @@ compile: true                   # FLIPPED on beta-PERF, 2026-08-11: 5.37 -> 6.22
 
 net:
   _target_: experiments.baselines.particlenetpartgraphgps.ParticleNetParTGraphGPS
+  preserve_variance: true  # lloca 2.0: 1/gamma rescaling of transported q/k/v (p_ref = jet momentum from the wrapper)
   _partial_: true
   input_dim: null               # supplied by the wrapper (= in_channels)
   num_classes: null             # supplied by the wrapper (= out_channels)

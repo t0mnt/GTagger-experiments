@@ -412,7 +412,11 @@ def test_local_part_pins_the_library_identity_path():
 
     from experiments.baselines.particletransformer import ParticleTransformer as LocParT
 
-    kw = dict(input_dim=7, num_classes=2, attn_reps="8x0n+2x1n", trim=True,
+    # lloca 2.0 asserts `not trim` with LLoCa frames, so the pin runs trim=False. The local
+    # file follows weaver main (d53f590) for the per-head scale like lloca 2.0 does
+    # (legacy_head_scale=False), so the whole identity path is pinned again. See
+    # docs/lloca2-migration.md.
+    kw = dict(input_dim=7, num_classes=2, attn_reps="8x0n+2x1n", trim=False,
               use_pre_activation_pair=False, pair_input_dim=4,
               cls_block_params=dict(dropout=0, attn_dropout=0, activation_dropout=0),
               version=1)
