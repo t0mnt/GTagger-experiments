@@ -342,7 +342,8 @@ decided, and several back the paper's fidelity claims. Still OPEN from those swe
 - [ ] LorentzNet GPS: zero padded slots between layers for exact BN-running-stat parity
       (cosmetic; logits unaffected).
 - [ ] LorentzNetKNNBlock phi_e BN normalises invalid edges (pre-existing, both variants).
-- [ ] JetClass: fill the 8 `jc_<Hybrid>.yaml` `???` batchsize/lr from find_lr on jctagging.
+- [x] JetClass: fill the 8 `jc_<Hybrid>.yaml` `???` batchsize/lr (filled 2026-08-16/18; the
+      `xl_` family followed 2026-10 with the same values).
 - [ ] Rejection-metric convention differs top vs JetClass (one methods sentence, or unify).
 - [ ] **Port the torchrun DDP entry path from `heidelberg-hepml/tagging-guide`.** This repo
       carries the DDP *plumbing* (`world_size` threaded through `BaseExperiment`, the
@@ -719,8 +720,9 @@ the split is not by importance, it is by whether the change can touch a number.
       both are computed at EVAL from the ROC, and `evaluation.save_roc` writes
       `roc.txt` (fpr, tpr), so either estimator can be recomputed post hoc without
       retraining. One methods sentence naming both is enough.
-- [ ] **Fill the 8 `jc_<Hybrid>.yaml` `???` batchsize/lr** from `find_lr` on jctagging.
-      Blocking for any JetClass row: hydra will not compose a `???`. NOTE these are the ONE
+- [x] **Fill the 8 `jc_<Hybrid>.yaml` `???` batchsize/lr** (done 2026-08-16/18, `xl_` 2026-10).
+      Historical note kept for the probe-batch caveat below; hydra does NOT refuse a `???`
+      here, `run.py::_check_recipe_is_swept` does. NOTE these are the ONE
       family where the constructed probe batch does not apply — JetClass streams from files
       and exposes no per-item lengths, so `find_max_batch_size` falls back to a single random
       batch and logs that it did. `bs_safety` is still the only headroom lever there; use
@@ -848,7 +850,10 @@ the split is not by importance, it is by whether the change can touch a number.
       on a private upstream name), and both are the same group, so it is one conversation
       and one sentence inside a mail sent for other reasons. Not worth a mail of its own.
 
-- [ ] **THERE IS a mail worth sending, and it is not about the accessor.** Three bugs this
+- [ ] **THERE IS a mail worth sending, and it is not about the accessor.** *(Status 2026-10:
+      the repo pins lloca 2.0.0,<2.1. (1) is closed upstream by refusal: 2.0 asserts `not trim`
+      with LLoCa frames, see docs/lloca2-migration.md; (2) was fixed on dev before the release;
+      (3) re-check against 2.0.0 before sending.)* Three bugs this
       repo found by adversarial review and fixed locally are still present in lloca 1.3.6,
       all verified against the installed source. Line numbers are lloca's, not ours.
 
@@ -973,6 +978,18 @@ Minor (stale strings / metadata):
       (Spinner/Favaro/Lippmann/Pitz/Gerhartz, 2025); on publication add this repo's author+year
       copyright line while KEEPING theirs (MIT requires retaining their notice; adding a second
       line for the derived work is the standard pattern). Pairs with the defork step above.
+
+- [ ] **kingdon Triton/torch printer, once released** (today only on tBuLi/kingdon
+      `feature/torch_backend`, no PyPI release; rotorch depends on it). Two uses, in order:
+      (a) verification: run `triton_lambdify` on the Cl(1,3) weighted GP as `utils/flash_gen.py`
+      builds it and compare forward, the three gradients and the op counts against
+      `experiments/baselines/cgenn/flash_ref_p1m3.py` (an independent generator for the
+      backward, which today is gated only against autograd); (b) a fused whole-layer kernel
+      (both linears, normalization, product, gate, layer norm, forward + backward in one
+      launch each) for the launch-bound CGENN-GPS row, gated like flash was (bit parity,
+      determinism of the in-register weight gradient, the three-impl race). Needs a GPU node
+      and `pip install git+https://github.com/tBuLi/kingdon@<release tag>` into a throwaway
+      venv; ask the author for a Cl(1,3) sweep at feature widths 8/16/32 before planning on (b).
 
 ## 6. Done (for reference)
 

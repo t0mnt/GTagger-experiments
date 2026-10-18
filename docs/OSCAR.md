@@ -400,8 +400,8 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
 When it finishes, `exit` back to the login shell.
 
 Training swaps the config name and recipe in the *same* §4/§5 commands (science:
-GUIDE §5.1 — shared epochs=5, wd=0; fill each `jc_<hybrid>.yaml`'s `???` from the
-jctagging sweep, not the top-tagging one):
+GUIDE §5.1 — shared epochs=5, wd=0; each `jc_<hybrid>.yaml` carries its swept
+batchsize/lr, re-sweep on the jctagging task only after a model change):
 
 ```bash
 # §4 becomes:  python utils/find_lr.py -cn jctagging model=tag_<hybrid> save=false +lr_find.find_batch_size=true +lr_find.bs_max=512

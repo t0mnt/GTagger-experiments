@@ -105,10 +105,12 @@ improvements that are worth a retrain:
   their shipped values (framesnet `compile` gone, `preserve_variance: true`, framesnet
   `mass_reg` equal to `data.mass_reg`).
 
-The bit-exact port:
+The bit-exact port (the FIRST commit; the Decisions above describe the second, which
+supersedes the first bullet here -- `preserve_variance` is now `true` everywhere except
+event generation, and the shipped configs say so):
 
-- **`preserve_variance=False` everywhere, explicitly** (five code sites, seven transformer configs). This is the 1.3.6 numerics, so every
-  recorded baseline and checkpoint stays valid. lloca's own docs take the same route for the
+- **`preserve_variance=False` everywhere, explicitly** (five code sites, seven transformer configs) *in this first commit*. This is the 1.3.6 numerics, so every
+  recorded baseline and checkpoint stays valid at that commit. lloca's own docs take the same route for the
   ParT/transformer ports ("pass `preserve_variance=False` to keep the diff minimal").
   Turning it on is a real architecture change (per-token 1/gamma rescaling of q/k/v and the
   output) and needs `p_ref` = the jet four-momentum threaded from the wrapper into
