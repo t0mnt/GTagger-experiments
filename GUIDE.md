@@ -180,14 +180,15 @@ The training-config structure repeats the §5 pattern: the task default is
 `jc_gts_and_friends_default` (AdamW, CosineAnnealingWarmup, **epochs=5** — the
 ParT-standard exposure, 1M steps × batch 512 ≈ 5 passes of the 100M train set —
 validate once per nominal epoch), and each hybrid has a `config/training/jc_<hybrid>.yaml`
-whose `batchsize`/`lr` are `???` until you fill them from the LR finder **on the
-jctagging task** (don't copy the top-tagging values — the wider inputs move both the
-memory ceiling and the loss-vs-lr curve):
+carrying its swept `batchsize`/`lr` (512 / 1e-3 under the 2026-08-16 table-wide decision;
+CGENN-LGATr-GraphGPS 256, measured on the H100). Re-sweep with the LR finder **on the
+jctagging task** only after a model change (don't copy top-tagging values blind — the wider
+inputs move both the memory ceiling and the loss-vs-lr curve):
 
 ```bash
 python utils/find_lr.py -cn jctagging model=tag_CGENNLGATrGraphGPS save=false \
     +lr_find.find_batch_size=true +lr_find.bs_max=512
-# -> fill training.batchsize / training.lr into config/training/jc_CGENNLGATrGraphGPS.yaml
+# -> compare with the shipped training.batchsize / training.lr in config/training/jc_CGENNLGATrGraphGPS.yaml
 ```
 
 (The default `num_iter=300` sweep length is right on JetClass too — it samples the lr
