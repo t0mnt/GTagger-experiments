@@ -64,18 +64,38 @@ def _lgatr_backends():
     return sorted(out)
 
 
+_LLOCA_BACKENDS = ("native", "varlen", "xformers", "flex", "flash")
+
+
 def _lloca_backends():
-    """lloca still uses the eager import-time registry, so read it -- but require it to
-    EXIST. A missing `_REGISTRY` means lloca changed shape the way lgatr did, and the honest
-    answer is then "unknown", not "empty"."""
-    mod = importlib.import_module("lloca.backbone.attention_backends.mask")
-    reg = getattr(mod, "_REGISTRY", None)
-    if not isinstance(reg, dict):
-        raise RuntimeError(
-            f"lloca.backbone.attention_backends.mask._REGISTRY is {type(reg).__name__}, not a "
-            f"dict -- lloca has moved to lazy backend resolution like lgatr 2.0; give it a "
-            f"resolver-probe here, the way _lgatr_backends() does")
-    return sorted(reg)
+    """Backends lloca 2.0 can actually bind, by asking its resolver one name at a time.
+
+    lloca 1.3.6 kept an eager `_REGISTRY` in `attention_backends.mask`; 2.0.0 moved to the
+    lgatr-2.0 shape -- entry points discovered at import, each backend module loaded on first
+    use by `_resolve_backend`, with `get_attention_backend(backend=name)` the public way to
+    ask. As for lgatr, probing that is the exact code path a model takes at its first forward,
+    ABI failure included. An unknown name is distinguishable from an unavailable one by the
+    ValueError text (`Unknown attention backend` vs `is not available`), so a stale entry in
+    _LLOCA_BACKENDS surfaces loudly instead of shrinking the reported set. Raises if the
+    resolver itself is gone, so a third API shape reads as "unknown", never as "empty".
+    """
+    from lloca.backbone.attention_backends import get_attention_backend
+
+    out = []
+    for name in _LLOCA_BACKENDS:
+        try:
+            get_attention_backend(backend=name)
+            out.append(name)
+        except ValueError as e:
+            if "Unknown attention backend" in str(e):
+                raise RuntimeError(
+                    f"lloca no longer knows the backend name {name!r} -- _LLOCA_BACKENDS in "
+                    f"env_check.py is stale against this lloca ({e})") from e
+            # "is not available": genuinely unbound here (no CUDA, missing wheel, bad ABI).
+        except Exception as e:  # noqa: BLE001
+            raise RuntimeError(f"probing lloca backend {name!r} raised "
+                               f"{type(e).__name__}: {e}") from e
+    return sorted(out)
 
 
 def check(name, ok, detail="", hint=""):
@@ -285,11 +305,11 @@ def main():
                   "see the xformers section of docs/OSCAR.md (tag choice, flash decision tree)")
 
     # ---- 4b. the check that actually predicts a crash -------------------------------
-    # A working `import xformers` does NOT mean a run can use it: lgatr and lloca each keep
-    # a backend REGISTRY populated at import time, and an ABI-mismatched xformers (built for
-    # a different torch) is silently omitted from both. A model with
-    # `attention_backend: xformers` then dies on its first forward -- past init, minutes or
-    # hours into a job. This asserts the registries, not the import.
+    # A working `import xformers` does NOT mean a run can use it: lgatr 2.0 and lloca 2.0 each
+    # resolve a backend lazily on first use, and an ABI-mismatched xformers (built for a
+    # different torch) fails to load there. A model with `attention_backend: xformers` then
+    # dies on its first forward -- past init, minutes or hours into a job. This asks each
+    # resolver for the pinned backend, which is that first-forward code path.
     pinned = "xformers"
     for lib, probe in (("lgatr", _lgatr_backends), ("lloca", _lloca_backends)):
         try:
