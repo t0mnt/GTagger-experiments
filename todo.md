@@ -449,6 +449,18 @@ Remember to make release or tag (likely latter) once done and dusted and paper a
       earlier state. Runs already archive their own source zip + config.yaml, so this is
       convenience, not the only provenance.
 
+- [ ] **Lift the `lgatr,<2.1` / `lloca,<2.1` caps deliberately** (requirements.txt; set 2026-10
+      after lloca 2.0.0 broke every fresh install of main through an open-ended `>=1.3.6`).
+      Unreleased upstream work as of 2026-10-18: lgatr `main` deletes `lgatr/utils/compile.py`
+      and the `_GeometricProductSparse` autograd function (we import neither, but the L-GATr
+      rows run that sparse product, so numerics can move at rounding level); lgatr
+      `lightcone-coordinates` and `slim-pseudo` are additive; lloca `refine` adds
+      `LLoCaAttention(lightcone=...)`, drops mixed-precision special handling and moves backend
+      loading to a registry, with `prepare_frames(frames, p_ref, ptr)` unchanged. To lift:
+      bump the cap, reinstall, run `tests/experiments/test_hybrid_bit_pin.py`,
+      `test_lgatr_migration_parity.py`, `test_preserve_variance.py` and `tests/internal`; a
+      bit-pin miss is a new baseline to record, not a bug to patch around.
+
 ## 4d. Development records to delete at release
 
 - [ ] **Delete `docs/audit-ledger.md`.** It records which audit findings were fixed and why
