@@ -1,20 +1,27 @@
-# TopTagXL training recipe for tag_CGENNLGATrGraphGPS -- fill in the (???) keys, then:
+# TopTagXL training recipe for tag_CGENNLGATrGraphGPS -- batchsize/lr carried from
+# jc_CGENNLGATrGraphGPS (see below). Run:
 #   python run.py -cp config -cn toptagxl model=tag_CGENNLGATrGraphGPS training=xl_CGENNLGATrGraphGPS gpus=1
 #
+#   (epochs=5 + CosineAnnealingWarmup + weight_decay=0 are shared in xl_gts_and_friends_default)
+#   To re-sweep after a model change:
 #   lr         <- utils/find_lr.py -cn toptagxl model=tag_CGENNLGATrGraphGPS         (reported loss-min / 10)
 #   batchsize  <- utils/find_lr.py -cn toptagxl ... +lr_find.find_batch_size=true
-#   (epochs=5 + CosineAnnealingWarmup + weight_decay=0 are shared in xl_gts_and_friends_default)
 #
-# Seed BOTH knobs from the swept jc_CGENNLGATrGraphGPS values if those exist -- TopTagXL inputs
-# are identical to JetClass (7+10 scalar channels, same multiplicity), so batchsize
-# transfers unchanged (same memory ceiling) and the jc lr is the right prior (only
-# the loss changed: binary sigmoid vs 10-class softmax; upstream itself runs XL under
-# the JetClass recipe). Confirm with the cheap finder sweep above rather than
-# trusting the transfer blind. NOTE: '???' is a human-facing marker only -- left
-# unfilled, the recipe silently runs at the inherited tag_default 512 / 1e-3.
+# Both knobs are the swept jc_CGENNLGATrGraphGPS values, unchanged: TopTagXL inputs are
+# identical to JetClass (7+10 scalar channels, same multiplicity), so the batch-size
+# memory ceiling transfers as is, and the lr is the 2026-08-16 table-wide decision
+# (1e-3 AdamW) the jc family carries -- lr scale is set by optimizer + batch +
+# architecture, not by the dataset, and only the loss changed (binary sigmoid vs
+# 10-class softmax; upstream itself runs XL under the JetClass recipe). NOTE: a bare
+# '???' here would be a human-facing marker only -- the recipe would silently run at the
+# inherited tag_default 512 / 1e-3, which is why run.py::_check_recipe_is_swept refuses
+# to launch one.
 defaults:
   - xl_gts_and_friends_default
 
-# found using utils/find_lr.py (batch size capped at <=512)
-batchsize: ???
-lr: ???
+# lr 1e-3 = the table-wide decision; bs 256 = jc_CGENNLGATrGraphGPS (the top-tagging
+# measurement: 69.7 GB peak with activation budget 0.5 -- near the card, and the XL
+# inputs are as wide as jc's: run the find_batch_size sweep above before queueing if in
+# any doubt).
+batchsize: 256
+lr: 1e-3

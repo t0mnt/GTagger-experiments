@@ -20,8 +20,8 @@ pytorch_optimizer>=3.2.0
 torchdiffeq
 xformers # might be challenging to install, see https://github.com/facebookresearch/xformers
 pelican-lite
-lgatr[xformers-attention]>=2.0.0  # upgraded to 2.0 (not backwards compatible)
-lloca[xformers-attention]>=2.0.0  # upgraded to 2.0 (same thing)
+lgatr[xformers-attention]>=2.0.0,<2.1  # 2.0 is not backwards compatible; capped so the next minor cannot break a fresh install unreviewed (lloca 2.0.0 did exactly that to main on 2026-09-07)
+lloca[xformers-attention]>=2.0.0,<2.1  # same: refine branch already changes internals; lift the cap deliberately
 
 # weaver packages
 tqdm>=4.41.0

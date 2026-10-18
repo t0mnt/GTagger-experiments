@@ -110,6 +110,15 @@ Useful overrides: `data.dataset={full,mini}`, `training.iterations=…` (add
 > every run (`train=false warm_start_idx=0`, loading each run's own saved config; see §8).
 > The file is a few MB on top tagging and is what `utils/roc_overlay.py` reads to put
 > several models on one axes.
+>
+> On JetClass there is no single curve (10-class softmax): `save_roc` writes one
+> `plots_<idx>/roc_<Class>.txt` per non-QCD class — the one-vs-QCD curve scored as
+> p_class/(p_QCD+p_class) on the QCD+class subset, i.e. exactly the curve each per-class
+> rejection cell is read from, so an overlay's rejection at ε_S = 0.5 reproduces the table.
+> Nine files on the 20M-jet test split, a few MB each up to ~20 MB for the least separable
+> class (`roc_curve` keeps only the points where the class sequence turns, so the size
+> tracks the overlap, not the jet count). `utils/roc_labels.py --roc roc_HToBB` selects one
+> of them for the overlay.
 
 Each run prints a paste-ready LaTeX table row at the end:
 `table test: <Model> & <frames> & <iters> [N trials] & <params> & <acc> & <auc> &
@@ -171,14 +180,15 @@ The training-config structure repeats the §5 pattern: the task default is
 `jc_gts_and_friends_default` (AdamW, CosineAnnealingWarmup, **epochs=5** — the
 ParT-standard exposure, 1M steps × batch 512 ≈ 5 passes of the 100M train set —
 validate once per nominal epoch), and each hybrid has a `config/training/jc_<hybrid>.yaml`
-whose `batchsize`/`lr` are `???` until you fill them from the LR finder **on the
-jctagging task** (don't copy the top-tagging values — the wider inputs move both the
-memory ceiling and the loss-vs-lr curve):
+carrying its swept `batchsize`/`lr` (512 / 1e-3 under the 2026-08-16 table-wide decision;
+CGENN-LGATr-GraphGPS 256, measured on the H100). Re-sweep with the LR finder **on the
+jctagging task** only after a model change (don't copy top-tagging values blind — the wider
+inputs move both the memory ceiling and the loss-vs-lr curve):
 
 ```bash
 python utils/find_lr.py -cn jctagging model=tag_CGENNLGATrGraphGPS save=false \
     +lr_find.find_batch_size=true +lr_find.bs_max=512
-# -> fill training.batchsize / training.lr into config/training/jc_CGENNLGATrGraphGPS.yaml
+# -> compare with the shipped training.batchsize / training.lr in config/training/jc_CGENNLGATrGraphGPS.yaml
 ```
 
 (The default `num_iter=300` sweep length is right on JetClass too — it samples the lr
@@ -209,20 +219,19 @@ Everything from §5.1 carries over:
   automatically by `init_physics`).
 - **Recipes drop weight decay and keep epochs=5** (100M jets × 5 passes — the same
   ParT-standard exposure): the family default is `xl_gts_and_friends_default`, and
-  each hybrid has a `config/training/xl_<hybrid>.yaml` whose `batchsize`/`lr` are
-  `???` until filled. **Seed them from the swept `jc_` values**: XL inputs are
+  each hybrid has a `config/training/xl_<hybrid>.yaml` carrying **the swept `jc_`
+  values unchanged** (bs 512 / lr 1e-3; CGENN-LGATr-GraphGPS bs 256): XL inputs are
   identical to JetClass (17 channels, same multiplicity), so the batch-size memory
-  ceiling carries over unchanged and the jc lr is the right prior — only the loss
+  ceiling carries over as is and the jc lr is the right prior — only the loss
   changed (binary sigmoid vs 10-class softmax). Upstream itself runs its XL
   baselines under the JetClass recipe (the toptagxl task default is
-  `jc_transformer`). Confirm with the cheap finder sweep on the toptagxl task
-  rather than trusting the transfer blind (the `???` fallback caveat above applies
-  here identically):
+  `jc_transformer`). Re-sweep with the cheap finder on the toptagxl task if you
+  change a model (the `???` fallback caveat above applies here identically):
 
 ```bash
 python utils/find_lr.py -cn toptagxl model=tag_PlainGraphGPS save=false \
     +lr_find.find_batch_size=true +lr_find.bs_max=512
-# -> fill training.batchsize / training.lr into config/training/xl_PlainGraphGPS.yaml
+# -> compare with the shipped training.batchsize / training.lr in config/training/xl_PlainGraphGPS.yaml
 python run.py -cp config -cn toptagxl model=tag_PlainGraphGPS training=xl_PlainGraphGPS
 ```
 

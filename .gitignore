@@ -51,3 +51,7 @@ bperf_results.md
 
 # profiler traces from utils/profile_sync.py (per-session artifacts, read in chrome://tracing)
 profiles/
+
+# the non-finite-gradient batch dump of a save=false run (base_experiment._dump_nonfinite_batch
+# writes into the run dir when there is one, and here when there is not)
+nonfinite_batches/

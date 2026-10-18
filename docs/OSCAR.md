@@ -400,8 +400,8 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
 When it finishes, `exit` back to the login shell.
 
 Training swaps the config name and recipe in the *same* §4/§5 commands (science:
-GUIDE §5.1 — shared epochs=5, wd=0; fill each `jc_<hybrid>.yaml`'s `???` from the
-jctagging sweep, not the top-tagging one):
+GUIDE §5.1 — shared epochs=5, wd=0; each `jc_<hybrid>.yaml` carries its swept
+batchsize/lr, re-sweep on the jctagging task only after a model change):
 
 ```bash
 # §4 becomes:  python utils/find_lr.py -cn jctagging model=tag_<hybrid> save=false +lr_find.find_batch_size=true +lr_find.bs_max=512
@@ -433,8 +433,8 @@ apptainer exec "$NGC_PYTORCH_CONTAINER" bash -lc \
 
 When it finishes, `exit` back to the login shell.
 
-Commands swap exactly as in §2.1: `-cn toptagxl` + `training=xl_<hybrid>`, with the
-`???` knobs filled from a `utils/find_lr.py -cn toptagxl` sweep (science: GUIDE §5.2 —
+Commands swap exactly as in §2.1: `-cn toptagxl` + `training=xl_<hybrid>`, whose
+batchsize/lr are the swept `jc_` values unchanged (science: GUIDE §5.2 —
 binary task on JetClass-wide inputs, shared epochs=5, wd=0; the shipped
 `data.val_files_range` is the canonical 10M-jet validation split -- keep it,
 it costs ~3% of training compute).

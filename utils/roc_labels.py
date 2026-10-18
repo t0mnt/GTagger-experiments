@@ -14,13 +14,22 @@ So: group the dirs by class, diff their saved configs, and put whatever differs 
 label. VOLATILE keys -- run identity, seed, paths, job ids, timings -- are excluded,
 because those differ between repeat trials of the SAME configuration, which must collapse
 to one label rather than N.
+
+JetClass writes one curve per non-QCD class (roc_<Class>.txt) instead of roc.txt; pass
+`--roc roc_HToBB` to label those files.
 """
 import argparse, glob, os, re, sys
 from omegaconf import OmegaConf
 
+# `evaluation.save_roc` / `evaluation.eval_set` / `train` / `evaluate` / `warm_start_idx`:
+# a curve regenerated after the fact (`train=false evaluate=true evaluation.save_roc=true
+# warm_start_idx=0`, GUIDE section 8) overwrites the run's config.yaml with exactly those
+# keys changed. They say how the curve was WRITTEN, not what was trained, so a run whose
+# roc.txt came from such a re-run must label like its siblings rather than as a second
+# configuration.
 VOLATILE = re.compile(
     r"(^|\.)(run_idx|run_name|run_dir|base_dir|exp_name|seed|slurm_job_id|warm_start_idx"
-    r"|mlflow\.|use_mlflow|save$|train$|evaluate$|plot$)"
+    r"|mlflow\.|use_mlflow|save$|train$|evaluate$|plot$|save_roc$|eval_set$)"
 )
 
 
@@ -45,11 +54,14 @@ def main():
     ap.add_argument("runs_dir")
     ap.add_argument("--all-trials", action="store_true",
                     help="emit every trial; default keeps one per distinct configuration")
+    ap.add_argument("--roc", default="roc", metavar="NAME",
+                    help="which curve file to label, plots_*/NAME.txt (default: roc, the "
+                         "binary curve; JetClass writes one per class, e.g. roc_HToBB)")
     args = ap.parse_args()
 
     entries = []
     for d in sorted(glob.glob(os.path.join(args.runs_dir, "*/"))):
-        rocs = sorted(glob.glob(os.path.join(d, "plots_*", "roc.txt")))
+        rocs = sorted(glob.glob(os.path.join(d, "plots_*", f"{args.roc}.txt")))
         if not rocs:
             continue
         cfg_path = next((p for p in (os.path.join(d, "config_0.yaml"),

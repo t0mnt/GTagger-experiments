@@ -175,10 +175,10 @@ JetClass instead of top-tagging: fetch the ~190 GB dataset with
 TopTagXL works the same way: fetch with `python data/collect_data.py toptagxl`
 (also ~JetClass-sized; the file list + md5 checksums come from Zenodo record
 10878355's API at download time) onto big-file storage with `data/toptagxl`
-symlinked there, then `-cn toptagxl` + `training=xl_<Model>`, seeding each
-`xl_<Model>.yaml`'s `???` from the swept `jc_` values and confirming with a
-`utils/find_lr.py -cn toptagxl` sweep (GUIDE §5.2; keep the canonical
-`data.val_files_range`).
+symlinked there, then `-cn toptagxl` + `training=xl_<Model>` (each
+`xl_<Model>.yaml` carries the swept `jc_` values unchanged; re-sweep with
+`utils/find_lr.py -cn toptagxl` only after a model change — GUIDE §5.2; keep the
+canonical `data.val_files_range`).
 
 ## 5. Multiple seeds, and the table
 

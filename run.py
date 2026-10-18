@@ -22,8 +22,11 @@ def _check_recipe_is_swept():
     inherit `tag_gts_and_friends_default` (and through it `tag_default`), which DEFINES
     `batchsize: 512` and `lr: 1e-3`; OmegaConf merge treats a child `???` as "no value
     supplied", so the parent's value survives and the run trains at 512 / 1e-3 with no
-    error. 25 recipes currently carry the marker, and only the 8 `jc_*` ones say so in a
-    comment -- the `top_*` and `xl_*` ones call the keys "REQUIRED", which they are not.
+    error. When this guard was written 25 recipes carried the marker (only the 8 `jc_*`
+    ones said so in a comment; the `top_*` and `xl_*` ones called the keys "REQUIRED",
+    which they are not). All have since been filled -- `top_*` and `jc_*` in 2026-08,
+    `xl_*` in 2026-10 with the jc values -- and the guard stays armed for the next recipe
+    someone scaffolds; the tests manufacture an unswept fixture to prove it still fires.
     A wrong-but-plausible row in the results table is worse than a failed launch, and the
     comment that already existed did not propagate, so this is a check rather than a note.
 

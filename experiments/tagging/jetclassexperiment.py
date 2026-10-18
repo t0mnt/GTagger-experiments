@@ -201,6 +201,11 @@ class JetClassTaggingExperiment(TaggingExperiment):
 
         class_rej_dict = [None, 0.5, 0.5, 0.5, 0.5, 0.99, 0.5, 0.995, 0.5, 0.5]
 
+        # The per-class one-vs-QCD curves are kept at eval so `evaluation.save_roc` can
+        # write them (see _roc_curves) -- there is no single-curve `fpr`/`tpr` here.
+        if mode == "eval":
+            metrics["roc_curves"] = {}
+
         for i in range(1, len(self.class_names)):
             labels_predict_class = labels_predict[(labels_true == 0) | (labels_true == i)]
             labels_true_class = labels_true[(labels_true == 0) | (labels_true == i)]
@@ -210,6 +215,8 @@ class JetClassTaggingExperiment(TaggingExperiment):
             predict_score = labels_predict_class[:, 1] / np.clip(denom, a_min=1e-10, a_max=None)
 
             fpr, tpr, _ = roc_curve(labels_true_class == i, predict_score)
+            if mode == "eval":
+                metrics["roc_curves"][self.class_names[i]] = (fpr, tpr)
 
             rej_string = str(class_rej_dict[i]).replace(".", "")
             metrics[f"rej{rej_string}_{i}"] = get_rej(class_rej_dict[i], tpr, fpr)
@@ -250,13 +257,26 @@ class JetClassTaggingExperiment(TaggingExperiment):
 
         if self.cfg.use_mlflow:
             for key, value in metrics.items():
-                if key in ["labels_true", "labels_predict"]:
+                if key in ["labels_true", "labels_predict", "roc_curves"]:
                     # do not log matrices
                     continue
                 name = f"{mode}.{title}" if mode == "eval" else "val"
                 log_mlflow(f"{name}.{key}", value, step=step)
 
         return metrics
+
+    def _roc_curves(self, results):
+        """One ``(fpr, tpr)`` per non-QCD class, written by ``evaluation.save_roc`` as
+        ``plots_<idx>/roc_<ClassName>.txt``.
+
+        Each is the one-vs-QCD curve scored as p_class / (p_QCD + p_class) on the QCD +
+        class subset -- exactly the curve the ``rej*_<i>`` cells above are read from, so a
+        ``utils/roc_overlay.py`` rejection at eps_S = 0.5 reproduces the table's number.
+        Nine files on the 20M-jet test split, a few MB each up to ~20 MB for the least
+        separable class (roc_curve keeps only the points where the class sequence turns);
+        ``utils/roc_labels.py --roc roc_HToBB`` picks one for an overlay.
+        """
+        return {f"roc_{name}": curve for name, curve in results["roc_curves"].items()}
 
     def _extract_batch(self, batch):
         fourmomenta = batch[0]["pf_vectors"].to(self.device, self.momentum_dtype)

@@ -1001,7 +1001,19 @@ class BaseExperiment:
                     f"absmax={f.abs().max().item() if f.numel() else float('nan'):.6g}"
                 )
 
-            path = os.path.join(self.cfg.run_dir, f"nonfinite_batch_step{step}.pt")
+            # save=false runs (find_lr, smoke tests, a debugging re-run -- the very runs
+            # that go hunting for a NaN) never create run_dir, so torch.save into it raised
+            # FileNotFoundError here and the dump was lost. Do NOT create the run dir for
+            # it: a run dir with no config.yaml surfaces as a "MISSING config" row in
+            # utils/aggregate_table.py. Fall back to a gitignored directory under the cwd.
+            if self.cfg.save and os.path.isdir(self.cfg.run_dir):
+                path = os.path.join(self.cfg.run_dir, f"nonfinite_batch_step{step}.pt")
+            else:
+                os.makedirs("nonfinite_batches", exist_ok=True)
+                path = os.path.join(
+                    "nonfinite_batches",
+                    f"{self.cfg.exp_name}_{self.cfg.run_name}_step{step}.pt",
+                )
             torch.save(
                 {
                     "step": step,
@@ -1109,9 +1121,20 @@ class BaseExperiment:
         # update freezes it forever.
         if not torch.isfinite(grad_norm):
             self._nonfinite_steps = getattr(self, "_nonfinite_steps", 0) + 1
+            # The learned-frame boost statistics of THIS batch, when the framesnet reports
+            # them (lloca's LearnedPDFrames/LearnedSO13Frames tracker; identity frames give
+            # 1). They otherwise reach only mlflow and the end-of-run training.pdf, and a
+            # run that aborts on 50 consecutive skips never draws that pdf -- this line is
+            # how a `grep Skipping` on the out log tells a boost-driven blow-up (gamma_max
+            # saturating right before the NaNs) from one that is not.
+            gammas = "".join(
+                f" {k}={float(metrics[k]):.4g}"
+                for k in ("gamma_mean", "gamma_max")
+                if k in metrics
+            )
             LOGGER.warning(
                 f"Skipping iteration {step}, gradient norm is non-finite ({grad_norm}) "
-                f"[{self._nonfinite_steps} consecutive]"
+                f"[{self._nonfinite_steps} consecutive]{gammas}"
             )
             self.scaler.update()
             self._dump_nonfinite_batch(data, loss, grad_norm, step)
