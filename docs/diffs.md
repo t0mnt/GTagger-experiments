@@ -56,19 +56,22 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   `particletransformer.py`, `particlenetpartgraphgps.py`). Latent: nothing sets
   `for_inference=true` and the class default is False.
 - `boost_jet` forced off for pure-rotation frames (LearnedSO3/SO2; measured set).
-- `pairwise_lv_fts` clamps delta_r2 **at `eps**2`** before the sqrt. `sqrt'(0)=inf`, and
-  delta_r2 is exactly 0 for any bit-identical pair -- every padded-constituent pair on every
-  forward, plus the diagonal wherever `remove_self_pair` leaves it -- so the backward is
-  `0 * inf = NaN`; the clamp already inside the `log` cannot undo it, it is what produces the
-  0. Live in the campaign path: `particlenettransformer.py` serves ParticleNetParT-GraphTrans
-  and -GraphGPS, and `plaingraphgps.py` imports the same function. `eps**2` (not `eps`) floors
-  delta at exactly `eps`, so `lndelta` is bit-identical to the unclamped version and `lnkt` is
-  too wherever `ptmin <= 1` -- every padded pair, whose pt is itself clamped to `sqrt(eps)`.
+- ~~`pairwise_lv_fts` clamps delta_r2 at `eps**2` before the sqrt~~ -- **REVERTED (2026-10-20)
+  in `particlenettransformer.py`, which serves both PNParT hybrids and `plaingraphgps.py`'s
+  `use_edge_attr`.** The clamp was added as a guard against `sqrt'(0)=inf` in the backward,
+  but no gradient ever reaches that sqrt: every call site runs under `torch.no_grad()` (eager
+  PairEmbed paths, `plaingraphgps.py`) or on a detached input (the compiled twin). What it did
+  change was the forward: for a self-pair (kept, since `remove_self_pair=False` here as in
+  weaver) delta became `eps` instead of 0, so `lnkt_ii = log(pt_i) + log(eps)` instead of
+  weaver's constant `log(eps)` -- a per-particle diagonal term in the attention bias that
+  `tag_ParT` (whose port rejected the same clamp, `particletransformer.py:156`) does not have.
+  Measured before the revert: diagonal `U` differed from the weaver formula by up to 2e-2
+  against an off-diagonal std of 0.24; off-diagonal entries were already identical to 0.0.
+  The PNP hybrids' pair features are now weaver-verbatim again. The same clamp is still
+  present in `mipart.py:265` (added by the same commit, a1251ec); it is the `tag_MIParT`
+  baseline's deviation from its reference and is left for a separate decision.
   NOT the same as the MIParT **rapidity** clamp (`(energy - pz).clamp(min=1e-20)`), which is a
-  separate fix and is already upstream via #92. An earlier attempt on `original-repo-fixes`
-  (7b40292) clamped at `eps`, which shifts `lndelta` from `log(eps)` to `log(sqrt(eps))` for
-  every degenerate pair -- a real feature change, and the likely reason 198eba7 reverted it.
-  Still absent upstream; offer with that reasoning attached or it gets reverted again.
+  separate fix and is already upstream via #92.
 - Embedding order: tagging features (deta/dphi/dr, log pt) are computed BEFORE the optional
   jet-rest-frame boost. Post-boost the jet has pt~0, so pt_jet clamps and eta_jet/phi_jet read
   off a numerically-zero vector -> dphi/deta rotation-unstable, breaking even SO(2) invariance
