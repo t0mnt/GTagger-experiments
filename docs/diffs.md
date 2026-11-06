@@ -67,9 +67,9 @@ ParT's cls-block-only dropout zeros) are kept, commented in code, and not listed
   `tag_ParT` (whose port rejected the same clamp, `particletransformer.py:156`) does not have.
   Measured before the revert: diagonal `U` differed from the weaver formula by up to 2e-2
   against an off-diagonal std of 0.24; off-diagonal entries were already identical to 0.0.
-  The PNP hybrids' pair features are now weaver-verbatim again. The same clamp is still
-  present in `mipart.py:265` (added by the same commit, a1251ec); it is the `tag_MIParT`
-  baseline's deviation from its reference and is left for a separate decision.
+  The PNP hybrids' pair features are now weaver-verbatim again. The same clamp, added to
+  `mipart.py` by the same commit (a1251ec), was removed on 2026-11-06 for the same reason
+  (its PairEmbed forward is under `no_grad` too), so `tag_MIParT` is reference-exact again.
   NOT the same as the MIParT **rapidity** clamp (`(energy - pz).clamp(min=1e-20)`), which is a
   separate fix and is already upstream via #92.
 - Embedding order: tagging features (deta/dphi/dr, log pt) are computed BEFORE the optional
