@@ -256,13 +256,12 @@ def pairwise_lv_fts(xi, xj, num_outputs=4, eps=1e-8, for_onnx=False):
     pti, rapi, phii = to_ptrapphim(xi, False, eps=None, for_onnx=for_onnx).split((1, 1, 1), dim=1)
     ptj, rapj, phij = to_ptrapphim(xj, False, eps=None, for_onnx=for_onnx).split((1, 1, 1), dim=1)
 
-    # clamp BEFORE the sqrt: delta_r2 is exactly 0 for bit-identical pairs (padded
-    # constituents, and the diagonal when self-pairs are kept), and sqrt'(0) = inf, so the
-    # backward is 0 * inf = NaN -- which the existing clamp inside the log cannot undo.
-    # eps**2 (not eps) is deliberate: it floors delta at eps, so lndelta below is
-    # bit-identical to the unclamped version, as is lnkt wherever ptmin <= 1 (all padded
-    # pairs, whose pt is itself clamped to sqrt(eps)).
-    delta = delta_r2(rapi, phii, rapj, phij).clamp(min=eps**2).sqrt()
+    # reference-verbatim (MIParT inherits weaver's pairwise_lv_fts): no clamp before the sqrt.
+    # A clamp at eps**2 used to sit here as a guard against sqrt'(0) in the backward, but the
+    # PairEmbed forward runs under torch.no_grad(), so no gradient ever reaches this sqrt, and
+    # the clamp changed the self-pair features (lnkt_ii = log(pt_i) + log(eps) instead of the
+    # reference's constant log(eps)). Same revert as particlenettransformer.py.
+    delta = delta_r2(rapi, phii, rapj, phij).sqrt()
     lndelta = torch.log(delta.clamp(min=eps))
     if num_outputs == 1:
         return lndelta
