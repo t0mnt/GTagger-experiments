@@ -16,6 +16,7 @@ per-run summary (first/last skip step, count, longest consecutive streak, outcom
 Writes nanlogs/ and nanlogs.zip next to where it is run.
 """
 import argparse
+import time
 import glob
 import os
 import re
@@ -131,14 +132,85 @@ def collect_run(run_dir, out_root, copy_ckpt):
     print()
 
 
+def _sha_head(path, nbytes=4 << 20):
+    """sha256 of the first nbytes of a file: a cheap fingerprint that still changes when a file
+    is re-downloaded with different content (full hashes of 100 MB ROOT files are too slow)."""
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        h.update(fh.read(nbytes))
+    return h.hexdigest()[:16]
+
+
+def data_report(out_root):
+    """Fingerprint the datasets the tagging configs point at: file counts, bytes, mtimes and a
+    head-hash of a few files per folder. Two collections taken before and after a scratch wipe
+    can then be diffed line by line."""
+    import hashlib
+
+    lines = []
+    roots = []
+    for cfg in glob.glob("config/*.yaml"):
+        with open(cfg, errors="replace") as fh:
+            for line in fh:
+                m = re.match(r"\s*data_dir:\s*(\S+)", line)
+                if m and m.group(1) not in roots:
+                    roots.append(m.group(1))
+    for root in roots:
+        if not os.path.isdir(root):
+            lines.append(f"{root}: MISSING")
+            continue
+        for dirpath, dirnames, files in os.walk(root):
+            dirnames.sort()
+            data = sorted(f for f in files if f.endswith((".root", ".npz", ".npy", ".h5", ".hdf5", ".parquet", ".pt")))
+            if not data:
+                continue
+            paths = [os.path.join(dirpath, f) for f in data]
+            sizes = [os.path.getsize(p) for p in paths]
+            mt = [os.path.getmtime(p) for p in paths]
+            sample = paths[:: max(1, len(paths) // 3)][:3]
+            heads = " ".join(f"{os.path.basename(p)}:{_sha_head(p)}" for p in sample)
+            lines.append(
+                f"{dirpath}: {len(paths)} files, {sum(sizes) / 1e9:.2f} GB, "
+                f"mtime {time.strftime('%Y-%m-%d', time.localtime(min(mt)))}..{time.strftime('%Y-%m-%d', time.localtime(max(mt)))}, "
+                f"head-sha {heads}"
+            )
+    for cfg in sorted(glob.glob("experiments/tagging/miniweaver/configs*/*.yaml")):
+        with open(cfg, "rb") as fh:
+            lines.append(f"{cfg}: sha256 {hashlib.sha256(fh.read()).hexdigest()[:16]}")
+    with open(os.path.join(out_root, "data.txt"), "w") as fh:
+        fh.write("\n".join(lines) + "\n")
+    print("\n".join(lines))
+    print()
+
+
 def environment_report(out_root):
-    lines = [f"python {sys.version.split()[0]}"]
+    """Everything about the software stack that a run log does NOT record (the per-run `env:`
+    line lists environment variables only). Full pip freeze, interpreter location (a venv or a
+    container image's site-packages), torch/CUDA/cuDNN/driver versions, GPU, the precision
+    switches, SDPA backends, repo commit. Diff two of these to see what a wipe changed."""
+    import platform
+    import subprocess
+
+    lines = [
+        f"date {time.strftime('%Y-%m-%d %H:%M:%S')}  host {platform.node()}",
+        f"python {sys.version.split()[0]}  executable {sys.executable}  prefix {sys.prefix}",
+        f"VIRTUAL_ENV={os.environ.get('VIRTUAL_ENV')}  CONDA_PREFIX={os.environ.get('CONDA_PREFIX')}",
+    ]
+    try:
+        head = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True).stdout.strip()
+        lines.append(f"repo HEAD {head}{' (dirty: ' + str(len(dirty.splitlines())) + ' files)' if dirty else ''}")
+    except Exception as e:
+        lines.append(f"git unavailable: {e}")
     try:
         import importlib.metadata as md
 
-        for pkg in ("torch", "lloca", "lgatr", "xformers", "torch-geometric", "triton"):
+        for pkg in ("torch", "lloca", "lgatr", "xformers", "torch-geometric", "triton", "numpy", "hydra-core", "omegaconf"):
             try:
-                lines.append(f"{pkg}=={md.version(pkg)}")
+                dist = md.distribution(pkg)
+                lines.append(f"{pkg}=={dist.version}  @ {dist.locate_file('')}")
             except md.PackageNotFoundError:
                 lines.append(f"{pkg}: not installed")
     except Exception as e:  # pragma: no cover
@@ -146,19 +218,48 @@ def environment_report(out_root):
     try:
         import torch
 
-        lines.append(f"torch.version.cuda={torch.version.cuda} cudnn={torch.backends.cudnn.version()}")
+        lines.append(f"torch.version.cuda={torch.version.cuda} cudnn={torch.backends.cudnn.version()} torch.file={torch.__file__}")
         lines.append(f"cuda_available={torch.cuda.is_available()}")
         if torch.cuda.is_available():
-            lines.append(f"gpu={torch.cuda.get_device_name(0)}")
+            for i in range(torch.cuda.device_count()):
+                cap = torch.cuda.get_device_capability(i)
+                lines.append(f"gpu{i}={torch.cuda.get_device_name(i)} sm_{cap[0]}{cap[1]}")
         lines.append(
             f"float32_matmul_precision={torch.get_float32_matmul_precision()} "
             f"cudnn.allow_tf32={torch.backends.cudnn.allow_tf32} "
-            f"matmul.allow_tf32={torch.backends.cuda.matmul.allow_tf32}"
+            f"matmul.allow_tf32={torch.backends.cuda.matmul.allow_tf32} "
+            f"cudnn.benchmark={torch.backends.cudnn.benchmark} "
+            f"cudnn.deterministic={torch.backends.cudnn.deterministic}"
         )
+        try:
+            lines.append(
+                f"sdpa flash={torch.backends.cuda.flash_sdp_enabled()} "
+                f"mem_efficient={torch.backends.cuda.mem_efficient_sdp_enabled()} "
+                f"math={torch.backends.cuda.math_sdp_enabled()}"
+            )
+        except Exception:
+            pass
     except Exception as e:
         lines.append(f"torch report unavailable: {e}")
+    try:
+        smi = subprocess.run(["nvidia-smi", "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"], capture_output=True, text=True, timeout=20)
+        lines.append("nvidia-smi: " + (smi.stdout.strip().replace("\n", " | ") or smi.stderr.strip()[:200]))
+    except Exception as e:
+        lines.append(f"nvidia-smi unavailable: {type(e).__name__}")
+    for k in ("PYTORCH_CUDA_ALLOC_CONF", "TORCHINDUCTOR_CACHE_DIR", "TRITON_LIBCUDA_PATH", "CUDA_VISIBLE_DEVICES", "OMP_NUM_THREADS", "LD_LIBRARY_PATH", "CUDA_HOME", "APPTAINER_CONTAINER", "SINGULARITY_CONTAINER"):
+        if os.environ.get(k) is not None:
+            lines.append(f"env {k}={os.environ[k]}")
     with open(os.path.join(out_root, "environment.txt"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
+    try:
+        import subprocess as sp
+
+        freeze = sp.run([sys.executable, "-m", "pip", "freeze"], capture_output=True, text=True, timeout=120).stdout
+        with open(os.path.join(out_root, "pip_freeze.txt"), "w") as fh:
+            fh.write(freeze)
+        lines.append(f"pip freeze: {len(freeze.splitlines())} packages -> pip_freeze.txt")
+    except Exception as e:
+        lines.append(f"pip freeze unavailable: {type(e).__name__}")
     print("\n".join(lines))
     print()
 
@@ -199,6 +300,7 @@ def main():
         return 1
     os.makedirs(args.out, exist_ok=True)
     environment_report(args.out)
+    data_report(args.out)
     for r in runs:
         collect_run(r, args.out, args.copy_ckpt)
     for lg in glob.glob("logs/**/*.out", recursive=True):
