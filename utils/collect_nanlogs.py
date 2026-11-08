@@ -26,7 +26,8 @@ import zipfile
 KEY = re.compile(
     r"Instantiated model|Frames approach|env:|Epoch budget|Starting to train|Constructed dataloaders|"
     r"Skipping iteration|non-finite|consecutive non-finite|Loading model|Early stopping|"
-    r"Finished training|Exiting with error|Traceback|Error|slurm|job id|Creating|Using .* files",
+    r"Finished training|Exiting with error|Traceback|Error|slurm|job id|Creating|Using .* files|"
+    r"torch|cuda|cudnn|lloca|lgatr|version|preserve_variance|mass_reg|gamma_max|Validation|val_",
     re.IGNORECASE,
 )
 SKIP = re.compile(r"Skipping iteration (\d+).*?\[(\d+) consecutive\]")
@@ -162,9 +163,15 @@ def environment_report(out_root):
     print()
 
 
-def discover():
+def discover(all_runs=False):
+    """Run directories to collect: those whose out log carries a non-finite event, or, with
+    --all-runs, every run directory that has an out log (so clean runs can be compared with
+    the incident runs: same config/keyline/models.txt record, skips=0)."""
     runs = set()
     for lg in glob.glob("runs/**/out_*.log", recursive=True) + glob.glob("logs/**/*.out", recursive=True):
+        if all_runs and lg.startswith("runs"):
+            runs.add(os.path.dirname(lg))
+            continue
         try:
             with open(lg, errors="replace") as fh:
                 if any("Skipping iteration" in l or "non-finite" in l for l in fh):
@@ -179,8 +186,14 @@ def main():
     ap.add_argument("run_dirs", nargs="*", help="run directories (default: auto-discover)")
     ap.add_argument("--copy-ckpt", action="store_true", help="copy the last checkpoint before the first skip")
     ap.add_argument("--out", default="nanlogs")
+    ap.add_argument(
+        "--all-runs",
+        action="store_true",
+        help="also collect every run under runs/ that has NO non-finite event (config, key lines, "
+        "models.txt; no dumps), so clean runs can be compared with the incident runs",
+    )
     args = ap.parse_args()
-    runs = args.run_dirs or discover()
+    runs = args.run_dirs or discover(all_runs=args.all_runs)
     if not runs:
         print("no run directories given and none with non-finite events found under runs/ or logs/")
         return 1
