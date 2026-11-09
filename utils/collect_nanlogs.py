@@ -35,6 +35,8 @@ SKIP = re.compile(r"Skipping iteration (\d+).*?\[(\d+) consecutive\]")
 
 
 def summarize_log(path):
+    """Key lines of one log plus its first 40 lines (job header: command line, interpreter and
+    package paths, versions) and the skip statistics."""
     first = last = None
     count = 0
     maxrun = 0
@@ -43,8 +45,8 @@ def summarize_log(path):
     dumps = []
     keylines = []
     with open(path, errors="replace") as fh:
-        for line in fh:
-            if KEY.search(line):
+        for i, line in enumerate(fh):
+            if i < 40 or KEY.search(line):
                 keylines.append(line.rstrip("\n"))
             m = SKIP.search(line)
             if m:
@@ -305,7 +307,9 @@ def main():
         collect_run(r, args.out, args.copy_ckpt)
     for lg in glob.glob("logs/**/*.out", recursive=True):
         s = summarize_log(lg)
-        if s["count"]:
+        # with --all-runs every SLURM log is kept (skips=0 included): after a scratch wipe the
+        # SLURM logs are often the only record of a run whose run_dir is gone
+        if s["count"] or args.all_runs:
             with open(os.path.join(args.out, "slurm_" + os.path.basename(lg) + ".keylines.txt"), "w") as fh:
                 fh.write("\n".join(s["keylines"]) + "\n")
     zip_path = args.out + ".zip"
