@@ -248,9 +248,23 @@ def environment_report(out_root):
         lines.append("nvidia-smi: " + (smi.stdout.strip().replace("\n", " | ") or smi.stderr.strip()[:200]))
     except Exception as e:
         lines.append(f"nvidia-smi unavailable: {type(e).__name__}")
-    for k in ("PYTORCH_CUDA_ALLOC_CONF", "TORCHINDUCTOR_CACHE_DIR", "TRITON_LIBCUDA_PATH", "CUDA_VISIBLE_DEVICES", "OMP_NUM_THREADS", "LD_LIBRARY_PATH", "CUDA_HOME", "APPTAINER_CONTAINER", "SINGULARITY_CONTAINER"):
+    for k in ("PYTORCH_CUDA_ALLOC_CONF", "TORCHINDUCTOR_CACHE_DIR", "TRITON_LIBCUDA_PATH", "CUDA_VISIBLE_DEVICES", "OMP_NUM_THREADS", "LD_LIBRARY_PATH", "CUDA_HOME", "APPTAINER_CONTAINER", "SINGULARITY_CONTAINER", "NGC_PYTORCH_CONTAINER", "LOADEDMODULES"):
         if os.environ.get(k) is not None:
             lines.append(f"env {k}={os.environ[k]}")
+    # the container image itself: path, size and mtime identify WHICH image a job ran in (the
+    # module name alone does not -- docs/OSCAR.md records a module that resolved to another sif)
+    for k in ("NGC_PYTORCH_CONTAINER", "APPTAINER_CONTAINER", "SINGULARITY_CONTAINER"):
+        img = os.environ.get(k)
+        if img and os.path.exists(img):
+            st = os.stat(img)
+            lines.append(f"image {img}: {st.st_size / 1e9:.2f} GB, mtime {time.strftime('%Y-%m-%d %H:%M', time.localtime(st.st_mtime))}")
+    for rel in ("/etc/nvidia-container-release", "/.singularity.d/labels.json", "/etc/os-release"):
+        if os.path.exists(rel):
+            try:
+                with open(rel, errors="replace") as fh:
+                    lines.append(f"{rel}: " + " ".join(fh.read().split())[:300])
+            except OSError:
+                pass
     with open(os.path.join(out_root, "environment.txt"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
     try:
