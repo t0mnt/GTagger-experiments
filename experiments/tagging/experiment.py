@@ -48,6 +48,30 @@ def _recipe_still_has_markers():
         return True
 
 
+
+def replace_nonfinite(labels_predict, title):
+    """Zero the prediction rows that are not finite, and say how many there were.
+
+    A learned-frame forward can be non-finite for a rare jet (the training loop skips those
+    steps). At validation and test nothing skipped them: one NaN row made sklearn's
+    roc_auc_score raise `Input contains NaN` and killed the run after training had finished
+    (jc_learnedpd_r2/ParticleNetParTGraphTrans_3239, 58 h, 23 skipped steps, test accuracy
+    0.8620, no AUC). A zero logit row is a maximally uninformative prediction (sigmoid 0.5 /
+    uniform softmax), so the affected jets count against the score instead of erasing it.
+    Same remedy as heidelberg-hepml/tagging-guide 1670b8e. The count is logged every time it
+    is non-zero; a run whose count grows between validations is drifting towards the regime
+    the skip lines report during training.
+    """
+    nonfinite = ~torch.isfinite(labels_predict.reshape(len(labels_predict), -1)).all(dim=1)
+    if nonfinite.any():
+        LOGGER.warning(
+            f"{int(nonfinite.sum())}/{len(labels_predict)} jets have non-finite predictions "
+            f"on the {title} set; counting them as uninformative (logits set to 0)"
+        )
+        labels_predict = labels_predict.clone()
+        labels_predict[nonfinite] = 0.0
+    return labels_predict
+
 class TaggingExperiment(BaseExperiment):
     """
     Base class for jet tagging experiments, focusing on binary classification
@@ -393,6 +417,7 @@ class TaggingExperiment(BaseExperiment):
             labels_true.append(label.cpu().float())
             labels_predict.append(y_pred.cpu().float())
         labels_true, labels_predict = torch.cat(labels_true), torch.cat(labels_predict)
+        labels_predict = replace_nonfinite(labels_predict, title)
 
         # bce loss (from the raw logits)
         metrics["loss"] = torch.nn.functional.binary_cross_entropy_with_logits(
