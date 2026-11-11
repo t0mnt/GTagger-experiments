@@ -91,10 +91,9 @@ fi
 # tagging refuses DDP outright (experiments/tagging/experiment.py). Pinning 1 keeps that
 # from depending on what the allocation happens to expose. Multi-GPU is refused above for
 # the same reason; run one GPU per job, four such jobs fill a 4-GPU node in parallel.
-# ++slurm_job_id (add-or-override) records the job id INSIDE the run; `++` because a
-# warm start launched from a saved run config already carries the previous job id, where a
-# plain `+` refuses to append (config.yaml + MLflow params), and the
-# job prints its run_dir into the .out -- so either direction of jobid <-> run resolves:
+# ++slurm_job_id records the job id INSIDE the run (config.yaml + MLflow params; `++` so a
+# saved run config that already has one re-launches), and the job prints its run_dir into
+# the .out -- so either direction of jobid <-> run resolves:
 #   grep run_dir logs/<Model>-<jobid>.out          # jobid -> run
 #   grep slurm_job_id runs/<exp>/<run>/config.yaml # run   -> jobid
 #   sbatch -J PlainGraphGPS train.sbatch tag_PlainGraphGPS         # top-tagging
