@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import resource
 import time
 import zipfile
@@ -320,8 +321,36 @@ class BaseExperiment:
             LOGGER.info(f"Creating new experiment {self.cfg.exp_name}/{run_name}")
 
         else:
+            # Warm start. Two launch forms reach here: the saved run config (`-cp runs/<exp>/<run>
+            # -cn config`, which carries run_idx and run_dir), and the fresh recipe composition
+            # (`-cn jctagging model=... exp_name=<exp> run_name=<run> warm_start_idx=N`), which
+            # carries neither -- the batch template can only launch the second form, since it
+            # pins -cn to a task name. Resolve both from exp_name/run_name: the run directory
+            # is where the task always puts it, and the trial index continues from the highest
+            # config_<idx>.yaml already written there (one per trial, see full_run).
             run_name = self.cfg.run_name
-            run_idx = self.cfg.run_idx + 1
+            if run_name is None:
+                raise ValueError(
+                    "warm_start_idx is set but run_name is not: a warm start needs the run to "
+                    "continue from (run_name=<existing run> together with exp_name=<its exp>)."
+                )
+            run_dir = OmegaConf.select(self.cfg, "run_dir", default=None) or os.path.join(
+                self.cfg.base_dir, "runs", self.cfg.exp_name, run_name
+            )
+            prev_idx = OmegaConf.select(self.cfg, "run_idx", default=None)
+            if prev_idx is None:
+                written = [
+                    int(m.group(1))
+                    for f in os.listdir(run_dir) if os.path.isdir(run_dir)
+                    for m in [re.match(r"config_(\d+)\.yaml$", f)] if m
+                ] if os.path.isdir(run_dir) else []
+                if not written:
+                    raise ValueError(
+                        f"warm start requested for {run_dir}, but it holds no config_<idx>.yaml: "
+                        "not a run this code wrote (check exp_name/run_name)."
+                    )
+                prev_idx = max(written)
+            run_idx = prev_idx + 1
             LOGGER.info(
                 f"Warm-starting from existing experiment {self.cfg.exp_name}/{run_name} for run {run_idx}"
             )
@@ -331,7 +360,7 @@ class BaseExperiment:
             if not self.warm_start:
                 self.cfg.warm_start_idx = 0
                 self.cfg.run_name = run_name
-                self.cfg.run_dir = run_dir
+            self.cfg.run_dir = run_dir
 
             self.cfg.save = self.cfg.save and self.is_master  # only save on master
 
