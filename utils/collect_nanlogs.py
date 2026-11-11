@@ -35,6 +35,8 @@ SKIP = re.compile(r"Skipping iteration (\d+).*?\[(\d+) consecutive\]")
 
 
 def summarize_log(path):
+    """Key lines of one log plus its first 40 lines (job header: command line, interpreter and
+    package paths, versions) and the skip statistics."""
     first = last = None
     count = 0
     maxrun = 0
@@ -43,8 +45,8 @@ def summarize_log(path):
     dumps = []
     keylines = []
     with open(path, errors="replace") as fh:
-        for line in fh:
-            if KEY.search(line):
+        for i, line in enumerate(fh):
+            if i < 40 or KEY.search(line):
                 keylines.append(line.rstrip("\n"))
             m = SKIP.search(line)
             if m:
@@ -246,9 +248,23 @@ def environment_report(out_root):
         lines.append("nvidia-smi: " + (smi.stdout.strip().replace("\n", " | ") or smi.stderr.strip()[:200]))
     except Exception as e:
         lines.append(f"nvidia-smi unavailable: {type(e).__name__}")
-    for k in ("PYTORCH_CUDA_ALLOC_CONF", "TORCHINDUCTOR_CACHE_DIR", "TRITON_LIBCUDA_PATH", "CUDA_VISIBLE_DEVICES", "OMP_NUM_THREADS", "LD_LIBRARY_PATH", "CUDA_HOME", "APPTAINER_CONTAINER", "SINGULARITY_CONTAINER"):
+    for k in ("PYTORCH_CUDA_ALLOC_CONF", "TORCHINDUCTOR_CACHE_DIR", "TRITON_LIBCUDA_PATH", "CUDA_VISIBLE_DEVICES", "OMP_NUM_THREADS", "LD_LIBRARY_PATH", "CUDA_HOME", "APPTAINER_CONTAINER", "SINGULARITY_CONTAINER", "NGC_PYTORCH_CONTAINER", "LOADEDMODULES"):
         if os.environ.get(k) is not None:
             lines.append(f"env {k}={os.environ[k]}")
+    # the container image itself: path, size and mtime identify WHICH image a job ran in (the
+    # module name alone does not -- docs/OSCAR.md records a module that resolved to another sif)
+    for k in ("NGC_PYTORCH_CONTAINER", "APPTAINER_CONTAINER", "SINGULARITY_CONTAINER"):
+        img = os.environ.get(k)
+        if img and os.path.exists(img):
+            st = os.stat(img)
+            lines.append(f"image {img}: {st.st_size / 1e9:.2f} GB, mtime {time.strftime('%Y-%m-%d %H:%M', time.localtime(st.st_mtime))}")
+    for rel in ("/etc/nvidia-container-release", "/.singularity.d/labels.json", "/etc/os-release"):
+        if os.path.exists(rel):
+            try:
+                with open(rel, errors="replace") as fh:
+                    lines.append(f"{rel}: " + " ".join(fh.read().split())[:300])
+            except OSError:
+                pass
     with open(os.path.join(out_root, "environment.txt"), "w") as fh:
         fh.write("\n".join(lines) + "\n")
     try:
@@ -305,7 +321,9 @@ def main():
         collect_run(r, args.out, args.copy_ckpt)
     for lg in glob.glob("logs/**/*.out", recursive=True):
         s = summarize_log(lg)
-        if s["count"]:
+        # with --all-runs every SLURM log is kept (skips=0 included): after a scratch wipe the
+        # SLURM logs are often the only record of a run whose run_dir is gone
+        if s["count"] or args.all_runs:
             with open(os.path.join(args.out, "slurm_" + os.path.basename(lg) + ".keylines.txt"), "w") as fh:
                 fh.write("\n".join(s["keylines"]) + "\n")
     zip_path = args.out + ".zip"

@@ -12,7 +12,7 @@ from experiments.mlflow import log_mlflow
 from experiments.tagging.embedding import (
     dense_to_sparse_jet,
 )
-from experiments.tagging.experiment import TaggingExperiment
+from experiments.tagging.experiment import TaggingExperiment, replace_nonfinite
 from experiments.tagging.miniweaver.dataset import SimpleIterDataset
 from experiments.tagging.miniweaver.loader import to_filelist
 
@@ -169,6 +169,7 @@ class JetClassTaggingExperiment(TaggingExperiment):
             labels_predict.append(y_pred.cpu().float())
 
         labels_true, labels_predict = torch.cat(labels_true), torch.cat(labels_predict)
+        labels_predict = replace_nonfinite(labels_predict, title)
         if mode == "eval":
             metrics["labels_true"], metrics["labels_predict"] = (
                 labels_true,
