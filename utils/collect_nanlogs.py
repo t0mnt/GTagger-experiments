@@ -28,7 +28,8 @@ KEY = re.compile(
     r"Instantiated model|Frames approach|env:|Epoch budget|Starting to train|Constructed dataloaders|"
     r"Skipping iteration|non-finite|consecutive non-finite|Loading model|Early stopping|"
     r"Finished training|Exiting with error|Traceback|Error|slurm|job id|Creating|Using .* files|"
-    r"torch|cuda|cudnn|lloca|lgatr|version|preserve_variance|mass_reg|gamma_max|Validation|val_",
+    r"torch|cuda|cudnn|lloca|lgatr|version|preserve_variance|mass_reg|gamma_max|Validation|val_|"
+    r"git_hash|Starting experiment|Accuracy|AUC|table |Checkpoint selection|Spend|Finished experiment",
     re.IGNORECASE,
 )
 SKIP = re.compile(r"Skipping iteration (\d+).*?\[(\d+) consecutive\]")
