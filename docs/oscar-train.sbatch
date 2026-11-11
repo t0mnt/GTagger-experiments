@@ -83,7 +83,7 @@ fi
   source venv/bin/activate
   python run.py -cp $CP -cn $TASK \
       $MODELARG $RECIPE gpus=1 \
-      +slurm_job_id=${SLURM_JOB_ID:-none} $EXTRA
+      ++slurm_job_id=${SLURM_JOB_ID:-none} $EXTRA
 "
 # -cp defaults to `config` (run.py itself defaults to the tiny config_quick tree).
 # gpus=1 is NOT redundant: config/default.yaml ships gpus: -1, which means "use every
@@ -91,7 +91,9 @@ fi
 # tagging refuses DDP outright (experiments/tagging/experiment.py). Pinning 1 keeps that
 # from depending on what the allocation happens to expose. Multi-GPU is refused above for
 # the same reason; run one GPU per job, four such jobs fill a 4-GPU node in parallel.
-# +slurm_job_id records the job id INSIDE the run (config.yaml + MLflow params), and the
+# ++slurm_job_id (add-or-override) records the job id INSIDE the run; `++` because a
+# warm start launched from a saved run config already carries the previous job id, where a
+# plain `+` refuses to append (config.yaml + MLflow params), and the
 # job prints its run_dir into the .out -- so either direction of jobid <-> run resolves:
 #   grep run_dir logs/<Model>-<jobid>.out          # jobid -> run
 #   grep slurm_job_id runs/<exp>/<run>/config.yaml # run   -> jobid
